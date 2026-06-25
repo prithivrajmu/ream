@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local-first desktop timesheet tracker with an always-on-top overlay.",
-  "main": "dist/main/index.js",
+  "main": "out/main/index.js",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev:linux": "electron-vite dev -- --no-sandbox"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
