@@ -1,23 +1,23 @@
-# Current Slice: Manual Entry Editing
+# Current Slice: macOS Distribution And Glass UI
 
 ## Objective
 
-Make the tracker useful when time needs to be corrected or entered after the fact.
+Prepare the app for macOS packaging and make the desktop UI feel light, clean, and native-adjacent.
 
 ## Scope
 
-1. Add manual time entry creation from the main window.
-2. Add edit/delete controls for completed entries.
-3. Preserve one-active-timer behavior and existing export/import behavior.
+1. Add electron-builder packaging scripts and macOS config.
+2. Document unsigned local builds and signed/notarized distribution.
+3. Refresh the renderer styling toward a light macOS glass aesthetic without changing workflows.
 
 ## Acceptance
 
-- Manual entries appear in Today, daily totals, task totals, JSON export, and CSV export.
-- Completed entries can be edited and deleted.
-- `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and prstack QA pass.
+- `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
+- `npm run pack` can produce an unpacked local Electron app.
+- macOS packaging docs explain unsigned and signed/notarized paths.
 
 ## Deferred
 
-- Electron UI automation.
-- Event-based cross-window refresh.
-- macOS packaging.
+- Actual Apple Developer ID signing credentials.
+- Notarization execution in CI.
+- App icon design.
