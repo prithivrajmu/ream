@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { join } from "node:path";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
@@ -9,6 +9,11 @@ let tray: Tray | null = null;
 
 const OVERLAY_COMPACT_SIZE = { width: 420, height: 72 };
 const OVERLAY_EXPANDED_SIZE = { width: 520, height: 420 };
+const OVERLAY_SCREEN_MARGIN = 18;
+
+type OverlayBounds = { x: number; y: number; width: number; height: number };
+
+let overlayAnchorBounds: OverlayBounds | null = null;
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -59,20 +64,56 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
   window.moveTop();
 }
 
-function createOverlayWindow(): BrowserWindow {
-  const window = new BrowserWindow({
+function getTopRightOverlayBounds(): OverlayBounds {
+  const { workArea } = screen.getPrimaryDisplay();
+  return {
     width: OVERLAY_COMPACT_SIZE.width,
     height: OVERLAY_COMPACT_SIZE.height,
+    x: workArea.x + workArea.width - OVERLAY_COMPACT_SIZE.width - OVERLAY_SCREEN_MARGIN,
+    y: workArea.y + OVERLAY_SCREEN_MARGIN
+  };
+}
+
+function calculateExpandedOverlayBounds(anchor: OverlayBounds): OverlayBounds {
+  const display = screen.getDisplayMatching(anchor);
+  const { workArea } = display;
+  const right = workArea.x + workArea.width;
+  const bottom = workArea.y + workArea.height;
+
+  return {
+    width: OVERLAY_EXPANDED_SIZE.width,
+    height: OVERLAY_EXPANDED_SIZE.height,
+    x: Math.max(workArea.x + OVERLAY_SCREEN_MARGIN, Math.min(anchor.x, right - OVERLAY_EXPANDED_SIZE.width - OVERLAY_SCREEN_MARGIN)),
+    y: Math.max(workArea.y + OVERLAY_SCREEN_MARGIN, Math.min(anchor.y, bottom - OVERLAY_EXPANDED_SIZE.height - OVERLAY_SCREEN_MARGIN))
+  };
+}
+
+function setOverlayMousePassthrough(window: BrowserWindow, passthrough: boolean) {
+  window.setIgnoreMouseEvents(passthrough, { forward: true });
+}
+
+function applyOverlayBounds(window: BrowserWindow, bounds: OverlayBounds) {
+  window.setBounds(bounds, false);
+  applyOverlayPinned(window, true);
+}
+
+function createOverlayWindow(): BrowserWindow {
+  const initialBounds = getTopRightOverlayBounds();
+  overlayAnchorBounds = initialBounds;
+  const window = new BrowserWindow({
+    ...initialBounds,
     minWidth: 320,
     minHeight: 64,
-    maxWidth: 520,
-    maxHeight: 520,
+    maxWidth: OVERLAY_EXPANDED_SIZE.width,
+    maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Timesheet Overlay",
     frame: false,
-    resizable: true,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    backgroundColor: "#10131a",
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
@@ -82,6 +123,7 @@ function createOverlayWindow(): BrowserWindow {
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   applyOverlayPinned(window, true);
+  setOverlayMousePassthrough(window, true);
   window.loadURL(rendererUrl("/overlay"));
 
   window.on("show", () => applyOverlayPinned(window, true));
@@ -117,9 +159,21 @@ function showMainWindow() {
 
 function resizeOverlayWindow(expanded: boolean) {
   const window = ensureOverlayWindow();
-  const size = expanded ? OVERLAY_EXPANDED_SIZE : OVERLAY_COMPACT_SIZE;
-  window.setSize(size.width, size.height, true);
-  applyOverlayPinned(window, true);
+  if (expanded) {
+    overlayAnchorBounds = window.getBounds();
+    applyOverlayBounds(window, calculateExpandedOverlayBounds(overlayAnchorBounds));
+    setOverlayMousePassthrough(window, false);
+    return;
+  }
+
+  const anchor = overlayAnchorBounds ?? window.getBounds();
+  applyOverlayBounds(window, {
+    x: anchor.x,
+    y: anchor.y,
+    width: OVERLAY_COMPACT_SIZE.width,
+    height: OVERLAY_COMPACT_SIZE.height
+  });
+  setOverlayMousePassthrough(window, true);
 }
 
 function showOverlayWindow() {
@@ -231,6 +285,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:set-overlay-expanded", (_event, expanded: boolean) => {
     resizeOverlayWindow(expanded);
+  });
+
+  ipcMain.handle("window:set-overlay-interactive", (_event, interactive: boolean) => {
+    const window = ensureOverlayWindow();
+    setOverlayMousePassthrough(window, !interactive);
   });
 
   ipcMain.handle("window:toggle-overlay", () => {

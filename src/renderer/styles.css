@@ -423,11 +423,8 @@ code {
   padding: 8px;
   overflow: hidden;
   color: #172033;
-  background:
-    radial-gradient(circle at 18% 0%, rgb(196 231 255 / 82%), transparent 15rem),
-    linear-gradient(135deg, rgb(255 255 255 / 88%), rgb(234 244 252 / 84%));
-  -webkit-app-region: drag;
-  backdrop-filter: blur(20px) saturate(1.35);
+  background: transparent;
+  -webkit-app-region: no-drag;
 }
 
 .overlay-shell button,
@@ -442,6 +439,15 @@ code {
   align-items: center;
   gap: 10px;
   min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 18% 0%, rgb(196 231 255 / 88%), transparent 15rem),
+    linear-gradient(135deg, rgb(255 255 255 / 92%), rgb(234 244 252 / 88%));
+  box-shadow: 0 18px 42px rgb(42 75 120 / 16%), inset 0 1px 0 rgb(255 255 255 / 78%);
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-app-region: drag;
 }
 
 .overlay-task-summary {
@@ -529,7 +535,16 @@ code {
   overflow: hidden;
   opacity: 0;
   transform: translateY(-4px);
-  transition: max-height 160ms ease, opacity 140ms ease, transform 140ms ease;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 18% 0%, rgb(196 231 255 / 82%), transparent 15rem),
+    linear-gradient(135deg, rgb(255 255 255 / 90%), rgb(234 244 252 / 86%));
+  box-shadow: 0 18px 42px rgb(42 75 120 / 16%), inset 0 1px 0 rgb(255 255 255 / 78%);
+  backdrop-filter: blur(20px) saturate(1.35);
+  transition: none;
 }
 
 .overlay-expanded .overlay-expanded-panel {

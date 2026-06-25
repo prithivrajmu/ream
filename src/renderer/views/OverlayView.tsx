@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../../shared/db";
 import type { ActiveTimer, Task } from "../../shared/domain";
 import { listActiveTasks } from "../../shared/taskRepository";
@@ -22,6 +22,7 @@ export function OverlayView() {
   const [pinned, setPinned] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
@@ -78,10 +79,16 @@ export function OverlayView() {
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
 
-  async function setOverlayExpanded(nextExpanded: boolean) {
+  const setOverlayExpanded = useCallback(async (nextExpanded: boolean) => {
     setExpanded(nextExpanded);
+    await window.timesheetDesktop?.setOverlayInteractive?.(true);
     await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
-  }
+    if (nextExpanded) {
+      window.setTimeout(() => noteInputRef.current?.focus(), 0);
+      return;
+    }
+    await window.timesheetDesktop?.setOverlayInteractive?.(false);
+  }, []);
 
   async function togglePinned() {
     const nextPinned = !pinned;
