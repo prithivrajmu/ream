@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
+    "dexie": "^4.4.4",
     "electron-vite": "^5.0.0",
+    "fake-indexeddb": "^6.2.5",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
