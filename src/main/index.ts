@@ -26,7 +26,7 @@ function createMainWindow(): BrowserWindow {
     title: "Timesheet Tracker",
     backgroundColor: "#f7f8fb",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -45,6 +45,17 @@ function createMainWindow(): BrowserWindow {
   return window;
 }
 
+function applyOverlayPinned(window: BrowserWindow, pinned = true) {
+  if (!pinned) {
+    window.setAlwaysOnTop(false);
+    return;
+  }
+
+  const level = process.platform === "darwin" ? "floating" : "screen-saver";
+  window.setAlwaysOnTop(true, level);
+  window.moveTop();
+}
+
 function createOverlayWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 360,
@@ -60,14 +71,19 @@ function createOverlayWindow(): BrowserWindow {
     skipTaskbar: true,
     backgroundColor: "#10131a",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  applyOverlayPinned(window, true);
   window.loadURL(rendererUrl("/overlay"));
+
+  window.on("show", () => applyOverlayPinned(window, true));
+  window.on("focus", () => applyOverlayPinned(window, true));
+  window.on("blur", () => applyOverlayPinned(window, true));
 
   window.on("closed", () => {
     overlayWindow = null;
@@ -99,6 +115,7 @@ function showMainWindow() {
 function showOverlayWindow() {
   const window = ensureOverlayWindow();
   window.show();
+  applyOverlayPinned(window, true);
   window.focus();
 }
 
@@ -109,6 +126,7 @@ function toggleOverlayWindow() {
     return;
   }
   window.show();
+  applyOverlayPinned(window, true);
   window.focus();
 }
 
@@ -193,7 +211,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:set-overlay-pinned", (_event, pinned: boolean) => {
     const window = ensureOverlayWindow();
-    window.setAlwaysOnTop(pinned);
+    applyOverlayPinned(window, pinned);
     return window.isAlwaysOnTop();
   });
 
