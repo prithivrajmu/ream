@@ -1,6 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { db } from "../shared/db";
 import type { ActiveTimer, Task, TimeEntry } from "../shared/domain";
+import { importTimesheetData, readAllExportData } from "../shared/exportRepository";
+import {
+  buildDailySummaries,
+  buildTaskTotals,
+  createTimesheetExport,
+  entriesToCsv,
+  parseTimesheetExport,
+  serializeTimesheetExport
+} from "../shared/reporting";
 import { elapsedSeconds, formatDuration } from "../shared/time";
 import { createTask, listActiveTasks, updateTask } from "../shared/taskRepository";
 import { getActiveTimer, listTimeEntriesForDay, startTimer, stopTimer, updateActiveTimerNote } from "../shared/timerRepository";
@@ -25,6 +34,7 @@ export function App() {
 function MainView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [timerNote, setTimerNote] = useState("");
@@ -38,16 +48,20 @@ function MainView() {
 
   const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
+  const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
+  const taskTotals = useMemo(() => buildTaskTotals(allEntries, tasks), [allEntries, tasks]);
 
   async function refreshAppState() {
-    const [nextTasks, nextActiveTimer, nextEntries] = await Promise.all([
+    const [nextTasks, nextActiveTimer, nextEntries, exportData] = await Promise.all([
       listActiveTasks(db),
       getActiveTimer(db),
-      listTimeEntriesForDay(db)
+      listTimeEntriesForDay(db),
+      readAllExportData(db)
     ]);
 
     setTasks(nextTasks);
     setEntries(nextEntries);
+    setAllEntries(exportData.timeEntries);
     setActiveTimer(nextActiveTimer);
     setTimerNote(nextActiveTimer?.note ?? "");
 
@@ -166,6 +180,55 @@ function MainView() {
       setActiveTimer(updated);
     } catch (noteError) {
       setError(noteError instanceof Error ? noteError.message : "Unable to save timer note.");
+    }
+  }
+
+
+  async function handleExportJson() {
+    setError(null);
+
+    try {
+      const exportData = await readAllExportData(db);
+      downloadTextFile(
+        `timesheet-export-${new Date().toISOString().slice(0, 10)}.json`,
+        "application/json",
+        serializeTimesheetExport(createTimesheetExport(exportData.tasks, exportData.timeEntries))
+      );
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Unable to export JSON.");
+    }
+  }
+
+  async function handleExportCsv() {
+    setError(null);
+
+    try {
+      const exportData = await readAllExportData(db);
+      downloadTextFile(
+        `timesheet-export-${new Date().toISOString().slice(0, 10)}.csv`,
+        "text/csv",
+        entriesToCsv(exportData.timeEntries, exportData.tasks)
+      );
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Unable to export CSV.");
+    }
+  }
+
+  async function handleImportJson(event: FormEvent<HTMLInputElement>) {
+    setError(null);
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      await importTimesheetData(db, parseTimesheetExport(text));
+      await refreshAppState();
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Unable to import JSON.");
     }
   }
 
@@ -301,6 +364,67 @@ function MainView() {
           })}
         </div>
       </section>
+
+      <section className="review-grid">
+        <div className="panel summary-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="section-label">Review</p>
+              <h2>Daily totals</h2>
+            </div>
+            <span className="count-pill">{formatDuration(totalDuration(allEntries))}</span>
+          </div>
+          <div className="summary-list">
+            {dailySummaries.length === 0 ? <p className="muted-copy">No completed work to summarize yet.</p> : null}
+            {dailySummaries.slice(0, 7).map((summary) => (
+              <div className="summary-row" key={summary.date}>
+                <span>{summary.date}</span>
+                <strong>{formatDuration(summary.durationSeconds)}</strong>
+                <small>{summary.entryCount} entries</small>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel summary-panel">
+          <div className="panel-heading">
+            <div>
+              <p className="section-label">Tasks</p>
+              <h2>Task totals</h2>
+            </div>
+            <span className="count-pill">{taskTotals.length} tracked</span>
+          </div>
+          <div className="summary-list">
+            {taskTotals.length === 0 ? <p className="muted-copy">No task totals yet.</p> : null}
+            {taskTotals.slice(0, 7).map((total) => (
+              <div className="summary-row" key={total.taskId}>
+                <span>{total.taskTitle}</span>
+                <strong>{formatDuration(total.durationSeconds)}</strong>
+                <small>{total.project || "No project"}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel export-panel">
+          <div>
+            <p className="section-label">Backup</p>
+            <h2>Export and import</h2>
+            <p className="muted-copy compact-copy">
+              Export JSON for restore and private GitHub backup. Export CSV for reporting.
+            </p>
+          </div>
+          <div className="export-actions">
+            <button className="primary-button" onClick={handleExportJson}>Export JSON</button>
+            <button className="secondary-button" onClick={handleExportCsv}>Export CSV</button>
+            <label className="import-button">
+              Import JSON
+              <input accept="application/json,.json" type="file" onChange={handleImportJson} />
+            </label>
+          </div>
+        </div>
+      </section>
+
     </main>
   );
 }
@@ -470,6 +594,20 @@ function OverlayView() {
       {error ? <p className="overlay-error">{error}</p> : null}
     </main>
   );
+}
+
+function downloadTextFile(filename: string, mimeType: string, content: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function totalDuration(entries: TimeEntry[]): number {
+  return entries.reduce((total, entry) => total + entry.durationSeconds, 0);
 }
 
 function formatEntryTime(value: string): string {
