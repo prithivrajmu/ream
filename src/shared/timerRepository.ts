@@ -1,7 +1,6 @@
 import type { ActiveTimer, TimeEntry } from "./domain";
 import type { TimesheetDatabase } from "./db";
 import { createId } from "./id";
-import { elapsedSeconds } from "./time";
 
 const ACTIVE_TIMER_ID = "active";
 
@@ -11,7 +10,7 @@ export interface StartTimerInput {
 }
 
 export async function getActiveTimer(database: TimesheetDatabase): Promise<ActiveTimer | null> {
-  return (await database.activeTimers.get(ACTIVE_TIMER_ID)) ?? null;
+  return normalizeActiveTimer((await database.activeTimers.get(ACTIVE_TIMER_ID)) ?? null);
 }
 
 export async function startTimer(
@@ -35,6 +34,8 @@ export async function startTimer(
     taskId: input.taskId,
     startedAt: timestamp,
     note: input.note?.trim() ?? "",
+    pausedAt: "",
+    totalPausedSeconds: 0,
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -63,6 +64,48 @@ export async function updateActiveTimerNote(
   return updated;
 }
 
+export async function pauseTimer(database: TimesheetDatabase, now = new Date()): Promise<ActiveTimer> {
+  const activeTimer = await getActiveTimer(database);
+  if (!activeTimer) {
+    throw new Error("No timer is running.");
+  }
+
+  if (activeTimer.pausedAt) {
+    return activeTimer;
+  }
+
+  const updated: ActiveTimer = {
+    ...activeTimer,
+    pausedAt: now.toISOString(),
+    updatedAt: now.toISOString()
+  };
+
+  await database.activeTimers.put(updated);
+  return updated;
+}
+
+export async function resumeTimer(database: TimesheetDatabase, now = new Date()): Promise<ActiveTimer> {
+  const activeTimer = await getActiveTimer(database);
+  if (!activeTimer) {
+    throw new Error("No timer is running.");
+  }
+
+  if (!activeTimer.pausedAt) {
+    return activeTimer;
+  }
+
+  const pausedSeconds = secondsBetween(activeTimer.pausedAt, now);
+  const updated: ActiveTimer = {
+    ...activeTimer,
+    pausedAt: "",
+    totalPausedSeconds: activeTimer.totalPausedSeconds + pausedSeconds,
+    updatedAt: now.toISOString()
+  };
+
+  await database.activeTimers.put(updated);
+  return updated;
+}
+
 export async function stopTimer(database: TimesheetDatabase, now = new Date()): Promise<TimeEntry> {
   const activeTimer = await getActiveTimer(database);
   if (!activeTimer) {
@@ -76,7 +119,7 @@ export async function stopTimer(database: TimesheetDatabase, now = new Date()): 
     taskId: activeTimer.taskId,
     startedAt: activeTimer.startedAt,
     endedAt,
-    durationSeconds: elapsedSeconds(activeTimer.startedAt, now),
+    durationSeconds: activeTimerElapsedSeconds(activeTimer, now),
     note: activeTimer.note,
     createdAt: timestamp,
     updatedAt: timestamp
@@ -106,4 +149,35 @@ export async function listTimeEntriesForDay(
     .toArray();
 
   return entries.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+}
+
+export function activeTimerElapsedSeconds(activeTimer: ActiveTimer, now = new Date()): number {
+  const normalized = normalizeActiveTimer(activeTimer);
+  if (!normalized) {
+    return 0;
+  }
+
+  const effectiveNow = normalized.pausedAt ? new Date(normalized.pausedAt) : now;
+  return Math.max(0, secondsBetween(normalized.startedAt, effectiveNow) - normalized.totalPausedSeconds);
+}
+
+function normalizeActiveTimer(activeTimer: ActiveTimer | null): ActiveTimer | null {
+  if (!activeTimer) {
+    return null;
+  }
+
+  return {
+    ...activeTimer,
+    pausedAt: activeTimer.pausedAt ?? "",
+    totalPausedSeconds: activeTimer.totalPausedSeconds ?? 0
+  };
+}
+
+function secondsBetween(start: string, end: Date): number {
+  const started = new Date(start).getTime();
+  if (Number.isNaN(started)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((end.getTime() - started) / 1000));
 }

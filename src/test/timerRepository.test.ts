@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TimesheetDatabase } from "../shared/db";
 import { createTask, updateTask } from "../shared/taskRepository";
 import {
+  activeTimerElapsedSeconds,
   getActiveTimer,
   listTimeEntriesForDay,
+  pauseTimer,
+  resumeTimer,
   startTimer,
   stopTimer,
   updateActiveTimerNote
@@ -45,6 +48,23 @@ describe("timer repository", () => {
 
     await expect(startTimer(db, { taskId: "missing" })).rejects.toThrow("Choose an active task");
     await expect(startTimer(db, { taskId: task.id })).rejects.toThrow("Choose an active task");
+  });
+
+  it("pauses and resumes without counting paused time", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Focused work" });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T10:00:00.000Z"));
+    const paused = await pauseTimer(db, new Date("2026-06-25T10:10:00.000Z"));
+
+    expect(paused.pausedAt).toBe("2026-06-25T10:10:00.000Z");
+    expect(activeTimerElapsedSeconds(paused, new Date("2026-06-25T10:20:00.000Z"))).toBe(600);
+
+    const resumed = await resumeTimer(db, new Date("2026-06-25T10:20:00.000Z"));
+    const entry = await stopTimer(db, new Date("2026-06-25T10:30:00.000Z"));
+
+    expect(resumed.totalPausedSeconds).toBe(600);
+    expect(entry.durationSeconds).toBe(1200);
   });
 
   it("updates notes and stops into a completed time entry", async () => {

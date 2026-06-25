@@ -27,6 +27,8 @@ export interface ActiveTimer {
   taskId: EntityId;
   startedAt: string;
   note: string;
+  pausedAt: string;
+  totalPausedSeconds: number;
   createdAt: string;
   updatedAt: string;
 }

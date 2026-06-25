@@ -28,9 +28,9 @@
 
 
  Test Files  5 passed (5)
-      Tests  15 passed (15)
-   Start at  20:20:52
-   Duration  460ms (transform 445ms, setup 0ms, import 962ms, tests 152ms, environment 1ms)
+      Tests  16 passed (16)
+   Start at  20:39:25
+   Duration  383ms (transform 271ms, setup 0ms, import 714ms, tests 168ms, environment 1ms)
 
 
 > timesheet-tracker@0.1.0 build
@@ -44,20 +44,20 @@ vite v7.3.6 building ssr environment for production...
 transforming...
 ✓ 1 modules transformed.
 rendering chunks...
-out/main/index.js  5.29 kB
-✓ built in 61ms
+out/main/index.js  6.36 kB
+✓ built in 65ms
 vite v7.3.6 building ssr environment for production...
 transforming...
 ✓ 1 modules transformed.
 rendering chunks...
-out/preload/index.mjs  0.51 kB
+out/preload/index.mjs  0.60 kB
 ✓ built in 7ms
 vite v7.3.6 building client environment for production...
 transforming...
 ✓ 43 modules transformed.
 rendering chunks...
 ../../out/renderer/index.html                   0.40 kB
-../../out/renderer/assets/index-B83ioBkB.css    9.72 kB
-../../out/renderer/assets/index-Hf3tsUUY.js   749.81 kB
-✓ built in 961ms
+../../out/renderer/assets/index-BxaTE4BA.css   11.37 kB
+../../out/renderer/assets/index-C2QKXnk3.js   753.52 kB
+✓ built in 977ms
 ```

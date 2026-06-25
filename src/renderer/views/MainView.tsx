@@ -12,8 +12,8 @@ import {
 } from "../../shared/reporting";
 import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
-import { elapsedSeconds, formatDuration } from "../../shared/time";
-import { getActiveTimer, listTimeEntriesForDay, startTimer, stopTimer, updateActiveTimerNote } from "../../shared/timerRepository";
+import { formatDuration } from "../../shared/time";
+import { activeTimerElapsedSeconds, getActiveTimer, listTimeEntriesForDay, startTimer, stopTimer, updateActiveTimerNote } from "../../shared/timerRepository";
 import { downloadTextFile, formatEntryTime, totalDuration } from "../rendererUtils";
 
 export function MainView() {
@@ -52,7 +52,7 @@ export function MainView() {
 
     if (nextActiveTimer) {
       setSelectedTaskId(nextActiveTimer.taskId);
-      setElapsed(elapsedSeconds(nextActiveTimer.startedAt));
+      setElapsed(activeTimerElapsedSeconds(nextActiveTimer));
       return;
     }
 
@@ -90,7 +90,7 @@ export function MainView() {
     }
 
     const intervalId = window.setInterval(() => {
-      setElapsed(elapsedSeconds(activeTimer.startedAt));
+      setElapsed(activeTimerElapsedSeconds(activeTimer));
     }, 1000);
 
     return () => window.clearInterval(intervalId);

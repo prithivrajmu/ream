@@ -7,6 +7,9 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
+const OVERLAY_COMPACT_SIZE = { width: 420, height: 72 };
+const OVERLAY_EXPANDED_SIZE = { width: 520, height: 420 };
+
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
     const url = new URL(process.env.ELECTRON_RENDERER_URL);
@@ -58,10 +61,10 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
 
 function createOverlayWindow(): BrowserWindow {
   const window = new BrowserWindow({
-    width: 360,
-    height: 220,
+    width: OVERLAY_COMPACT_SIZE.width,
+    height: OVERLAY_COMPACT_SIZE.height,
     minWidth: 320,
-    minHeight: 180,
+    minHeight: 64,
     maxWidth: 520,
     maxHeight: 520,
     title: "Timesheet Overlay",
@@ -110,6 +113,13 @@ function showMainWindow() {
   const window = ensureMainWindow();
   window.show();
   window.focus();
+}
+
+function resizeOverlayWindow(expanded: boolean) {
+  const window = ensureOverlayWindow();
+  const size = expanded ? OVERLAY_EXPANDED_SIZE : OVERLAY_COMPACT_SIZE;
+  window.setSize(size.width, size.height, true);
+  applyOverlayPinned(window, true);
 }
 
 function showOverlayWindow() {
@@ -217,6 +227,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:show-overlay", () => {
     showOverlayWindow();
+  });
+
+  ipcMain.handle("window:set-overlay-expanded", (_event, expanded: boolean) => {
+    resizeOverlayWindow(expanded);
   });
 
   ipcMain.handle("window:toggle-overlay", () => {

@@ -418,19 +418,16 @@ code {
 }
 
 .overlay-shell {
+  width: 100vw;
   min-height: 100vh;
-  padding: 12px;
+  padding: 8px;
   overflow: hidden;
   color: #172033;
   background:
-    radial-gradient(circle at 20% 0%, rgb(196 231 255 / 85%), transparent 16rem),
-    linear-gradient(135deg, rgb(255 255 255 / 88%), rgb(234 244 252 / 86%));
+    radial-gradient(circle at 18% 0%, rgb(196 231 255 / 82%), transparent 15rem),
+    linear-gradient(135deg, rgb(255 255 255 / 88%), rgb(234 244 252 / 84%));
   -webkit-app-region: drag;
   backdrop-filter: blur(20px) saturate(1.35);
-}
-
-.overlay-expanded {
-  overflow: auto;
 }
 
 .overlay-shell button,
@@ -439,14 +436,117 @@ code {
   -webkit-app-region: no-drag;
 }
 
+.overlay-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+}
+
+.overlay-task-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.overlay-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #30d158;
+  box-shadow: 0 0 0 5px rgb(48 209 88 / 14%);
+}
+
+.overlay-status-dot.paused {
+  background: #ff9f0a;
+  box-shadow: 0 0 0 5px rgb(255 159 10 / 16%);
+}
+
+.overlay-task-summary p {
+  overflow: hidden;
+  color: #0d1828;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overlay-task-summary span:not(.overlay-status-dot) {
+  display: block;
+  margin-top: 2px;
+  color: #657386;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.overlay-time {
+  color: #09111f;
+  font-size: 20px;
+  font-weight: 820;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.overlay-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overlay-button,
+.overlay-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 10px;
+  color: #223047;
+  background: rgb(255 255 255 / 58%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 74%);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.overlay-button.primary {
+  color: #ffffff;
+  background: linear-gradient(180deg, #33a0ff, var(--accent));
+  box-shadow: 0 8px 18px rgb(10 132 255 / 22%), inset 0 1px 0 rgb(255 255 255 / 36%);
+}
+
+.overlay-button.danger {
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff6961, var(--danger));
+  box-shadow: 0 8px 18px rgb(255 69 58 / 18%), inset 0 1px 0 rgb(255 255 255 / 36%);
+}
+
+.overlay-expanded-panel {
+  display: grid;
+  gap: 12px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: max-height 160ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.overlay-expanded .overlay-expanded-panel {
+  max-height: 340px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .overlay-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding-top: 6px;
   color: #526174;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 800;
 }
 
 .overlay-actions {
@@ -454,36 +554,15 @@ code {
   gap: 6px;
 }
 
-.overlay-actions button {
-  min-height: 26px;
-  padding: 0 8px;
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 9px;
-  color: #223047;
-  background: rgb(255 255 255 / 58%);
-  font-size: 12px;
-}
-
-.overlay-task {
+.overlay-field-label {
   display: grid;
-  gap: 10px;
-  padding: 16px 0 12px;
+  gap: 6px;
+  color: #526174;
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.overlay-task h1 {
-  margin-top: 6px;
-  font-size: 20px;
-  letter-spacing: 0;
-}
-
-.overlay-time {
-  color: #09111f;
-  font-size: 36px;
-  font-weight: 780;
-  letter-spacing: 0;
-}
-
-.overlay-task select,
+.overlay-field-label select,
 .overlay-shell textarea {
   width: 100%;
   border: 1px solid rgb(255 255 255 / 74%);
@@ -494,33 +573,25 @@ code {
   outline: none;
 }
 
-.overlay-task select {
-  height: 34px;
+.overlay-field-label select {
+  height: 36px;
   padding: 0 10px;
 }
 
-.wide {
-  width: 100%;
-}
-
 .overlay-shell textarea {
-  min-height: 58px;
-  resize: vertical;
-  padding: 10px;
+  min-height: 198px;
+  resize: none;
+  padding: 11px 12px;
+  line-height: 1.45;
 }
 
-.overlay-expanded textarea {
-  min-height: 160px;
-}
-
-.overlay-task select:focus,
+.overlay-field-label select:focus,
 .overlay-shell textarea:focus {
   border-color: rgb(10 132 255 / 58%);
   box-shadow: 0 0 0 4px rgb(10 132 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 76%);
 }
 
 .overlay-error {
-  margin-top: 8px;
   color: #b42318;
   font-size: 12px;
   font-weight: 750;
