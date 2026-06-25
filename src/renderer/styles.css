@@ -19,6 +19,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -74,6 +75,10 @@ p {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(320px, 1.1fr);
   gap: 20px;
+}
+
+.entries-panel {
+  margin-top: 20px;
 }
 
 .panel {
@@ -137,6 +142,17 @@ p {
   grid-column: 1 / -1;
 }
 
+.field-label {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field-label select,
+.field-label textarea,
 .task-form input,
 .task-form textarea {
   width: 100%;
@@ -147,17 +163,29 @@ p {
   outline: none;
 }
 
+.field-label select,
 .task-form input {
   height: 42px;
   padding: 0 12px;
 }
 
+.field-label select {
+  appearance: none;
+}
+
+.field-label textarea,
 .task-form textarea {
   min-height: 72px;
   resize: vertical;
   padding: 10px 12px;
 }
 
+.note-field textarea {
+  min-height: 108px;
+}
+
+.field-label select:focus,
+.field-label textarea:focus,
 .task-form input:focus,
 .task-form textarea:focus {
   border-color: #2563eb;
@@ -206,6 +234,48 @@ p {
   font-weight: 700;
 }
 
+.entry-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.entry-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.entry-item h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.entry-item p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.entry-item strong {
+  flex: 0 0 auto;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.entry-note {
+  max-width: 680px;
+  color: #334155 !important;
+  line-height: 1.5;
+}
+
 .timer-readout {
   margin: 28px 0;
   color: #0f172a;
@@ -237,6 +307,10 @@ p {
 .secondary-button {
   color: #1f2937;
   background: #e5e7eb;
+}
+
+.stop-button {
+  background: #dc2626;
 }
 
 .muted-copy {
@@ -342,7 +416,8 @@ p {
     grid-template-columns: 1fr;
   }
 
-  .task-item {
+  .task-item,
+  .entry-item {
     align-items: flex-start;
     flex-direction: column;
   }

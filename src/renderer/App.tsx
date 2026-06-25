@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { db } from "../shared/db";
-import type { Task } from "../shared/domain";
-import { formatDuration } from "../shared/time";
+import type { ActiveTimer, Task, TimeEntry } from "../shared/domain";
+import { elapsedSeconds, formatDuration } from "../shared/time";
 import { createTask, listActiveTasks, updateTask } from "../shared/taskRepository";
+import { getActiveTimer, listTimeEntriesForDay, startTimer, stopTimer, updateActiveTimerNote } from "../shared/timerRepository";
 import { parseTags } from "../shared/taskValidation";
 
 type Route = "main" | "overlay";
@@ -23,6 +24,11 @@ export function App() {
 
 function MainView() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [timerNote, setTimerNote] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const [title, setTitle] = useState("");
   const [project, setProject] = useState("");
   const [tags, setTags] = useState("");
@@ -30,25 +36,61 @@ function MainView() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refreshTasks() {
-    const nextTasks = await listActiveTasks(db);
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
+
+  async function refreshAppState() {
+    const [nextTasks, nextActiveTimer, nextEntries] = await Promise.all([
+      listActiveTasks(db),
+      getActiveTimer(db),
+      listTimeEntriesForDay(db)
+    ]);
+
     setTasks(nextTasks);
+    setEntries(nextEntries);
+    setActiveTimer(nextActiveTimer);
+    setTimerNote(nextActiveTimer?.note ?? "");
+
+    if (nextActiveTimer) {
+      setSelectedTaskId(nextActiveTimer.taskId);
+      setElapsed(elapsedSeconds(nextActiveTimer.startedAt));
+    } else {
+      setElapsed(0);
+      setSelectedTaskId((currentSelectedTaskId) => {
+        if (currentSelectedTaskId && nextTasks.some((task) => task.id === currentSelectedTaskId)) {
+          return currentSelectedTaskId;
+        }
+        return nextTasks[0]?.id ?? "";
+      });
+    }
   }
 
   useEffect(() => {
-    refreshTasks()
+    refreshAppState()
       .catch((refreshError: unknown) => {
-        setError(refreshError instanceof Error ? refreshError.message : "Unable to load tasks.");
+        setError(refreshError instanceof Error ? refreshError.message : "Unable to load app data.");
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!activeTimer) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setElapsed(elapsedSeconds(activeTimer.startedAt));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTimer]);
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     try {
-      await createTask(db, {
+      const task = await createTask(db, {
         title,
         project,
         tags: parseTags(tags),
@@ -58,7 +100,8 @@ function MainView() {
       setProject("");
       setTags("");
       setDefaultNote("");
-      await refreshTasks();
+      await refreshAppState();
+      setSelectedTaskId(task.id);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create task.");
     }
@@ -69,9 +112,49 @@ function MainView() {
 
     try {
       await updateTask(db, task.id, { archived: true });
-      await refreshTasks();
+      await refreshAppState();
     } catch (archiveError) {
       setError(archiveError instanceof Error ? archiveError.message : "Unable to archive task.");
+    }
+  }
+
+  async function handleStartTimer() {
+    setError(null);
+
+    try {
+      const nextActiveTimer = await startTimer(db, { taskId: selectedTaskId, note: timerNote });
+      setActiveTimer(nextActiveTimer);
+      setElapsed(0);
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : "Unable to start timer.");
+    }
+  }
+
+  async function handleStopTimer() {
+    setError(null);
+
+    try {
+      await updateActiveTimerNote(db, timerNote);
+      await stopTimer(db);
+      setTimerNote("");
+      await refreshAppState();
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
+    }
+  }
+
+  async function handleSaveTimerNote() {
+    if (!activeTimer) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const updated = await updateActiveTimerNote(db, timerNote);
+      setActiveTimer(updated);
+    } catch (noteError) {
+      setError(noteError instanceof Error ? noteError.message : "Unable to save timer note.");
     }
   }
 
@@ -90,15 +173,41 @@ function MainView() {
       <section className="today-layout">
         <div className="panel timer-panel">
           <p className="section-label">Current Task</p>
-          <h2>Timer setup comes next</h2>
-          <p className="timer-readout">{formatDuration(0)}</p>
+          <h2>{activeTask?.title ?? "Select a task"}</h2>
+          <p className="timer-readout">{formatDuration(elapsed)}</p>
+
+          <label className="field-label">
+            Task
+            <select
+              value={selectedTaskId}
+              disabled={Boolean(activeTimer) || tasks.length === 0}
+              onChange={(event) => setSelectedTaskId(event.target.value)}
+            >
+              {tasks.length === 0 ? <option value="">Create a task first</option> : null}
+              {tasks.map((task) => (
+                <option key={task.id} value={task.id}>{task.title}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field-label note-field">
+            Timer note
+            <textarea
+              value={timerNote}
+              onBlur={handleSaveTimerNote}
+              onChange={(event) => setTimerNote(event.target.value)}
+              placeholder="Capture meeting notes, decisions, or what changed..."
+            />
+          </label>
+
           <div className="button-row">
-            <button className="primary-button" disabled={tasks.length === 0}>Start</button>
-            <button className="secondary-button" disabled={tasks.length === 0}>Add Note</button>
+            {activeTimer ? (
+              <button className="primary-button stop-button" onClick={handleStopTimer}>Stop</button>
+            ) : (
+              <button className="primary-button" disabled={!selectedTaskId} onClick={handleStartTimer}>Start</button>
+            )}
+            <button className="secondary-button" disabled={!activeTimer} onClick={handleSaveTimerNote}>Save Note</button>
           </div>
-          <p className="muted-copy compact-copy">
-            Create tasks now. Stage 3 will connect these tasks to the active timer and time entries.
-          </p>
         </div>
 
         <div className="panel task-panel">
@@ -146,10 +255,39 @@ function MainView() {
                   <p>{task.project || "No project"}</p>
                   {task.tags.length > 0 ? <p className="tag-line">{task.tags.join(", ")}</p> : null}
                 </div>
-                <button className="secondary-button" onClick={() => handleArchiveTask(task)}>Archive</button>
+                <button className="secondary-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>
+                  Archive
+                </button>
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="panel entries-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="section-label">Today</p>
+            <h2>Completed entries</h2>
+          </div>
+          <span className="count-pill">{entries.length} entries</span>
+        </div>
+
+        <div className="entry-list">
+          {entries.length === 0 ? <p className="muted-copy">No completed time entries today.</p> : null}
+          {entries.map((entry) => {
+            const task = taskById.get(entry.taskId);
+            return (
+              <article className="entry-item" key={entry.id}>
+                <div>
+                  <h3>{task?.title ?? "Archived task"}</h3>
+                  <p>{formatEntryTime(entry.startedAt)} - {formatEntryTime(entry.endedAt)}</p>
+                  {entry.note ? <p className="entry-note">{entry.note}</p> : null}
+                </div>
+                <strong>{formatDuration(entry.durationSeconds)}</strong>
+              </article>
+            );
+          })}
         </div>
       </section>
     </main>
@@ -198,4 +336,11 @@ function OverlayView() {
       />
     </main>
   );
+}
+
+function formatEntryTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
