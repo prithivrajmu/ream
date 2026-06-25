@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, shell } from "electron";
 import { join } from "node:path";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -89,20 +90,119 @@ function ensureOverlayWindow(): BrowserWindow {
   return overlayWindow;
 }
 
+function showMainWindow() {
+  const window = ensureMainWindow();
+  window.show();
+  window.focus();
+}
+
+function showOverlayWindow() {
+  const window = ensureOverlayWindow();
+  window.show();
+  window.focus();
+}
+
+function toggleOverlayWindow() {
+  const window = ensureOverlayWindow();
+  if (window.isVisible()) {
+    window.hide();
+    return;
+  }
+  window.show();
+  window.focus();
+}
+
+function createTrayIcon() {
+  return nativeImage.createFromDataURL(
+    "data:image/svg+xml;utf8," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2563eb"/><path d="M4 4h8v2H9v6H7V6H4z" fill="white"/></svg>'
+      )
+  );
+}
+
+function buildAppMenu() {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(process.platform === "darwin"
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { type: "separator" as const },
+              { role: "quit" as const }
+            ]
+          }
+        ]
+      : []),
+    {
+      label: "Timesheet",
+      submenu: [
+        { label: "Show Main Window", click: showMainWindow },
+        { label: "Toggle Overlay", accelerator: "CommandOrControl+Shift+T", click: toggleOverlayWindow },
+        { label: "Show Overlay", click: showOverlayWindow },
+        { type: "separator" },
+        { role: "quit" }
+      ]
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" }
+      ]
+    }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function setupTray() {
+  tray = new Tray(createTrayIcon());
+  tray.setToolTip("Timesheet Tracker");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show Main Window", click: showMainWindow },
+      { label: "Toggle Overlay", click: toggleOverlayWindow },
+      { label: "Show Overlay", click: showOverlayWindow },
+      { type: "separator" },
+      { label: "Quit", click: () => app.quit() }
+    ])
+  );
+  tray.on("click", toggleOverlayWindow);
+}
+
+function registerShortcuts() {
+  globalShortcut.register("CommandOrControl+Shift+T", toggleOverlayWindow);
+}
+
 app.whenReady().then(() => {
   ensureMainWindow();
   ensureOverlayWindow();
+  buildAppMenu();
+  setupTray();
+  registerShortcuts();
 
   ipcMain.handle("window:show-main", () => {
-    const window = ensureMainWindow();
-    window.show();
-    window.focus();
+    showMainWindow();
   });
 
   ipcMain.handle("window:set-overlay-pinned", (_event, pinned: boolean) => {
     const window = ensureOverlayWindow();
     window.setAlwaysOnTop(pinned);
     return window.isAlwaysOnTop();
+  });
+
+  ipcMain.handle("window:show-overlay", () => {
+    showOverlayWindow();
+  });
+
+  ipcMain.handle("window:toggle-overlay", () => {
+    toggleOverlayWindow();
   });
 
   ipcMain.handle("window:close-overlay", () => {
@@ -112,6 +212,10 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     ensureMainWindow();
   });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

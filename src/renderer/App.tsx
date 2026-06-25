@@ -239,9 +239,14 @@ function MainView() {
           <p className="eyebrow">Local-first desktop tracker</p>
           <h1>Timesheet Tracker</h1>
         </div>
-        <button className="secondary-button" onClick={() => window.timesheetDesktop?.showMainWindow()}>
-          Main Window
-        </button>
+        <div className="topbar-actions">
+          <button className="secondary-button" onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>
+            Show Overlay
+          </button>
+          <button className="secondary-button" onClick={() => window.timesheetDesktop?.toggleOverlayWindow?.()}>
+            Toggle Overlay
+          </button>
+        </div>
       </section>
 
       <section className="today-layout">
@@ -413,6 +418,12 @@ function MainView() {
             <p className="muted-copy compact-copy">
               Export JSON for restore and private GitHub backup. Export CSV for reporting.
             </p>
+            <ol className="backup-steps">
+              <li>Export JSON from this panel.</li>
+              <li>Place the file in <code>backups/</code>.</li>
+              <li>Commit and push to a private GitHub repo.</li>
+            </ol>
+            <p className="shortcut-copy">Overlay shortcut: Cmd/Ctrl+Shift+T</p>
           </div>
           <div className="export-actions">
             <button className="primary-button" onClick={handleExportJson}>Export JSON</button>
