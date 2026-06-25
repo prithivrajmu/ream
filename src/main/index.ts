@@ -1,5 +1,12 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { join } from "node:path";
+import {
+  calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
+  getTopRightOverlayBounds as getTopRightOverlayBoundsForWorkArea,
+  type OverlayBounds,
+  OVERLAY_COMPACT_SIZE,
+  OVERLAY_EXPANDED_SIZE
+} from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 
@@ -7,13 +14,9 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
-const OVERLAY_COMPACT_SIZE = { width: 420, height: 72 };
-const OVERLAY_EXPANDED_SIZE = { width: 520, height: 420 };
-const OVERLAY_SCREEN_MARGIN = 18;
-
-type OverlayBounds = { x: number; y: number; width: number; height: number };
-
 let overlayAnchorBounds: OverlayBounds | null = null;
+let overlayExpanded = false;
+let overlayPointerMonitor: NodeJS.Timeout | null = null;
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -65,27 +68,11 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
 }
 
 function getTopRightOverlayBounds(): OverlayBounds {
-  const { workArea } = screen.getPrimaryDisplay();
-  return {
-    width: OVERLAY_COMPACT_SIZE.width,
-    height: OVERLAY_COMPACT_SIZE.height,
-    x: workArea.x + workArea.width - OVERLAY_COMPACT_SIZE.width - OVERLAY_SCREEN_MARGIN,
-    y: workArea.y + OVERLAY_SCREEN_MARGIN
-  };
+  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea);
 }
 
 function calculateExpandedOverlayBounds(anchor: OverlayBounds): OverlayBounds {
-  const display = screen.getDisplayMatching(anchor);
-  const { workArea } = display;
-  const right = workArea.x + workArea.width;
-  const bottom = workArea.y + workArea.height;
-
-  return {
-    width: OVERLAY_EXPANDED_SIZE.width,
-    height: OVERLAY_EXPANDED_SIZE.height,
-    x: Math.max(workArea.x + OVERLAY_SCREEN_MARGIN, Math.min(anchor.x, right - OVERLAY_EXPANDED_SIZE.width - OVERLAY_SCREEN_MARGIN)),
-    y: Math.max(workArea.y + OVERLAY_SCREEN_MARGIN, Math.min(anchor.y, bottom - OVERLAY_EXPANDED_SIZE.height - OVERLAY_SCREEN_MARGIN))
-  };
+  return calculateExpandedOverlayBoundsForWorkArea(anchor, screen.getDisplayMatching(anchor).workArea);
 }
 
 function setOverlayMousePassthrough(window: BrowserWindow, passthrough: boolean) {
@@ -95,6 +82,15 @@ function setOverlayMousePassthrough(window: BrowserWindow, passthrough: boolean)
 function applyOverlayBounds(window: BrowserWindow, bounds: OverlayBounds) {
   window.setBounds(bounds, false);
   applyOverlayPinned(window, true);
+}
+
+function isPointInBounds(point: Electron.Point, bounds: OverlayBounds) {
+  return (
+    point.x >= bounds.x &&
+    point.x <= bounds.x + bounds.width &&
+    point.y >= bounds.y &&
+    point.y <= bounds.y + bounds.height
+  );
 }
 
 function createOverlayWindow(): BrowserWindow {
@@ -129,11 +125,14 @@ function createOverlayWindow(): BrowserWindow {
   window.on("show", () => applyOverlayPinned(window, true));
   window.on("focus", () => applyOverlayPinned(window, true));
   window.on("blur", () => applyOverlayPinned(window, true));
+  window.on("hide", () => setOverlayExpanded(false));
 
   window.on("closed", () => {
+    stopOverlayPointerMonitor();
     overlayWindow = null;
   });
 
+  startOverlayPointerMonitor();
   return window;
 }
 
@@ -163,6 +162,8 @@ function resizeOverlayWindow(expanded: boolean) {
     overlayAnchorBounds = window.getBounds();
     applyOverlayBounds(window, calculateExpandedOverlayBounds(overlayAnchorBounds));
     setOverlayMousePassthrough(window, false);
+    window.focus();
+    window.webContents.focus();
     return;
   }
 
@@ -174,6 +175,50 @@ function resizeOverlayWindow(expanded: boolean) {
     height: OVERLAY_COMPACT_SIZE.height
   });
   setOverlayMousePassthrough(window, true);
+}
+
+function setOverlayExpanded(expanded: boolean) {
+  if (overlayExpanded === expanded) {
+    return;
+  }
+
+  overlayExpanded = expanded;
+  resizeOverlayWindow(expanded);
+  overlayWindow?.webContents.send("overlay:expanded-changed", expanded);
+}
+
+function startOverlayPointerMonitor() {
+  if (overlayPointerMonitor) {
+    return;
+  }
+
+  overlayPointerMonitor = setInterval(() => {
+    const window = overlayWindow;
+    if (!window || window.isDestroyed() || !window.isVisible()) {
+      return;
+    }
+
+    const cursor = screen.getCursorScreenPoint();
+    const insideOverlay = isPointInBounds(cursor, window.getBounds());
+
+    if (!overlayExpanded && insideOverlay) {
+      setOverlayExpanded(true);
+      return;
+    }
+
+    if (overlayExpanded && !insideOverlay) {
+      setOverlayExpanded(false);
+    }
+  }, 60);
+}
+
+function stopOverlayPointerMonitor() {
+  if (!overlayPointerMonitor) {
+    return;
+  }
+
+  clearInterval(overlayPointerMonitor);
+  overlayPointerMonitor = null;
 }
 
 function showOverlayWindow() {
@@ -284,7 +329,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:set-overlay-expanded", (_event, expanded: boolean) => {
-    resizeOverlayWindow(expanded);
+    setOverlayExpanded(expanded);
   });
 
   ipcMain.handle("window:set-overlay-interactive", (_event, interactive: boolean) => {
@@ -297,6 +342,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
+    setOverlayExpanded(false);
     overlayWindow?.hide();
   });
 
@@ -306,6 +352,7 @@ app.whenReady().then(() => {
 });
 
 app.on("will-quit", () => {
+  stopOverlayPointerMonitor();
   globalShortcut.unregisterAll();
 });
 

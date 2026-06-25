@@ -22,7 +22,11 @@ export function OverlayView() {
   const [pinned, setPinned] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const shellRef = useRef<HTMLElement | null>(null);
+  const barRef = useRef<HTMLElement | null>(null);
   const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const expandedRef = useRef(false);
+  const moveFrameRef = useRef<number | null>(null);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
@@ -79,16 +83,96 @@ export function OverlayView() {
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
 
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
+
   const setOverlayExpanded = useCallback(async (nextExpanded: boolean) => {
+    if (expandedRef.current === nextExpanded) {
+      return;
+    }
+
+    expandedRef.current = nextExpanded;
     setExpanded(nextExpanded);
     await window.timesheetDesktop?.setOverlayInteractive?.(true);
     await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
+
     if (nextExpanded) {
       window.setTimeout(() => noteInputRef.current?.focus(), 0);
-      return;
     }
-    await window.timesheetDesktop?.setOverlayInteractive?.(false);
   }, []);
+
+  useEffect(() => {
+    const removeListener = window.timesheetDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
+      expandedRef.current = nextExpanded;
+      setExpanded(nextExpanded);
+
+      if (nextExpanded) {
+        window.setTimeout(() => noteInputRef.current?.focus(), 0);
+      }
+    });
+
+    return () => removeListener?.();
+  }, []);
+
+  useEffect(() => {
+    const handlePointerMove = (event: MouseEvent | PointerEvent) => {
+      if (moveFrameRef.current !== null) {
+        return;
+      }
+
+      moveFrameRef.current = window.requestAnimationFrame(() => {
+        moveFrameRef.current = null;
+
+        const shellBounds = shellRef.current?.getBoundingClientRect();
+        const barBounds = barRef.current?.getBoundingClientRect();
+
+        if (!shellBounds || !barBounds) {
+          return;
+        }
+
+        const insideShell =
+          event.clientX >= shellBounds.left &&
+          event.clientX <= shellBounds.right &&
+          event.clientY >= shellBounds.top &&
+          event.clientY <= shellBounds.bottom;
+        const insideBar =
+          event.clientX >= barBounds.left &&
+          event.clientX <= barBounds.right &&
+          event.clientY >= barBounds.top &&
+          event.clientY <= barBounds.bottom;
+
+        if (!expandedRef.current && insideBar) {
+          void setOverlayExpanded(true);
+          return;
+        }
+
+        if (expandedRef.current && !insideShell) {
+          void setOverlayExpanded(false);
+        }
+      });
+    };
+
+    const handleWindowBlur = () => {
+      if (expandedRef.current) {
+        void setOverlayExpanded(false);
+      }
+    };
+
+    window.addEventListener("mousemove", handlePointerMove, true);
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove, true);
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("blur", handleWindowBlur);
+      if (moveFrameRef.current !== null) {
+        window.cancelAnimationFrame(moveFrameRef.current);
+        moveFrameRef.current = null;
+      }
+    };
+  }, [setOverlayExpanded]);
 
   async function togglePinned() {
     const nextPinned = !pinned;
@@ -153,6 +237,7 @@ export function OverlayView() {
 
   return (
     <main
+      ref={shellRef}
       className={`overlay-shell ${expanded ? "overlay-expanded" : ""}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
@@ -163,7 +248,7 @@ export function OverlayView() {
       onMouseEnter={() => void setOverlayExpanded(true)}
       onMouseLeave={() => void setOverlayExpanded(false)}
     >
-      <section className="overlay-bar" aria-label="Timesheet overlay">
+      <section ref={barRef} className="overlay-bar" aria-label="Timesheet overlay">
         <div className="overlay-task-summary">
           <span className={`overlay-status-dot ${isPaused ? "paused" : ""}`} />
           <div>
@@ -218,6 +303,7 @@ export function OverlayView() {
         </label>
 
         <textarea
+          ref={noteInputRef}
           aria-label="Quick note"
           placeholder="Add notes while this stays out of your way..."
           value={note}

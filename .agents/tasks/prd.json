@@ -1,0 +1,23 @@
+{
+  "title": "Timesheet Tracker Overlay Stabilization",
+  "stories": [
+    {
+      "id": "US-OVERLAY-001",
+      "title": "Stabilize overlay hover expansion and glass scrollbar styling",
+      "status": "done",
+      "completedAt": "2026-06-26T01:50:00+05:30",
+      "tasks": [
+        "Make overlay expansion reliable when the compact window is click-through",
+        "Keep expansion anchored to the current overlay position and bounded by the screen work area",
+        "Autofocus the quick note field after expansion",
+        "Style scrollbars to match the light glass UI"
+      ],
+      "verification": [
+        "Run npm run lint",
+        "Run npm run typecheck",
+        "Run npm test",
+        "Run npm run build"
+      ]
+    }
+  ]
+}
