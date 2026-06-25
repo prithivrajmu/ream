@@ -1,26 +1,26 @@
 # Path Forward
 
-## Review Result
+## Stabilization Result
 
+- Renderer split: complete.
+- Import validation and restore confirmation: complete.
+- Lint gate wired into prstack QA: complete.
 - prstack QA: pass.
 - Aggregate review: pass.
-- No automated build/test findings.
 
-## Main Risks From Reviews
+## Remaining Main Risks
 
-1. `src/renderer/App.tsx` is too large and will slow down future changes.
-2. JSON import currently trusts the backup structure too much and replaces local data wholesale.
-3. There is no lint/format gate.
-4. The overlay has no automated Electron UI smoke coverage.
-5. macOS packaging/signing is not configured.
+1. No manual/edit/delete flow for completed entries yet.
+2. The overlay has no automated Electron UI smoke coverage.
+3. Overlay/main synchronization still uses polling.
+4. macOS packaging/signing is not configured.
 
 ## Recommended Sequence
 
-1. Stabilization slice: split renderer, harden import, add lint.
-2. Product workflow slice: manual time entries and edit/delete completed entries.
-3. Desktop confidence slice: Electron UI smoke coverage and event-based cross-window refresh.
-4. Distribution slice: macOS packaging, signing/notarization notes, private GitHub remote setup.
+1. Product workflow slice: manual time entries and edit/delete completed entries.
+2. Desktop confidence slice: Electron UI smoke coverage and event-based cross-window refresh.
+3. Distribution slice: macOS packaging, signing/notarization notes, private GitHub remote setup.
 
 ## Immediate Next Slice
 
-Start with the stabilization slice. It reduces code risk before adding manual entry editing, which will otherwise make the current renderer file harder to manage.
+Build manual entry create/edit/delete. This closes the most important product gap because real timesheet data often needs correction after meetings or interrupted work.

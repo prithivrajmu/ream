@@ -29,21 +29,21 @@ transforming...
 ✓ 1 modules transformed.
 rendering chunks...
 out/main/index.js  5.29 kB
-✓ built in 66ms
+✓ built in 70ms
 vite v7.3.6 building ssr environment for production...
 transforming...
 ✓ 1 modules transformed.
 rendering chunks...
 out/preload/index.mjs  0.51 kB
-✓ built in 6ms
+✓ built in 7ms
 vite v7.3.6 building client environment for production...
 transforming...
-✓ 40 modules transformed.
+✓ 43 modules transformed.
 rendering chunks...
 ../../out/renderer/index.html                   0.40 kB
 ../../out/renderer/assets/index-C3iBdP6v.css    8.38 kB
-../../out/renderer/assets/index-8TNjOZFZ.js   745.37 kB
-✓ built in 952ms
+../../out/renderer/assets/index-CjVptibP.js   749.81 kB
+✓ built in 1.18s
 
 
 > timesheet-tracker@0.1.0 test
@@ -54,7 +54,7 @@ rendering chunks...
 
 
  Test Files  5 passed (5)
-      Tests  14 passed (14)
-   Start at  18:58:57
-   Duration  297ms (transform 279ms, setup 0ms, import 589ms, tests 141ms, environment 1ms)
+      Tests  15 passed (15)
+   Start at  20:12:40
+   Duration  488ms (transform 551ms, setup 0ms, import 1.01s, tests 171ms, environment 1ms)
 ```

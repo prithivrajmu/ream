@@ -107,7 +107,30 @@ describe("reporting", () => {
     const serialized = serializeTimesheetExport(exportData);
 
     expect(parseTimesheetExport(serialized)).toEqual(exportData);
-    expect(() => parseTimesheetExport("{}" )).toThrow("Invalid timesheet export file.");
+    expect(() => parseTimesheetExport("{}" )).toThrow("unsupported schema version");
+  });
+
+  it("rejects malformed imports before restore", () => {
+    const exportData = createTimesheetExport([taskA], [entries[0]], new Date("2026-06-25T12:00:00.000Z"));
+
+    expect(() => parseTimesheetExport("not-json")).toThrow("JSON could not be parsed");
+    expect(() => parseTimesheetExport(JSON.stringify({ ...exportData, schemaVersion: 2 }))).toThrow(
+      "unsupported schema version"
+    );
+    expect(() => parseTimesheetExport(JSON.stringify({ ...exportData, tasks: [{ ...taskA, title: 123 }] }))).toThrow(
+      "task 1.title must be a string"
+    );
+    expect(() =>
+      parseTimesheetExport(JSON.stringify({ ...exportData, timeEntries: [{ ...entries[0], taskId: "missing" }] }))
+    ).toThrow("references an unknown task");
+    expect(() =>
+      parseTimesheetExport(
+        JSON.stringify({
+          ...exportData,
+          timeEntries: [{ ...entries[0], startedAt: "2026-06-25T10:00:00.000Z", endedAt: "2026-06-25T09:00:00.000Z" }]
+        })
+      )
+    ).toThrow("ends before it starts");
   });
 
   it("formats CSV with escaped notes", () => {

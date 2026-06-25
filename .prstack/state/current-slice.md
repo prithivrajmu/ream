@@ -1,23 +1,23 @@
-# Current Slice: Stabilize Desktop Tracker
+# Current Slice: Manual Entry Editing
 
 ## Objective
 
-Turn the working Electron prototype into a maintainable app foundation before adding more user-facing workflow.
+Make the tracker useful when time needs to be corrected or entered after the fact.
 
 ## Scope
 
-1. Split `src/renderer/App.tsx` into focused components/hooks while preserving behavior.
-2. Harden JSON import validation and make restore semantics explicit.
-3. Add lint/format tooling and wire it into the prstack QA command.
+1. Add manual time entry creation from the main window.
+2. Add edit/delete controls for completed entries.
+3. Preserve one-active-timer behavior and existing export/import behavior.
 
 ## Acceptance
 
-- Existing task, timer, overlay, review, export, and import behavior remains intact.
-- `npm run typecheck`, `npm test`, `npm run build`, and the new lint gate pass.
-- prstack QA and aggregate review pass.
+- Manual entries appear in Today, daily totals, task totals, JSON export, and CSV export.
+- Completed entries can be edited and deleted.
+- `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and prstack QA pass.
 
 ## Deferred
 
-- Manual entry editing.
 - Electron UI automation.
+- Event-based cross-window refresh.
 - macOS packaging.

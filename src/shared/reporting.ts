@@ -76,17 +76,43 @@ export function serializeTimesheetExport(exportData: TimesheetExport): string {
 }
 
 export function parseTimesheetExport(value: string): TimesheetExport {
-  const parsed = JSON.parse(value) as Partial<TimesheetExport>;
+  let parsed: unknown;
 
-  if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.tasks) || !Array.isArray(parsed.timeEntries)) {
-    throw new Error("Invalid timesheet export file.");
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Invalid timesheet export file: JSON could not be parsed.");
   }
 
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid timesheet export file: root object is required.");
+  }
+
+  if (parsed.schemaVersion !== 1) {
+    throw new Error("Invalid timesheet export file: unsupported schema version.");
+  }
+
+  if (!isIsoDateString(parsed.exportedAt)) {
+    throw new Error("Invalid timesheet export file: exportedAt must be an ISO timestamp.");
+  }
+
+  if (!Array.isArray(parsed.tasks)) {
+    throw new Error("Invalid timesheet export file: tasks must be an array.");
+  }
+
+  if (!Array.isArray(parsed.timeEntries)) {
+    throw new Error("Invalid timesheet export file: timeEntries must be an array.");
+  }
+
+  const tasks = parsed.tasks.map((task, index) => validateTask(task, index));
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const timeEntries = parsed.timeEntries.map((entry, index) => validateTimeEntry(entry, index, taskIds));
+
   return {
-    exportedAt: typeof parsed.exportedAt === "string" ? parsed.exportedAt : new Date().toISOString(),
+    exportedAt: parsed.exportedAt,
     schemaVersion: 1,
-    tasks: parsed.tasks,
-    timeEntries: parsed.timeEntries
+    tasks,
+    timeEntries
   };
 }
 
@@ -110,6 +136,100 @@ export function entriesToCsv(entries: TimeEntry[], tasks: Task[]): string {
   }
 
   return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\n") + "\n";
+}
+
+function validateTask(value: unknown, index: number): Task {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid timesheet export file: task ${index + 1} must be an object.`);
+  }
+
+  const task: Task = {
+    id: requireString(value, "id", `task ${index + 1}`),
+    title: requireString(value, "title", `task ${index + 1}`),
+    project: requireString(value, "project", `task ${index + 1}`),
+    tags: requireStringArray(value, "tags", `task ${index + 1}`),
+    defaultNote: requireString(value, "defaultNote", `task ${index + 1}`),
+    archived: requireBoolean(value, "archived", `task ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `task ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `task ${index + 1}`)
+  };
+
+  if (!task.id || !task.title.trim()) {
+    throw new Error(`Invalid timesheet export file: task ${index + 1} requires id and title.`);
+  }
+
+  return task;
+}
+
+function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>): TimeEntry {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid timesheet export file: time entry ${index + 1} must be an object.`);
+  }
+
+  const entry: TimeEntry = {
+    id: requireString(value, "id", `time entry ${index + 1}`),
+    taskId: requireString(value, "taskId", `time entry ${index + 1}`),
+    startedAt: requireIsoDate(value, "startedAt", `time entry ${index + 1}`),
+    endedAt: requireIsoDate(value, "endedAt", `time entry ${index + 1}`),
+    durationSeconds: requireNonNegativeInteger(value, "durationSeconds", `time entry ${index + 1}`),
+    note: requireString(value, "note", `time entry ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `time entry ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `time entry ${index + 1}`)
+  };
+
+  if (!entry.id || !taskIds.has(entry.taskId)) {
+    throw new Error(`Invalid timesheet export file: time entry ${index + 1} references an unknown task.`);
+  }
+
+  if (new Date(entry.endedAt).getTime() < new Date(entry.startedAt).getTime()) {
+    throw new Error(`Invalid timesheet export file: time entry ${index + 1} ends before it starts.`);
+  }
+
+  return entry;
+}
+
+function requireString(value: Record<string, unknown>, key: string, label: string): string {
+  if (typeof value[key] !== "string") {
+    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a string.`);
+  }
+  return value[key];
+}
+
+function requireStringArray(value: Record<string, unknown>, key: string, label: string): string[] {
+  if (!Array.isArray(value[key]) || !value[key].every((item) => typeof item === "string")) {
+    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a string array.`);
+  }
+  return value[key];
+}
+
+function requireBoolean(value: Record<string, unknown>, key: string, label: string): boolean {
+  if (typeof value[key] !== "boolean") {
+    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a boolean.`);
+  }
+  return value[key];
+}
+
+function requireIsoDate(value: Record<string, unknown>, key: string, label: string): string {
+  const date = requireString(value, key, label);
+  if (!isIsoDateString(date)) {
+    throw new Error(`Invalid timesheet export file: ${label}.${key} must be an ISO timestamp.`);
+  }
+  return date;
+}
+
+function requireNonNegativeInteger(value: Record<string, unknown>, key: string, label: string): number {
+  if (!Number.isInteger(value[key]) || typeof value[key] !== "number" || value[key] < 0) {
+    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a non-negative integer.`);
+  }
+  return value[key];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isIsoDateString(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 function escapeCsvCell(value: string): string {
