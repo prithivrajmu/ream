@@ -115,6 +115,23 @@ describe("reporting", () => {
     expect(() => parseTimesheetExport("{}" )).toThrow("unsupported schema version");
   });
 
+  it("upgrades a version 1 backup with a single project field", () => {
+    const legacyTask = {
+      ...taskA,
+      project: "Acme",
+      projectIds: undefined
+    };
+    const parsed = parseTimesheetExport(JSON.stringify({
+      exportedAt: "2026-06-25T12:00:00.000Z",
+      schemaVersion: 1,
+      tasks: [legacyTask],
+      timeEntries: [entries[0]]
+    }));
+
+    expect(parsed.projects).toMatchObject([{ title: "Acme", archived: false }]);
+    expect(parsed.tasks[0].projectIds).toEqual([parsed.projects[0].id]);
+  });
+
   it("rejects malformed imports before restore", () => {
     const exportData = createTimesheetExport([taskA], [projects[0]], [entries[0]], new Date("2026-06-25T12:00:00.000Z"));
 

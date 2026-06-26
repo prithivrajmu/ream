@@ -17,6 +17,15 @@ afterEach(async () => {
 });
 
 describe("project repository", () => {
+  it("rejects duplicate active project names without case sensitivity", async () => {
+    const db = createTestDatabase();
+    await createProject(db, { title: "Client Work" });
+
+    await expect(createProject(db, { title: " client work " })).rejects.toThrow(
+      "A project with that name already exists."
+    );
+  });
+
   it("creates managed projects and removes an archived project from assigned tasks", async () => {
     const db = createTestDatabase();
     const client = await createProject(db, { title: "  Client work " });
