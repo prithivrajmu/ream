@@ -5,7 +5,7 @@ export type OverlayBounds = {
   height: number;
 };
 
-export const OVERLAY_COMPACT_SIZE = { width: 420, height: 72 };
+export const OVERLAY_COMPACT_SIZE = { width: 72, height: 72 };
 export const OVERLAY_EXPANDED_SIZE = { width: 520, height: 420 };
 export const OVERLAY_SCREEN_MARGIN = 18;
 

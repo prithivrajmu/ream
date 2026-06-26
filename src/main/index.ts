@@ -67,7 +67,7 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
 }
 
 function getTopRightOverlayBounds(): OverlayBounds {
-  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea, OVERLAY_EXPANDED_SIZE);
+  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea);
 }
 
 function calculateExpandedOverlayBounds(anchor: OverlayBounds): OverlayBounds {
@@ -86,11 +86,11 @@ function applyOverlayBounds(window: BrowserWindow, bounds: OverlayBounds) {
 function createOverlayWindow(): BrowserWindow {
   const initialBounds = getTopRightOverlayBounds();
   overlayAnchorBounds = initialBounds;
-  overlayExpanded = true;
+  overlayExpanded = false;
   const window = new BrowserWindow({
     ...initialBounds,
-    minWidth: 320,
-    minHeight: 64,
+    minWidth: OVERLAY_COMPACT_SIZE.width,
+    minHeight: OVERLAY_COMPACT_SIZE.height,
     maxWidth: OVERLAY_EXPANDED_SIZE.width,
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Timesheet Overlay",
@@ -162,7 +162,7 @@ function resizeOverlayWindow(expanded: boolean) {
     width: OVERLAY_COMPACT_SIZE.width,
     height: OVERLAY_COMPACT_SIZE.height
   });
-  setOverlayMousePassthrough(window, true);
+  setOverlayMousePassthrough(window, false);
 }
 
 function setOverlayExpanded(expanded: boolean) {

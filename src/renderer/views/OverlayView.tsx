@@ -19,7 +19,7 @@ export function OverlayView() {
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [note, setNote] = useState("");
   const [elapsed, setElapsed] = useState(0);
-  const [pinned, setPinned] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -79,13 +79,28 @@ export function OverlayView() {
   }, [activeTimer]);
 
   useEffect(() => {
-    noteInputRef.current?.focus();
+    const removeListener = window.timesheetDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
+      setExpanded(nextExpanded);
+
+      if (nextExpanded) {
+        window.setTimeout(() => noteInputRef.current?.focus(), 0);
+      }
+    });
+
+    return () => removeListener?.();
   }, []);
 
-  async function togglePinned() {
-    const nextPinned = !pinned;
-    const actualPinned = await window.timesheetDesktop?.setOverlayPinned(nextPinned);
-    setPinned(Boolean(actualPinned));
+  async function setOverlayExpanded(nextExpanded: boolean) {
+    setExpanded(nextExpanded);
+    await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
+
+    if (nextExpanded) {
+      window.setTimeout(() => noteInputRef.current?.focus(), 0);
+    }
+  }
+
+  async function reassertAlwaysOnTop() {
+    await window.timesheetDesktop?.setOverlayPinned(true);
   }
 
   async function handleOverlayStart() {
@@ -143,6 +158,21 @@ export function OverlayView() {
     }
   }
 
+  if (!expanded) {
+    return (
+      <main className="overlay-shell overlay-plus-shell" aria-label="Timesheet overlay compact launcher">
+        <button
+          className="overlay-plus-button"
+          aria-label="Add timesheet note"
+          title="Add timesheet note"
+          onClick={() => void setOverlayExpanded(true)}
+        >
+          +
+        </button>
+      </main>
+    );
+  }
+
   return (
     <main className="overlay-shell custom-overlay-shell">
       <section className="overlay-window" aria-label="Timesheet overlay">
@@ -156,6 +186,12 @@ export function OverlayView() {
           </div>
 
           <div className="overlay-window-controls">
+            <button
+              className="overlay-control compact"
+              aria-label="Collapse overlay"
+              title="Collapse"
+              onClick={() => void setOverlayExpanded(false)}
+            />
             <button
               className="overlay-control minimize"
               aria-label="Minimize overlay"
@@ -201,8 +237,8 @@ export function OverlayView() {
                 <button aria-label="Show main window" onClick={() => window.timesheetDesktop?.showMainWindow()}>
                   Open
                 </button>
-                <button aria-label="Pin overlay" onClick={togglePinned}>
-                  {pinned ? "Pinned" : "Pin"}
+                <button aria-label="Keep overlay on top" onClick={() => void reassertAlwaysOnTop()}>
+                  Top
                 </button>
               </div>
             </div>

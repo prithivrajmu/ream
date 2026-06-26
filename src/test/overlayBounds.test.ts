@@ -11,7 +11,7 @@ describe("overlay bounds", () => {
     expect(getTopRightOverlayBounds({ x: 0, y: 0, width: 1440, height: 900 })).toEqual({
       width: OVERLAY_COMPACT_SIZE.width,
       height: OVERLAY_COMPACT_SIZE.height,
-      x: 1002,
+      x: 1350,
       y: 18
     });
   });
@@ -33,7 +33,7 @@ describe("overlay bounds", () => {
   it("expands inward when the compact bar is near screen edges", () => {
     expect(
       calculateExpandedOverlayBounds(
-        { x: 1002, y: 820, width: OVERLAY_COMPACT_SIZE.width, height: OVERLAY_COMPACT_SIZE.height },
+        { x: 1350, y: 820, width: OVERLAY_COMPACT_SIZE.width, height: OVERLAY_COMPACT_SIZE.height },
         { x: 0, y: 0, width: 1440, height: 900 }
       )
     ).toEqual({
