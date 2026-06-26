@@ -155,7 +155,7 @@ export function OverlayView() {
     }
   }
 
-  async function handleOverlayStop() {
+  async function handleOverlayStop(): Promise<boolean> {
     setError(null);
 
     try {
@@ -165,8 +165,16 @@ export function OverlayView() {
       setNote("");
       setNoteDirty(false);
       await refreshOverlayState();
+      return true;
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
+      return false;
+    }
+  }
+
+  async function handleCompleteEntry() {
+    if (await handleOverlayStop()) {
+      await setOverlayExpanded(false);
     }
   }
 
@@ -269,9 +277,16 @@ export function OverlayView() {
               </div>
 
               <div className="reference-control-row">
-                <button disabled={!activeTimer} onClick={handlePauseResume}><Icon name={isPaused ? "play" : "pause"} />{isPaused ? "Resume" : "Pause"}</button>
                 <button className="stop-control" disabled={!activeTimer} onClick={handleOverlayStop}><Icon name="stop" />Stop</button>
-                <button className="complete-control" disabled={!activeTimer} onClick={handleOverlayStop}>✓ Complete</button>
+                <button
+                  aria-label="Finish entry and save its duration"
+                  className="complete-control"
+                  disabled={!activeTimer}
+                  title="Finish entry, save its duration, and collapse the overlay"
+                  onClick={handleCompleteEntry}
+                >
+                  ✓ Finish entry
+                </button>
               </div>
 
               <div className="reference-tags">
