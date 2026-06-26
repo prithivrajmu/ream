@@ -1,6 +1,6 @@
-# Timesheet Tracker
+# Ream
 
-A simple local-first timesheet app for tracking tasks, time entries, and notes.
+A local-first task time tracker for tracking tasks, notes, time entries, and projects.
 
 ## Goal
 
@@ -194,9 +194,8 @@ fully functional.
 
 ## Open Decisions
 
-- App name shown in UI: `Timesheet Tracker` for now.
+- App name shown in UI: `Ream`.
 - GitHub sync: manual export first, token-based sync later if needed.
 - Packaging: local dev first; desktop installers can come later.
 - Time model: one running timer at a time for simplicity.
 - Overlay: always-on-top by default with a user-controlled pin/unpin toggle.
-

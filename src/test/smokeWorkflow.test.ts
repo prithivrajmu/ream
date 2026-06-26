@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TimesheetDatabase } from "../shared/db";
 import { importTimesheetData, readAllExportData } from "../shared/exportRepository";
 import { buildDailySummaries, buildTaskTotals, entriesToCsv, parseTimesheetExport, serializeTimesheetExport } from "../shared/reporting";
+import { createProject } from "../shared/projectRepository";
 import { createTask } from "../shared/taskRepository";
 import { startTimer, stopTimer, updateActiveTimerNote } from "../shared/timerRepository";
 
@@ -21,9 +22,10 @@ afterEach(async () => {
 describe("timesheet smoke workflow", () => {
   it("tracks work, exports it, and imports it into a clean database", async () => {
     const sourceDb = createTestDatabase();
+    const project = await createProject(sourceDb, { title: "Product" });
     const task = await createTask(sourceDb, {
       title: "Zoom planning call",
-      project: "Product",
+      projectIds: [project.id],
       tags: ["meeting"],
       defaultNote: "Discuss next stage"
     });
@@ -34,7 +36,7 @@ describe("timesheet smoke workflow", () => {
 
     const exportData = await readAllExportData(sourceDb);
     const parsedExport = parseTimesheetExport(serializeTimesheetExport(exportData));
-    const csv = entriesToCsv(parsedExport.timeEntries, parsedExport.tasks);
+    const csv = entriesToCsv(parsedExport.timeEntries, parsedExport.tasks, parsedExport.projects);
     const dailySummaries = buildDailySummaries(parsedExport.timeEntries);
     const taskTotals = buildTaskTotals(parsedExport.timeEntries, parsedExport.tasks);
 
@@ -47,6 +49,7 @@ describe("timesheet smoke workflow", () => {
     await importTimesheetData(targetDb, parsedExport);
 
     await expect(targetDb.tasks.toArray()).resolves.toHaveLength(1);
+    await expect(targetDb.projects.toArray()).resolves.toHaveLength(1);
     await expect(targetDb.timeEntries.toArray()).resolves.toHaveLength(1);
   });
 });

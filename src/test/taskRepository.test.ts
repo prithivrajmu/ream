@@ -23,13 +23,13 @@ describe("task repository", () => {
 
     const task = await createTask(db, {
       title: "  Prepare   sprint notes  ",
-      project: "  Internal ",
+      projectIds: ["project_internal", "project_internal"],
       tags: ["Meeting", " coding ", "meeting", ""],
       defaultNote: "  Discuss blockers  "
     });
 
     expect(task.title).toBe("Prepare sprint notes");
-    expect(task.project).toBe("Internal");
+    expect(task.projectIds).toEqual(["project_internal"]);
     expect(task.tags).toEqual(["coding", "meeting"]);
     expect(task.defaultNote).toBe("Discuss blockers");
     expect(task.archived).toBe(false);

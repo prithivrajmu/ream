@@ -29,11 +29,11 @@ function rendererUrl(route = "/"): string {
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1120,
-    height: 760,
-    minWidth: 880,
-    minHeight: 620,
-    title: "Timesheet Tracker",
+    width: 1440,
+    height: 980,
+    minWidth: 1040,
+    minHeight: 700,
+    title: "Ream",
     backgroundColor: "#f7f8fb",
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
@@ -51,6 +51,17 @@ function createMainWindow(): BrowserWindow {
 
   window.on("closed", () => {
     mainWindow = null;
+  });
+
+  // The main workspace is the only window shown at launch. The compact timer
+  // appears whenever the user leaves it, either by minimizing or switching apps.
+  window.on("minimize", () => {
+    showOverlayWindow();
+  });
+  window.on("blur", () => {
+    if (!window.isMinimized()) {
+      showOverlayWindow();
+    }
   });
 
   return window;
@@ -94,7 +105,7 @@ function createOverlayWindow(): BrowserWindow {
     minHeight: initialBounds.height,
     maxWidth: OVERLAY_EXPANDED_SIZE.width,
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
-    title: "Timesheet Overlay",
+    title: "Ream Overlay",
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -219,7 +230,7 @@ function buildAppMenu() {
         ]
       : []),
     {
-      label: "Timesheet",
+      label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
         { label: "Toggle Overlay", accelerator: "CommandOrControl+Shift+T", click: toggleOverlayWindow },
@@ -246,7 +257,7 @@ function buildAppMenu() {
 
 function setupTray() {
   tray = new Tray(createTrayIcon());
-  tray.setToolTip("Timesheet Tracker");
+  tray.setToolTip("Ream — task time tracker");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Show Main Window", click: showMainWindow },
@@ -265,7 +276,6 @@ function registerShortcuts() {
 
 app.whenReady().then(() => {
   ensureMainWindow();
-  ensureOverlayWindow();
   buildAppMenu();
   setupTray();
   registerShortcuts();

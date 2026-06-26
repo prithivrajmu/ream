@@ -3,9 +3,17 @@ export type EntityId = string;
 export interface Task {
   id: EntityId;
   title: string;
-  project: string;
+  projectIds: EntityId[];
   tags: string[];
   defaultNote: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Project {
+  id: EntityId;
+  title: string;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -35,16 +43,25 @@ export interface ActiveTimer {
 
 export interface CreateTaskInput {
   title: string;
-  project?: string;
+  projectIds?: EntityId[];
   tags?: string[];
   defaultNote?: string;
 }
 
 export interface UpdateTaskInput {
   title?: string;
-  project?: string;
+  projectIds?: EntityId[];
   tags?: string[];
   defaultNote?: string;
+  archived?: boolean;
+}
+
+export interface CreateProjectInput {
+  title: string;
+}
+
+export interface UpdateProjectInput {
+  title?: string;
   archived?: boolean;
 }
 

@@ -13,7 +13,7 @@ export async function createTask(database: TimesheetDatabase, input: CreateTaskI
   const task: Task = {
     id: createId("task"),
     title: normalizeTaskTitle(input.title),
-    project: input.project?.trim() ?? "",
+    projectIds: normalizeProjectIds(input.projectIds),
     tags: normalizeTags(input.tags),
     defaultNote: input.defaultNote?.trim() ?? "",
     archived: false,
@@ -53,7 +53,7 @@ export async function updateTask(
   const updated: Task = {
     ...existing,
     title: input.title === undefined ? existing.title : normalizeTaskTitle(input.title),
-    project: input.project === undefined ? existing.project : input.project.trim(),
+    projectIds: input.projectIds === undefined ? existing.projectIds : normalizeProjectIds(input.projectIds),
     tags: input.tags === undefined ? existing.tags : normalizeTags(input.tags),
     defaultNote: input.defaultNote === undefined ? existing.defaultNote : input.defaultNote.trim(),
     archived: input.archived === undefined ? existing.archived : input.archived,
@@ -62,6 +62,10 @@ export async function updateTask(
 
   await database.tasks.put(updated);
   return updated;
+}
+
+function normalizeProjectIds(projectIds: string[] = []): string[] {
+  return Array.from(new Set(projectIds.filter(Boolean)));
 }
 
 function sortTasks(tasks: Task[]): Task[] {

@@ -2,7 +2,7 @@
   "name": "timesheet-tracker",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first desktop timesheet tracker with an always-on-top overlay.",
+  "description": "Ream is a local-first desktop task time tracker with notes and an always-on-top overlay.",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
@@ -44,7 +44,7 @@
   },
   "build": {
     "appId": "com.prithiv.timesheettracker",
-    "productName": "Timesheet Tracker",
+    "productName": "Ream",
     "directories": {
       "output": "release",
       "buildResources": "build"

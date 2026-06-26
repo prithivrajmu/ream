@@ -1,15 +1,15 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../../shared/db";
-import type { ActiveTimer, Task, TimeEntry } from "../../shared/domain";
+import type { ActiveTimer, Project, Task, TimeEntry } from "../../shared/domain";
 import { importTimesheetData, readAllExportData } from "../../shared/exportRepository";
 import {
   buildDailySummaries,
-  buildTaskTotals,
   createTimesheetExport,
   entriesToCsv,
   parseTimesheetExport,
   serializeTimesheetExport
 } from "../../shared/reporting";
+import { archiveProject, createProject, listActiveProjects, updateProject } from "../../shared/projectRepository";
 import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
@@ -20,12 +20,13 @@ export function MainView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [, setSelectedTaskId] = useState("");
   const [timerNote, setTimerNote] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [title, setTitle] = useState("");
-  const [project, setProject] = useState("");
+  const [taskProjectIds, setTaskProjectIds] = useState<string[]>([]);
   const [tags, setTags] = useState("");
   const [defaultNote, setDefaultNote] = useState("");
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
@@ -35,24 +36,45 @@ export function MainView() {
   const [entryNote, setEntryNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<"home" | "entries" | "tasks" | "notes" | "projects" | "backup">("home");
+  const [isTaskComposerOpen, setIsTaskComposerOpen] = useState(false);
+  const [isProjectComposerOpen, setIsProjectComposerOpen] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [quickCapture, setQuickCapture] = useState("");
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
+  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
-  const taskTotals = useMemo(() => buildTaskTotals(allEntries, allTasks), [allEntries, allTasks]);
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
   );
+  const today = useMemo(() => new Date().toDateString(), []);
+  const taskActivity = useMemo(() => {
+    const activity = new Map<string, { durationSeconds: number; entryCount: number; noteCount: number }>();
+    for (const entry of allEntries) {
+      const current = activity.get(entry.taskId) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 };
+      if (new Date(entry.startedAt).toDateString() === today) {
+        current.durationSeconds += entry.durationSeconds;
+      }
+      current.entryCount += 1;
+      current.noteCount += entry.note.trim() ? 1 : 0;
+      activity.set(entry.taskId, current);
+    }
+    return activity;
+  }, [allEntries, today]);
 
   const refreshAppState = useCallback(async () => {
-    const [nextTasks, nextActiveTimer, exportData] = await Promise.all([
+    const [nextTasks, nextProjects, nextActiveTimer, exportData] = await Promise.all([
       listActiveTasks(db),
+      listActiveProjects(db),
       getActiveTimer(db),
       readAllExportData(db)
     ]);
 
     setTasks(nextTasks);
+    setProjects(nextProjects);
     setAllTasks(exportData.tasks);
     setAllEntries(exportData.timeEntries);
     setActiveTimer(nextActiveTimer);
@@ -111,18 +133,56 @@ export function MainView() {
     try {
       const task = await createTask(db, {
         title,
-        project,
+        projectIds: taskProjectIds,
         tags: parseTags(tags),
         defaultNote
       });
       setTitle("");
-      setProject("");
+      setTaskProjectIds([]);
       setTags("");
       setDefaultNote("");
       await refreshAppState();
       setSelectedTaskId(task.id);
+      setIsTaskComposerOpen(false);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create task.");
+    }
+  }
+
+  async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    try {
+      await createProject(db, { title: newProjectTitle });
+      setNewProjectTitle("");
+      setIsProjectComposerOpen(false);
+      await refreshAppState();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Unable to create project.");
+    }
+  }
+
+  async function handleArchiveProject(projectId: string) {
+    setError(null);
+    try {
+      await archiveProject(db, projectId);
+      await refreshAppState();
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : "Unable to archive project.");
+    }
+  }
+
+  async function handleRenameProject(project: Project) {
+    const title = window.prompt("Project name", project.title);
+    if (title === null || title.trim() === project.title) {
+      return;
+    }
+    setError(null);
+    try {
+      await updateProject(db, project.id, { title });
+      await refreshAppState();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to rename project.");
     }
   }
 
@@ -137,16 +197,29 @@ export function MainView() {
     }
   }
 
-  async function handleStartTimer() {
+  async function handleStartTask(taskId: string) {
+    setSelectedTaskId(taskId);
     setError(null);
 
     try {
-      const nextActiveTimer = await startTimer(db, { taskId: selectedTaskId, note: timerNote });
+      const nextActiveTimer = await startTimer(db, { taskId, note: "" });
       setActiveTimer(nextActiveTimer);
       setElapsed(0);
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Unable to start timer.");
     }
+  }
+
+  function handleQuickCapture(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const capturedTitle = quickCapture.trim();
+    if (!capturedTitle) {
+      setIsTaskComposerOpen(true);
+      return;
+    }
+    setTitle(capturedTitle);
+    setQuickCapture("");
+    setIsTaskComposerOpen(true);
   }
 
   async function handleStopTimer() {
@@ -240,7 +313,7 @@ export function MainView() {
       downloadTextFile(
         `timesheet-export-${new Date().toISOString().slice(0, 10)}.json`,
         "application/json",
-        serializeTimesheetExport(createTimesheetExport(exportData.tasks, exportData.timeEntries))
+        serializeTimesheetExport(createTimesheetExport(exportData.tasks, exportData.projects, exportData.timeEntries))
       );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export JSON.");
@@ -255,7 +328,7 @@ export function MainView() {
       downloadTextFile(
         `timesheet-export-${new Date().toISOString().slice(0, 10)}.csv`,
         "text/csv",
-        entriesToCsv(exportData.timeEntries, exportData.tasks)
+        entriesToCsv(exportData.timeEntries, exportData.tasks, exportData.projects)
       );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export CSV.");
@@ -287,263 +360,107 @@ export function MainView() {
     }
   }
 
+  const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
+  const navigation: Array<{ id: typeof activeSection; label: string; icon: MainIconName }> = [
+    { id: "home", label: "Home", icon: "home" },
+    { id: "entries", label: "Entries", icon: "clock" },
+    { id: "tasks", label: "Tasks", icon: "list" },
+    { id: "notes", label: "Notes", icon: "note" },
+    { id: "projects", label: "Projects", icon: "briefcase" },
+    { id: "backup", label: "Backup & settings", icon: "settings" }
+  ];
+
   return (
-    <main className="app-shell">
-      <section className="topbar">
-        <div>
-          <p className="eyebrow">Local-first desktop tracker</p>
-          <h1>Timesheet Tracker</h1>
+    <main className="dashboard-shell">
+      <aside className="dashboard-sidebar">
+        <div className="brand-lockup"><span className="brand-mark"><MainIcon name="timer" /></span><div><strong>Ream</strong><p>Time on what matters.</p></div></div>
+        <nav className="dashboard-nav" aria-label="Main navigation">
+          {navigation.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
+        </nav>
+        <div className="sidebar-bottom">
+          <button className="overlay-launcher" onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
+          <div className="profile-row"><span>PR</span><p>Prithiv Raj</p><MainIcon name="chevron" /></div>
         </div>
-        <div className="topbar-actions">
-          <button className="secondary-button" onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>
-            Show Overlay
-          </button>
-          <button className="secondary-button" onClick={() => window.timesheetDesktop?.toggleOverlayWindow?.()}>
-            Toggle Overlay
-          </button>
-        </div>
+      </aside>
+
+      <section className="dashboard-page">
+        <header className="dashboard-header">
+          <div><h1>{activeSection === "home" ? `${greeting}, Prithiv.` : navigation.find((item) => item.id === activeSection)?.label}</h1><p>{activeSection === "home" ? "Stay focused. Make steady progress." : "Everything stays local to this device."}</p></div>
+          <button className="new-project-button" onClick={() => setIsTaskComposerOpen(true)}><MainIcon name="plus" />New Task</button>
+        </header>
+
+        {error ? <p className="dashboard-error" role="alert">{error}</p> : null}
+
+        {activeSection === "home" ? <>
+          <form className="quick-capture" onSubmit={handleQuickCapture}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} placeholder="Capture a task or note..." /><button aria-label="Create task" type="submit"><MainIcon name="plus" /></button></form>
+          {activeTimer ? <section className="active-timer-banner"><div><span className="timer-pulse" />Tracking <strong>{activeTask?.title ?? "Task"}</strong><small>{formatDuration(elapsed)}</small></div><input value={timerNote} onBlur={handleSaveTimerNote} onChange={(event) => setTimerNote(event.target.value)} placeholder="Add a timer note..." /><button onClick={handleStopTimer}>Stop timer</button></section> : null}
+          <section className="projects-section"><div className="section-title"><h2>Your Tasks</h2><span>{tasks.length} active</span></div><div className="project-cards" aria-live="polite">
+            {loading ? <p className="empty-state">Loading your tasks...</p> : null}
+            {!loading && tasks.length === 0 ? <p className="empty-state">Create your first task to start tracking time.</p> : null}
+            {tasks.map((task, index) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
+              <span className={`project-icon tone-${index % 5}`}><MainIcon name={projectIcon(index)} /></span><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
+              {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer)} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
+              <button aria-label={`Archive ${task.title}`} className="project-menu" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}><MainIcon name="more" /></button>
+            </article>; })}
+          </div></section>
+          <footer className="dashboard-footer"><MainIcon name="note" />Notes live with your tasks.</footer>
+        </> : null}
+
+        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div><div className="dashboard-entry-list">
+          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived project"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
+        </div></section> : null}
+
+        {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><button className="text-action" onClick={() => setIsTaskComposerOpen(true)}>Create task</button></div><div className="project-management-list">
+          {tasks.map((task) => <article key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
+        </div></section> : null}
+
+        {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><button className="text-action" onClick={() => setIsProjectComposerOpen(true)}>Create project</button></div><div className="project-management-list">
+          {projects.length === 0 ? <p className="empty-state">Create projects to organize related tasks.</p> : projects.map((project) => <article key={project.id}><div><strong>{project.title}</strong><p>{tasks.filter((task) => task.projectIds.includes(project.id)).length} active tasks</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleArchiveProject(project.id)}>Archive</button></article>)}
+        </div></section> : null}
+
+        {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{recentEntries.filter((entry) => entry.note.trim()).length} saved</span></div><div className="notes-list">
+          {recentEntries.filter((entry) => entry.note.trim()).length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : recentEntries.filter((entry) => entry.note.trim()).map((entry) => <article key={entry.id}><span><MainIcon name="note" /></span><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></article>)}
+        </div></section> : null}
+
+        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Overlay</p><h2>Focus mode</h2><p>The overlay opens when this window is minimized, or when you choose Show overlay in the sidebar. Shortcut: Cmd/Ctrl+Shift+T.</p><button onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>Show overlay now</button></section></div> : null}
       </section>
 
-      {error ? <p className="error-text app-error" role="alert">{error}</p> : null}
+      {isTaskComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsTaskComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-task-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new task" className="modal-close" onClick={() => setIsTaskComposerOpen(false)}>×</button><p className="panel-kicker">New task</p><h2 id="new-task-heading">What needs your attention?</h2><form onSubmit={handleCreateTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create task</button></form></section></div> : null}
 
-      <section className="today-layout">
-        <div className="panel timer-panel">
-          <p className="section-label">Current Task</p>
-          <h2>{activeTask?.title ?? "Select a task"}</h2>
-          <p className="timer-readout">{formatDuration(elapsed)}</p>
+      {isProjectComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsProjectComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-project-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new project" className="modal-close" onClick={() => setIsProjectComposerOpen(false)}>×</button><p className="panel-kicker">New project</p><h2 id="new-project-heading">Organize related tasks.</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create project</button></form></section></div> : null}
 
-          <label className="field-label">
-            Task
-            <select
-              value={selectedTaskId}
-              disabled={Boolean(activeTimer) || tasks.length === 0}
-              onChange={(event) => setSelectedTaskId(event.target.value)}
-            >
-              {tasks.length === 0 ? <option value="">Create a task first</option> : null}
-              {tasks.map((task) => (
-                <option key={task.id} value={task.id}>{task.title}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field-label note-field">
-            Timer note
-            <textarea
-              value={timerNote}
-              onBlur={handleSaveTimerNote}
-              onChange={(event) => setTimerNote(event.target.value)}
-              placeholder="Capture meeting notes, decisions, or what changed..."
-            />
-          </label>
-
-          <div className="button-row">
-            {activeTimer ? (
-              <button className="primary-button stop-button" onClick={handleStopTimer}>Stop</button>
-            ) : (
-              <button className="primary-button" disabled={!selectedTaskId} onClick={handleStartTimer}>Start</button>
-            )}
-            <button className="secondary-button" disabled={!activeTimer} onClick={handleSaveTimerNote}>Save Note</button>
-          </div>
-        </div>
-
-        <div className="panel task-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-label">Tasks</p>
-              <h2>Create local tasks</h2>
-            </div>
-            <span className="count-pill">{tasks.length} active</span>
-          </div>
-
-          <form className="task-form" onSubmit={handleCreateTask}>
-            <label>
-              Task name
-              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Prepare sprint notes" />
-            </label>
-            <label>
-              Project or client
-              <input value={project} onChange={(event) => setProject(event.target.value)} placeholder="Internal" />
-            </label>
-            <label>
-              Tags
-              <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="meeting, coding" />
-            </label>
-            <label>
-              Default note
-              <textarea
-                value={defaultNote}
-                onChange={(event) => setDefaultNote(event.target.value)}
-                placeholder="Optional context to carry into future entries"
-              />
-            </label>
-            <button className="primary-button wide" type="submit">Create Task</button>
-          </form>
-
-          <div className="task-list" aria-live="polite">
-            {loading ? <p className="muted-copy">Loading tasks...</p> : null}
-            {!loading && tasks.length === 0 ? <p className="muted-copy">No active tasks yet.</p> : null}
-            {tasks.map((task) => (
-              <article className="task-item" key={task.id}>
-                <div>
-                  <h3>{task.title}</h3>
-                  <p>{task.project || "No project"}</p>
-                  {task.tags.length > 0 ? <p className="tag-line">{task.tags.join(", ")}</p> : null}
-                </div>
-                <button className="secondary-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>
-                  Archive
-                </button>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="panel entries-panel">
-        <div className="panel-heading">
-          <div>
-            <p className="section-label">Time entries</p>
-            <h2>Recent completed entries</h2>
-          </div>
-          <span className="count-pill">{recentEntries.length} entries</span>
-        </div>
-
-        <div className="entry-list">
-          {recentEntries.length === 0 ? <p className="muted-copy">No completed time entries yet.</p> : null}
-          {recentEntries.map((entry) => {
-            const task = taskById.get(entry.taskId);
-            return (
-              <article className="entry-item" key={entry.id}>
-                <div>
-                  <h3>{task?.title ?? "Archived task"}</h3>
-                  <p>{formatEntryDateTime(entry.startedAt)} - {formatEntryDateTime(entry.endedAt)}</p>
-                  {entry.note ? <p className="entry-note">{entry.note}</p> : null}
-                </div>
-                <div className="entry-actions">
-                  <strong>{formatDuration(entry.durationSeconds)}</strong>
-                  <div className="entry-action-buttons">
-                    <button className="secondary-button" onClick={() => handleEditEntry(entry)}>Edit</button>
-                    <button className="danger-button" onClick={() => handleDeleteEntry(entry)}>Delete</button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {editingEntry ? (
-        <div className="entry-editor-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}>
-          <section
-            aria-labelledby="entry-editor-title"
-            aria-modal="true"
-            className="entry-editor"
-            role="dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="panel-heading">
-              <div>
-                <p className="section-label">Edit entry</p>
-                <h2 id="entry-editor-title">Correct a completed entry</h2>
-              </div>
-              <button aria-label="Close entry editor" className="secondary-button" onClick={handleCloseEntryEditor}>Close</button>
-            </div>
-            <form className="entry-edit-form" onSubmit={handleUpdateEntry}>
-              <label>
-                Task
-                <select value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>
-                  {allTasks.map((task) => (
-                    <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Start
-                <input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} />
-              </label>
-              <label>
-                End
-                <input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} />
-              </label>
-              <label className="entry-note-input">
-                Note
-                <textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} placeholder="What was completed?" />
-              </label>
-              <div className="button-row entry-editor-actions">
-                <button className="primary-button" type="submit">Save changes</button>
-                <button className="secondary-button" type="button" onClick={handleCloseEntryEditor}>Cancel</button>
-              </div>
-            </form>
-          </section>
-        </div>
-      ) : null}
-
-      <section className="review-grid">
-        <div className="panel summary-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-label">Review</p>
-              <h2>Daily totals</h2>
-            </div>
-            <span className="count-pill">{formatDuration(totalDuration(allEntries))}</span>
-          </div>
-          <div className="summary-list">
-            {dailySummaries.length === 0 ? <p className="muted-copy">No completed work to summarize yet.</p> : null}
-            {dailySummaries.slice(0, 7).map((summary) => (
-              <div className="summary-row" key={summary.date}>
-                <span>{summary.date}</span>
-                <strong>{formatDuration(summary.durationSeconds)}</strong>
-                <small>{summary.entryCount} entries</small>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel summary-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="section-label">Tasks</p>
-              <h2>Task totals</h2>
-            </div>
-            <span className="count-pill">{taskTotals.length} tracked</span>
-          </div>
-          <div className="summary-list">
-            {taskTotals.length === 0 ? <p className="muted-copy">No task totals yet.</p> : null}
-            {taskTotals.slice(0, 7).map((total) => (
-              <div className="summary-row" key={total.taskId}>
-                <span>{total.taskTitle}</span>
-                <strong>{formatDuration(total.durationSeconds)}</strong>
-                <small>{total.project || "No project"}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel export-panel">
-          <div>
-            <p className="section-label">Backup</p>
-            <h2>Export and import</h2>
-            <p className="muted-copy compact-copy">
-              Export JSON for restore and private GitHub backup. Export CSV for reporting.
-            </p>
-            <ol className="backup-steps">
-              <li>Export JSON from this panel.</li>
-              <li>Place the file in <code>backups/</code>.</li>
-              <li>Commit and push to a private GitHub repo.</li>
-            </ol>
-            <p className="shortcut-copy">Overlay shortcut: Cmd/Ctrl+Shift+T</p>
-          </div>
-          <div className="export-actions">
-            <button className="primary-button" onClick={handleExportJson}>Export JSON</button>
-            <button className="secondary-button" onClick={handleExportCsv}>Export CSV</button>
-            <label className="import-button">
-              Import JSON
-              <input accept="application/json,.json" type="file" onChange={handleImportJson} />
-            </label>
-          </div>
-        </div>
-      </section>
+      {editingEntry ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">Edit entry</p><h2 id="entry-editor-title">Correct tracked time.</h2><form onSubmit={handleUpdateEntry}><label>Project<select value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>{allTasks.map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">Save changes</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
     </main>
   );
+}
+
+type MainIconName = "chevron" | "clock" | "home" | "list" | "more" | "note" | "overlay" | "pen" | "play" | "plus" | "settings" | "timer" | "briefcase" | "chart" | "phone" | "shield" | "document";
+
+function projectIcon(index: number): MainIconName {
+  return ["briefcase", "chart", "phone", "shield", "document"][index % 5] as MainIconName;
+}
+
+function MainIcon({ name }: { name: MainIconName }) {
+  const paths: Record<MainIconName, ReactNode> = {
+    chevron: <path d="m8 10 4 4 4-4" />,
+    clock: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></>,
+    home: <><path d="m4 11 8-7 8 7v9H4z" /><path d="M9 20v-6h6v6" /></>,
+    list: <><path d="M9 6h10M9 12h10M9 18h10" /><circle cx="4" cy="6" r=".8" fill="currentColor" /><circle cx="4" cy="12" r=".8" fill="currentColor" /><circle cx="4" cy="18" r=".8" fill="currentColor" /></>,
+    more: <><circle cx="12" cy="5" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="19" r="1.2" fill="currentColor" /></>,
+    note: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6" /></>,
+    overlay: <><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M8 9h8M8 13h5" /></>,
+    pen: <><path d="m5 19 3.5-.8L19 7.7 16.3 5 5.8 15.5zM14.8 6.5l2.7 2.7" /></>,
+    play: <path d="m9 6 8 6-8 6z" fill="currentColor" stroke="none" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7.5 7.5 0 0 0-.1-1l2-1.5-2-3.5-2.3.9a7 7 0 0 0-1.7-1L14.5 3h-5L9 5.9a7 7 0 0 0-1.7 1L5 6 3 9.5 5 11a7.5 7.5 0 0 0 0 2l-2 1.5L5 18l2.3-.9a7 7 0 0 0 1.7 1l.5 2.9h5l.4-2.9a7 7 0 0 0 1.7-1l2.3.9 2-3.5-2-1.5c.1-.3.1-.7.1-1Z" /></>,
+    timer: <><rect x="4" y="4" width="16" height="16" rx="5" /><path d="M12 8v4l2.5 2.5M9 2h6" /></>,
+    briefcase: <><rect x="3" y="7" width="18" height="12" rx="2" /><path d="M8 7V5h8v2M3 12h18M10 12v2h4v-2" /></>,
+    chart: <><path d="M5 20V11h4v9M10 20V5h4v15M15 20v-8h4v8M3 20h18" /></>,
+    phone: <path d="M7.5 4.5 5.3 6.7c-1 1 1.1 6.2 4.5 9.6 3.4 3.4 8.6 5.5 9.6 4.5l2.2-2.2-3.2-3.2-2.1 1.3c-1.1-.5-2.2-1.3-3.2-2.3s-1.8-2.1-2.3-3.2l1.3-2.1z" />,
+    shield: <path d="M12 3 19 6v5c0 4.5-2.8 7.5-7 10-4.2-2.5-7-5.5-7-10V6z" />,
+    document: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 13h6M9 17h6" /></>
+  };
+  return <svg aria-hidden="true" className="main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
 function toDateTimeLocalValue(value: string): string {

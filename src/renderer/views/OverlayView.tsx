@@ -43,7 +43,7 @@ export function OverlayView() {
     if (!query) {
       return tasks;
     }
-    return tasks.filter((task) => `${task.title} ${task.project} ${task.tags.join(" ")}`.toLocaleLowerCase().includes(query));
+    return tasks.filter((task) => `${task.title} ${task.tags.join(" ")}`.toLocaleLowerCase().includes(query));
   }, [taskSearch, tasks]);
 
   const refreshOverlayState = useCallback(async (syncNote = false) => {
@@ -192,7 +192,7 @@ export function OverlayView() {
   }
 
   return (
-    <main className={`overlay-shell reference-overlay-shell ${expanded ? "is-expanded" : ""}`} aria-label="Timesheet overlay">
+    <main className={`overlay-shell reference-overlay-shell ${expanded ? "is-expanded" : ""}`} aria-label="Ream overlay">
       <header className="reference-overlay-bar">
         <div className="reference-overlay-identity">
           <span className="reference-app-icon"><Icon name="clock" /></span>
@@ -290,9 +290,9 @@ export function OverlayView() {
               </div>
 
               <div className="reference-tags">
-                <p>Quick Tags</p>
+                <p>Task Tags</p>
                 <div>
-                  {(displayTask?.tags.length ? displayTask.tags : ["Meeting", "Coding", "Review", "Research"]).slice(0, 4).map((tag) => (
+                  {(displayTask?.tags ?? []).slice(0, 4).map((tag) => (
                     <button key={tag} onClick={() => handleQuickTag(tag)}><Icon name="tag" />{tag}</button>
                   ))}
                 </div>

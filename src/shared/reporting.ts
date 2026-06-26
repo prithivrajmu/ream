@@ -1,9 +1,9 @@
-import type { Task, TimeEntry } from "./domain";
+import type { Project, Task, TimeEntry } from "./domain";
 
 export interface TaskTotal {
   taskId: string;
   taskTitle: string;
-  project: string;
+  projects: string[];
   durationSeconds: number;
   entryCount: number;
 }
@@ -16,13 +16,15 @@ export interface DaySummary {
 
 export interface TimesheetExport {
   exportedAt: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   tasks: Task[];
+  projects: Project[];
   timeEntries: TimeEntry[];
 }
 
-export function buildTaskTotals(entries: TimeEntry[], tasks: Task[]): TaskTotal[] {
+export function buildTaskTotals(entries: TimeEntry[], tasks: Task[], projects: Project[] = []): TaskTotal[] {
   const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const projectById = new Map(projects.map((project) => [project.id, project]));
   const totals = new Map<string, TaskTotal>();
 
   for (const entry of entries) {
@@ -30,7 +32,7 @@ export function buildTaskTotals(entries: TimeEntry[], tasks: Task[]): TaskTotal[
     const current = totals.get(entry.taskId) ?? {
       taskId: entry.taskId,
       taskTitle: task?.title ?? "Archived task",
-      project: task?.project ?? "",
+      projects: task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [],
       durationSeconds: 0,
       entryCount: 0
     };
@@ -62,11 +64,12 @@ export function buildDailySummaries(entries: TimeEntry[]): DaySummary[] {
   return Array.from(summaries.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
-export function createTimesheetExport(tasks: Task[], timeEntries: TimeEntry[], exportedAt = new Date()): TimesheetExport {
+export function createTimesheetExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date()): TimesheetExport {
   return {
     exportedAt: exportedAt.toISOString(),
-    schemaVersion: 1,
+    schemaVersion: 2,
     tasks: [...tasks],
+    projects: [...projects],
     timeEntries: [...timeEntries]
   };
 }
@@ -88,7 +91,7 @@ export function parseTimesheetExport(value: string): TimesheetExport {
     throw new Error("Invalid timesheet export file: root object is required.");
   }
 
-  if (parsed.schemaVersion !== 1) {
+  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) {
     throw new Error("Invalid timesheet export file: unsupported schema version.");
   }
 
@@ -100,24 +103,56 @@ export function parseTimesheetExport(value: string): TimesheetExport {
     throw new Error("Invalid timesheet export file: tasks must be an array.");
   }
 
+  if (parsed.schemaVersion === 2 && !Array.isArray(parsed.projects)) {
+    throw new Error("Invalid timesheet export file: projects must be an array.");
+  }
+
   if (!Array.isArray(parsed.timeEntries)) {
     throw new Error("Invalid timesheet export file: timeEntries must be an array.");
   }
 
-  const tasks = parsed.tasks.map((task, index) => validateTask(task, index));
+  const legacy = parsed.schemaVersion === 1 ? convertLegacyProjects(parsed.tasks) : null;
+  const projects = (legacy?.projects ?? parsed.projects as unknown[]).map((project, index) => validateProject(project, index));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const tasks = (legacy?.tasks ?? parsed.tasks).map((task, index) => validateTask(task, index, projectIds));
   const taskIds = new Set(tasks.map((task) => task.id));
   const timeEntries = parsed.timeEntries.map((entry, index) => validateTimeEntry(entry, index, taskIds));
 
   return {
     exportedAt: parsed.exportedAt,
-    schemaVersion: 1,
+    schemaVersion: 2,
     tasks,
+    projects,
     timeEntries
   };
 }
 
-export function entriesToCsv(entries: TimeEntry[], tasks: Task[]): string {
+function convertLegacyProjects(tasks: unknown[]): { projects: Project[]; tasks: unknown[] } {
+  const projectsByTitle = new Map<string, Project>();
+  const convertedTasks = tasks.map((task, index) => {
+    if (!isRecord(task)) {
+      return task;
+    }
+    const title = typeof task.project === "string" ? task.project.trim() : "";
+    if (!title) {
+      return { ...task, projectIds: [] };
+    }
+    const key = title.toLocaleLowerCase();
+    let project = projectsByTitle.get(key);
+    if (!project) {
+      const createdAt = typeof task.createdAt === "string" ? task.createdAt : new Date().toISOString();
+      const updatedAt = typeof task.updatedAt === "string" ? task.updatedAt : createdAt;
+      project = { id: `project-imported-${index + 1}`, title, archived: false, createdAt, updatedAt };
+      projectsByTitle.set(key, project);
+    }
+    return { ...task, projectIds: [project.id] };
+  });
+  return { projects: [...projectsByTitle.values()], tasks: convertedTasks };
+}
+
+export function entriesToCsv(entries: TimeEntry[], tasks: Task[], projects: Project[] = []): string {
   const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const projectById = new Map(projects.map((project) => [project.id, project]));
   const rows = [
     ["task", "project", "started_at", "ended_at", "duration_seconds", "duration_hours", "note"]
   ];
@@ -126,7 +161,7 @@ export function entriesToCsv(entries: TimeEntry[], tasks: Task[]): string {
     const task = taskById.get(entry.taskId);
     rows.push([
       task?.title ?? "Archived task",
-      task?.project ?? "",
+      task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)).join(" | ") ?? "",
       entry.startedAt,
       entry.endedAt,
       String(entry.durationSeconds),
@@ -138,7 +173,7 @@ export function entriesToCsv(entries: TimeEntry[], tasks: Task[]): string {
   return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\n") + "\n";
 }
 
-function validateTask(value: unknown, index: number): Task {
+function validateTask(value: unknown, index: number, projectIds: Set<string>): Task {
   if (!isRecord(value)) {
     throw new Error(`Invalid timesheet export file: task ${index + 1} must be an object.`);
   }
@@ -146,7 +181,7 @@ function validateTask(value: unknown, index: number): Task {
   const task: Task = {
     id: requireString(value, "id", `task ${index + 1}`),
     title: requireString(value, "title", `task ${index + 1}`),
-    project: requireString(value, "project", `task ${index + 1}`),
+    projectIds: requireStringArray(value, "projectIds", `task ${index + 1}`),
     tags: requireStringArray(value, "tags", `task ${index + 1}`),
     defaultNote: requireString(value, "defaultNote", `task ${index + 1}`),
     archived: requireBoolean(value, "archived", `task ${index + 1}`),
@@ -158,7 +193,28 @@ function validateTask(value: unknown, index: number): Task {
     throw new Error(`Invalid timesheet export file: task ${index + 1} requires id and title.`);
   }
 
+  if (task.projectIds.some((projectId) => !projectIds.has(projectId))) {
+    throw new Error(`Invalid timesheet export file: task ${index + 1} references an unknown project.`);
+  }
+
   return task;
+}
+
+function validateProject(value: unknown, index: number): Project {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid timesheet export file: project ${index + 1} must be an object.`);
+  }
+  const project: Project = {
+    id: requireString(value, "id", `project ${index + 1}`),
+    title: requireString(value, "title", `project ${index + 1}`),
+    archived: requireBoolean(value, "archived", `project ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `project ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `project ${index + 1}`)
+  };
+  if (!project.id || !project.title.trim()) {
+    throw new Error(`Invalid timesheet export file: project ${index + 1} requires id and title.`);
+  }
+  return project;
 }
 
 function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>): TimeEntry {
