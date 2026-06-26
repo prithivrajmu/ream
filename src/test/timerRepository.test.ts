@@ -4,6 +4,7 @@ import { TimesheetDatabase } from "../shared/db";
 import { createTask, updateTask } from "../shared/taskRepository";
 import {
   activeTimerElapsedSeconds,
+  createTimeEntry,
   deleteTimeEntry,
   getActiveTimer,
   listTimeEntriesForDay,
@@ -123,6 +124,28 @@ describe("timer repository", () => {
       note: "Corrected entry",
       updatedAt: "2026-06-26T09:00:00.000Z"
     });
+  });
+
+  it("creates a completed time entry without starting a timer", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Manual work" });
+
+    const entry = await createTimeEntry(db, {
+      taskId: task.id,
+      startedAt: "2026-06-25T08:00:00.000Z",
+      endedAt: "2026-06-25T08:45:00.000Z",
+      note: "Logged after the fact"
+    }, new Date("2026-06-25T09:00:00.000Z"));
+
+    expect(entry).toMatchObject({
+      taskId: task.id,
+      durationSeconds: 2700,
+      note: "Logged after the fact",
+      createdAt: "2026-06-25T09:00:00.000Z",
+      updatedAt: "2026-06-25T09:00:00.000Z"
+    });
+    await expect(getActiveTimer(db)).resolves.toBeNull();
+    await expect(db.timeEntries.get(entry.id)).resolves.toMatchObject({ taskId: task.id });
   });
 
   it("rejects invalid edits and deletes an existing entry", async () => {

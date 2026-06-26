@@ -226,7 +226,10 @@ export function OverlayView() {
           <button aria-label="Open main window" className="reference-plain-button" onClick={() => void handleOpenMainWindow()}>
             <Icon name="settings" />
           </button>
-          <button aria-label="Close overlay" className="reference-plain-button" onClick={() => window.timesheetDesktop?.closeOverlay()}>
+          <button aria-label="Close overlay" className="reference-plain-button" onClick={(event) => {
+            event.stopPropagation();
+            void window.timesheetDesktop?.closeOverlay();
+          }}>
             <Icon name="close" />
           </button>
         </div>

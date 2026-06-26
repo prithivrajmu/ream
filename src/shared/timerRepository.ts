@@ -133,6 +133,21 @@ export async function stopTimer(database: TimesheetDatabase, now = new Date()): 
   return entry;
 }
 
+export async function createTimeEntry(
+  database: TimesheetDatabase,
+  input: UpdateTimeEntryInput,
+  now = new Date()
+): Promise<TimeEntry> {
+  const task = await database.tasks.get(input.taskId);
+  if (!task || task.archived) {
+    throw new Error("Choose an active task for this entry.");
+  }
+
+  const entry = buildTimeEntry(createId("entry"), input, now);
+  await database.timeEntries.add(entry);
+  return entry;
+}
+
 export async function updateTimeEntry(
   database: TimesheetDatabase,
   entryId: string,
@@ -152,6 +167,12 @@ export async function updateTimeEntry(
     throw new Error("Choose a valid task for this entry.");
   }
 
+  const updated = { ...buildTimeEntry(existing.id, input, now), createdAt: existing.createdAt };
+  await database.timeEntries.put(updated);
+  return updated;
+}
+
+function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new Date()): TimeEntry {
   const startedAt = new Date(input.startedAt);
   const endedAt = new Date(input.endedAt);
   if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
@@ -162,18 +183,17 @@ export async function updateTimeEntry(
     throw new Error("The end time must be after the start time.");
   }
 
-  const updated: TimeEntry = {
-    ...existing,
+  const timestamp = now.toISOString();
+  return {
+    id: entryId,
     taskId: input.taskId,
     startedAt: startedAt.toISOString(),
     endedAt: endedAt.toISOString(),
     durationSeconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
     note: input.note?.trim() ?? "",
-    updatedAt: now.toISOString()
+    createdAt: timestamp,
+    updatedAt: timestamp
   };
-
-  await database.timeEntries.put(updated);
-  return updated;
 }
 
 export async function deleteTimeEntry(database: TimesheetDatabase, entryId: string): Promise<void> {

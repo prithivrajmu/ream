@@ -13,7 +13,7 @@ import { archiveProject, createProject, listActiveProjects, updateProject } from
 import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
-import { activeTimerElapsedSeconds, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
+import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
 import reamIcon from "../assets/ream-icon.png";
 
@@ -22,6 +22,7 @@ export function MainView() {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [, setSelectedTaskId] = useState("");
   const [timerNote, setTimerNote] = useState("");
@@ -31,6 +32,7 @@ export function MainView() {
   const [tags, setTags] = useState("");
   const [defaultNote, setDefaultNote] = useState("");
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [isEntryComposerOpen, setIsEntryComposerOpen] = useState(false);
   const [entryTaskId, setEntryTaskId] = useState("");
   const [entryStartedAt, setEntryStartedAt] = useState("");
   const [entryEndedAt, setEntryEndedAt] = useState("");
@@ -44,7 +46,9 @@ export function MainView() {
   const [quickCapture, setQuickCapture] = useState("");
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
-  const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
+  const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
+  const archivedTasks = useMemo(() => allTasks.filter((task) => task.archived), [allTasks]);
+  const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
   const recentEntries = useMemo(
@@ -76,6 +80,7 @@ export function MainView() {
 
     setTasks(nextTasks);
     setProjects(nextProjects);
+    setAllProjects(exportData.projects);
     setAllTasks(exportData.tasks);
     setAllEntries(exportData.timeEntries);
     setActiveTimer(nextActiveTimer);
@@ -173,6 +178,16 @@ export function MainView() {
     }
   }
 
+  async function handleUnarchiveProject(projectId: string) {
+    setError(null);
+    try {
+      await updateProject(db, projectId, { archived: false });
+      await refreshAppState();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to restore project.");
+    }
+  }
+
   async function handleRenameProject(project: Project) {
     const title = window.prompt("Project name", project.title);
     if (title === null || title.trim() === project.title) {
@@ -195,6 +210,17 @@ export function MainView() {
       await refreshAppState();
     } catch (archiveError) {
       setError(archiveError instanceof Error ? archiveError.message : "Unable to archive task.");
+    }
+  }
+
+  async function handleUnarchiveTask(task: Task) {
+    setError(null);
+
+    try {
+      await updateTask(db, task.id, { archived: false });
+      await refreshAppState();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to restore task.");
     }
   }
 
@@ -253,6 +279,7 @@ export function MainView() {
 
   function handleEditEntry(entry: TimeEntry) {
     setError(null);
+    setIsEntryComposerOpen(true);
     setEditingEntry(entry);
     setEntryTaskId(entry.taskId);
     setEntryStartedAt(toDateTimeLocalValue(entry.startedAt));
@@ -260,7 +287,20 @@ export function MainView() {
     setEntryNote(entry.note);
   }
 
+  function handleNewEntry() {
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - 30 * 60_000);
+    setError(null);
+    setEditingEntry(null);
+    setEntryTaskId(tasks[0]?.id ?? "");
+    setEntryStartedAt(toDateTimeLocalValue(startedAt.toISOString()));
+    setEntryEndedAt(toDateTimeLocalValue(endedAt.toISOString()));
+    setEntryNote("");
+    setIsEntryComposerOpen(true);
+  }
+
   function handleCloseEntryEditor() {
+    setIsEntryComposerOpen(false);
     setEditingEntry(null);
     setEntryTaskId("");
     setEntryStartedAt("");
@@ -268,24 +308,30 @@ export function MainView() {
     setEntryNote("");
   }
 
-  async function handleUpdateEntry(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editingEntry) {
+    if (!entryTaskId) {
+      setError("Choose a task for this entry.");
       return;
     }
 
     setError(null);
     try {
-      await updateTimeEntry(db, editingEntry.id, {
+      const input = {
         taskId: entryTaskId,
         startedAt: entryStartedAt,
         endedAt: entryEndedAt,
         note: entryNote
-      });
+      };
+      if (editingEntry) {
+        await updateTimeEntry(db, editingEntry.id, input);
+      } else {
+        await createTimeEntry(db, input);
+      }
       handleCloseEntryEditor();
       await refreshAppState();
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Unable to update time entry.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save time entry.");
     }
   }
 
@@ -371,6 +417,19 @@ export function MainView() {
     { id: "backup", label: "Backup & settings", icon: "settings" }
   ];
 
+  const headerAction = (() => {
+    if (activeSection === "home" || activeSection === "tasks") {
+      return <button className="new-project-button" onClick={() => setIsTaskComposerOpen(true)}><MainIcon name="plus" />New Task</button>;
+    }
+    if (activeSection === "entries") {
+      return <button className="new-project-button" disabled={tasks.length === 0} onClick={handleNewEntry}><MainIcon name="plus" />New Entry</button>;
+    }
+    if (activeSection === "projects") {
+      return <button className="new-project-button" onClick={() => setIsProjectComposerOpen(true)}><MainIcon name="plus" />New Project</button>;
+    }
+    return null;
+  })();
+
   return (
     <main className="dashboard-shell">
       <aside className="dashboard-sidebar">
@@ -387,7 +446,7 @@ export function MainView() {
       <section className="dashboard-page">
         <header className="dashboard-header">
           <div><h1>{activeSection === "home" ? `${greeting}, Prithiv.` : navigation.find((item) => item.id === activeSection)?.label}</h1><p>{activeSection === "home" ? "Stay focused. Make steady progress." : "Everything stays local to this device."}</p></div>
-          <button className="new-project-button" onClick={() => setIsTaskComposerOpen(true)}><MainIcon name="plus" />New Task</button>
+          {headerAction}
         </header>
 
         {error ? <p className="dashboard-error" role="alert">{error}</p> : null}
@@ -401,22 +460,27 @@ export function MainView() {
             {tasks.map((task, index) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
               <span className={`project-icon tone-${index % 5}`}><MainIcon name={projectIcon(index)} /></span><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
               {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer)} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
-              <button aria-label={`Archive ${task.title}`} className="project-menu" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}><MainIcon name="more" /></button>
+              <button className="archive-task-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button>
             </article>; })}
           </div></section>
           <footer className="dashboard-footer"><MainIcon name="note" />Notes live with your tasks.</footer>
         </> : null}
 
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div><div className="dashboard-entry-list">
-          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived project"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
+          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><button className="text-action" onClick={() => setIsTaskComposerOpen(true)}>Create task</button></div><div className="project-management-list">
+          {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
           {tasks.map((task) => <article key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
+          {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
+          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><button className="text-action" onClick={() => setIsProjectComposerOpen(true)}>Create project</button></div><div className="project-management-list">
-          {projects.length === 0 ? <p className="empty-state">Create projects to organize related tasks.</p> : projects.map((project) => <article key={project.id}><div><strong>{project.title}</strong><p>{tasks.filter((task) => task.projectIds.includes(project.id)).length} active tasks</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleArchiveProject(project.id)}>Archive</button></article>)}
+          {projects.length === 0 && archivedProjects.length === 0 ? <p className="empty-state">Create projects to organize related tasks.</p> : projects.map((project) => <article key={project.id}><div><strong>{project.title}</strong><p>{tasks.filter((task) => task.projectIds.includes(project.id)).length} active tasks</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleArchiveProject(project.id)}>Archive</button></article>)}
+          {archivedProjects.length ? <div className="archived-list-heading">Archived projects</div> : null}
+          {archivedProjects.map((project) => <article className="is-archived" key={project.id}><div><strong>{project.title}</strong><p>Archived project</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleUnarchiveProject(project.id)}>Unarchive</button></article>)}
         </div></section> : null}
 
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{recentEntries.filter((entry) => entry.note.trim()).length} saved</span></div><div className="notes-list">
@@ -430,7 +494,7 @@ export function MainView() {
 
       {isProjectComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsProjectComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-project-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new project" className="modal-close" onClick={() => setIsProjectComposerOpen(false)}>×</button><p className="panel-kicker">New project</p><h2 id="new-project-heading">Organize related tasks.</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create project</button></form></section></div> : null}
 
-      {editingEntry ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">Edit entry</p><h2 id="entry-editor-title">Correct tracked time.</h2><form onSubmit={handleUpdateEntry}><label>Project<select value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>{allTasks.map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">Save changes</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
+      {isEntryComposerOpen ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">{editingEntry ? "Edit entry" : "New entry"}</p><h2 id="entry-editor-title">{editingEntry ? "Correct tracked time." : "Log completed work."}</h2><form onSubmit={handleSaveEntry}><label>Task<select required value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>{(editingEntry ? allTasks : tasks).map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">{editingEntry ? "Save changes" : "Create entry"}</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
     </main>
   );
 }

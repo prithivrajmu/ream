@@ -1759,3 +1759,261 @@ body.overlay-route {
 .project-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid #e4e3ea; border-radius: 9px; }.project-options label { display: flex; align-items: center; gap: 7px; color: #4c5160; font-size: 12px; font-weight: 550; }.project-options input { width: 15px; height: 15px; padding: 0; accent-color: #7050e8; }
 @media (max-width: 1050px) { .dashboard-shell { grid-template-columns: 230px minmax(0, 1fr); }.dashboard-sidebar { padding-right: 18px; padding-left: 18px; }.dashboard-page { padding-right: 30px; padding-left: 30px; }.project-card { gap: 15px; }.project-icon { width: 58px; height: 58px; }.settings-grid { grid-template-columns: 1fr; }.backup-panel { grid-row: auto; } }
 @media (max-width: 760px) { .dashboard-shell { display: block; min-width: 320px; }.dashboard-sidebar { min-height: auto; padding: 18px; }.brand-lockup { display: none; }.dashboard-nav { display: flex; overflow-x: auto; margin: 0; }.dashboard-nav button { width: auto; flex: 0 0 auto; padding: 11px; font-size: 13px; }.dashboard-nav button .main-icon { width: 18px; }.sidebar-bottom { display: none; }.dashboard-page { padding: 28px 18px; border-radius: 0; }.dashboard-header h1 { font-size: 24px; }.dashboard-header p { font-size: 14px; }.new-project-button { min-height: 44px; padding: 0 14px; }.quick-capture { height: 68px; margin-top: 30px; }.quick-capture > span { width: 40px; height: 40px; }.project-card { min-height: 96px; padding: 15px; }.project-icon { width: 52px; height: 52px; }.project-copy small { display: none; }.dashboard-entry-list article { align-items: flex-start; flex-wrap: wrap; }.dashboard-entry-list article > div { min-width: 60%; }.active-timer-banner { align-items: flex-start; flex-wrap: wrap; }.active-timer-banner input { min-height: 28px; }.project-composer { padding: 24px; }.composer-row { display: grid; } }
+
+/* Main workspace refinements */
+.dashboard-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  color: #20242b;
+  background: #f4f2ec;
+  font-family: "Avenir Next", "SF Pro Display", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+.dashboard-sidebar {
+  min-height: 0;
+  height: 100vh;
+  border-right-color: #ded8cc;
+  background: linear-gradient(180deg, #ece6d9 0%, #e7dfd1 100%);
+}
+
+.brand-mark {
+  background: #191b20;
+  box-shadow: 0 9px 22px rgb(20 22 26 / 18%);
+}
+
+.brand-lockup strong,
+.dashboard-header h1,
+.section-title h2,
+.dashboard-panel h2,
+.project-composer h2 {
+  color: #1d2026;
+  letter-spacing: 0;
+}
+
+.brand-lockup p,
+.dashboard-header p,
+.section-title > span,
+.project-copy p,
+.project-copy small,
+.dashboard-entry-list p,
+.project-management-list p,
+.notes-list p {
+  color: #74706a;
+}
+
+.dashboard-nav button:hover,
+.overlay-launcher:hover {
+  color: #264739;
+  background: rgb(50 75 60 / 8%);
+}
+
+.dashboard-nav button.is-active {
+  color: #213f33;
+  background: #dce3d8;
+}
+
+.dashboard-page {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-color: #e7e0d4;
+  background: #f8f6f0;
+  box-shadow: -8px 0 28px rgb(37 34 28 / 5%);
+}
+
+.new-project-button,
+.primary-button,
+.overlay-button.primary {
+  color: #fbfaf6;
+  background: #223d33;
+  box-shadow: 0 10px 22px rgb(34 61 51 / 18%), inset 0 1px rgb(255 255 255 / 14%);
+}
+
+.new-project-button:hover {
+  filter: brightness(1.08);
+}
+
+.quick-capture,
+.dashboard-panel,
+.project-card {
+  border-color: #e3ded3;
+  background: #fffdf7;
+  box-shadow: 0 8px 18px rgb(55 49 38 / 5%);
+}
+
+.quick-capture > span,
+.card-timer-button,
+.project-icon,
+.notes-list article > span {
+  color: #264739;
+  background: #e8eee4;
+}
+
+.project-icon.tone-1 {
+  color: #7b542e;
+  background: #f1e5d7;
+}
+
+.project-icon.tone-2 {
+  color: #31516d;
+  background: #e3eaf0;
+}
+
+.project-icon.tone-3 {
+  color: #5e4633;
+  background: #eee5dc;
+}
+
+.project-icon.tone-4 {
+  color: #45513b;
+  background: #e8ecdc;
+}
+
+.project-card:hover {
+  border-color: #cfd8ca;
+  box-shadow: 0 12px 24px rgb(55 49 38 / 8%);
+}
+
+.quick-capture button,
+.text-action {
+  color: #264739;
+  background: transparent;
+}
+
+.active-timer-banner {
+  border-color: #d7dfd0;
+  color: #2c473c;
+  background: #eef3ea;
+}
+
+.active-timer-banner small,
+.panel-kicker {
+  color: #7b542e;
+}
+
+.timer-pulse {
+  background: #2f6f4f;
+  box-shadow: 0 0 0 5px rgb(47 111 79 / 14%);
+}
+
+.card-timer-button:hover {
+  background: #dbe7d7;
+}
+
+.card-timer-button.is-running,
+.active-timer-banner button {
+  background: #9f433f;
+}
+
+.archive-task-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #ddd5c8;
+  border-radius: 8px;
+  color: #625a50;
+  background: #fbf8f1;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.archive-task-button:hover,
+.dashboard-entry-list button:hover,
+.project-management-list button:hover {
+  border-color: #c9d4c2;
+  color: #223d33;
+  background: #f2f5ef;
+}
+
+.dashboard-error {
+  flex: 0 0 auto;
+}
+
+.projects-section {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.project-cards {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.dashboard-footer {
+  flex: 0 0 auto;
+}
+
+.dashboard-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-entry-list,
+.project-management-list,
+.notes-list {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.project-management-list article.is-archived {
+  opacity: 0.76;
+}
+
+.archived-list-heading {
+  margin-top: 18px;
+  padding: 16px 0 8px;
+  border-top: 1px solid #e9e2d8;
+  color: #7b542e;
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.settings-grid {
+  min-height: 0;
+  overflow: auto;
+}
+
+.project-options input {
+  accent-color: #2f6f4f;
+}
+
+.project-composer input:focus,
+.project-composer textarea:focus,
+.project-composer select:focus {
+  border-color: #8aa082;
+  box-shadow: 0 0 0 3px rgb(47 111 79 / 12%);
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell,
+  .dashboard-sidebar,
+  .dashboard-page {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .dashboard-page,
+  .dashboard-panel,
+  .projects-section {
+    display: block;
+  }
+
+  .project-cards,
+  .dashboard-entry-list,
+  .project-management-list,
+  .notes-list,
+  .settings-grid {
+    overflow: visible;
+  }
+}

@@ -198,6 +198,7 @@ function showOverlayWindow() {
 function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
+    setOverlayExpanded(false);
     window.hide();
     return;
   }
@@ -310,6 +311,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
+    setOverlayExpanded(false);
     overlayWindow?.hide();
   });
 
