@@ -15,6 +15,19 @@ Build a clean personal tracker that lets you:
 - Use a small always-on-top overlay window while in Zoom, browser, code editor,
   or any other app.
 
+## Distribution
+
+Ream produces desktop artifacts with Electron Builder.
+
+```bash
+npm run dist:linux
+npm run dist:mac:unsigned
+```
+
+Linux outputs AppImage, Debian, and tarball artifacts in `release/`. macOS
+distribution should be built, signed, and notarized on a macOS machine; see
+[macOS packaging](docs/macos-packaging.md) and [Linux packaging](docs/linux-packaging.md).
+
 ## Product Scope
 
 ### Core Workflows

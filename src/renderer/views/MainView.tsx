@@ -15,6 +15,7 @@ import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
+import reamIcon from "../assets/ream-icon.png";
 
 export function MainView() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -373,7 +374,7 @@ export function MainView() {
   return (
     <main className="dashboard-shell">
       <aside className="dashboard-sidebar">
-        <div className="brand-lockup"><span className="brand-mark"><MainIcon name="timer" /></span><div><strong>Ream</strong><p>Time on what matters.</p></div></div>
+        <div className="brand-lockup"><span className="brand-mark"><img alt="Ream" src={reamIcon} /></span><div><strong>Ream</strong><p>Time on what matters.</p></div></div>
         <nav className="dashboard-nav" aria-label="Main navigation">
           {navigation.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
         </nav>

@@ -1,6 +1,6 @@
-# Private Backup
+# Ream Private Backup
 
-Timesheet Tracker stores work locally in IndexedDB. Use JSON export as the restore format and CSV export for reporting.
+Ream stores work locally in IndexedDB. Use JSON export as the restore format and CSV export for reporting.
 
 ## Manual private GitHub backup
 

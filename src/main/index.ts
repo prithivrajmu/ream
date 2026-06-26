@@ -207,12 +207,10 @@ function toggleOverlayWindow() {
 }
 
 function createTrayIcon() {
-  return nativeImage.createFromDataURL(
-    "data:image/svg+xml;utf8," +
-      encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2563eb"/><path d="M4 4h8v2H9v6H7V6H4z" fill="white"/></svg>'
-      )
-  );
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, "ream-icon.png")
+    : join(__dirname, "../../build/icons/ream-icon.png");
+  return nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
 }
 
 function buildAppMenu() {
