@@ -16,7 +16,6 @@ let tray: Tray | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
-let overlayPointerMonitor: NodeJS.Timeout | null = null;
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -68,7 +67,7 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
 }
 
 function getTopRightOverlayBounds(): OverlayBounds {
-  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea);
+  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea, OVERLAY_EXPANDED_SIZE);
 }
 
 function calculateExpandedOverlayBounds(anchor: OverlayBounds): OverlayBounds {
@@ -84,18 +83,10 @@ function applyOverlayBounds(window: BrowserWindow, bounds: OverlayBounds) {
   applyOverlayPinned(window, true);
 }
 
-function isPointInBounds(point: Electron.Point, bounds: OverlayBounds) {
-  return (
-    point.x >= bounds.x &&
-    point.x <= bounds.x + bounds.width &&
-    point.y >= bounds.y &&
-    point.y <= bounds.y + bounds.height
-  );
-}
-
 function createOverlayWindow(): BrowserWindow {
   const initialBounds = getTopRightOverlayBounds();
   overlayAnchorBounds = initialBounds;
+  overlayExpanded = true;
   const window = new BrowserWindow({
     ...initialBounds,
     minWidth: 320,
@@ -119,20 +110,17 @@ function createOverlayWindow(): BrowserWindow {
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   applyOverlayPinned(window, true);
-  setOverlayMousePassthrough(window, true);
+  setOverlayMousePassthrough(window, false);
   window.loadURL(rendererUrl("/overlay"));
 
   window.on("show", () => applyOverlayPinned(window, true));
   window.on("focus", () => applyOverlayPinned(window, true));
   window.on("blur", () => applyOverlayPinned(window, true));
-  window.on("hide", () => setOverlayExpanded(false));
 
   window.on("closed", () => {
-    stopOverlayPointerMonitor();
     overlayWindow = null;
   });
 
-  startOverlayPointerMonitor();
   return window;
 }
 
@@ -185,40 +173,6 @@ function setOverlayExpanded(expanded: boolean) {
   overlayExpanded = expanded;
   resizeOverlayWindow(expanded);
   overlayWindow?.webContents.send("overlay:expanded-changed", expanded);
-}
-
-function startOverlayPointerMonitor() {
-  if (overlayPointerMonitor) {
-    return;
-  }
-
-  overlayPointerMonitor = setInterval(() => {
-    const window = overlayWindow;
-    if (!window || window.isDestroyed() || !window.isVisible()) {
-      return;
-    }
-
-    const cursor = screen.getCursorScreenPoint();
-    const insideOverlay = isPointInBounds(cursor, window.getBounds());
-
-    if (!overlayExpanded && insideOverlay) {
-      setOverlayExpanded(true);
-      return;
-    }
-
-    if (overlayExpanded && !insideOverlay) {
-      setOverlayExpanded(false);
-    }
-  }, 60);
-}
-
-function stopOverlayPointerMonitor() {
-  if (!overlayPointerMonitor) {
-    return;
-  }
-
-  clearInterval(overlayPointerMonitor);
-  overlayPointerMonitor = null;
 }
 
 function showOverlayWindow() {
@@ -341,8 +295,11 @@ app.whenReady().then(() => {
     toggleOverlayWindow();
   });
 
+  ipcMain.handle("window:minimize-overlay", () => {
+    overlayWindow?.minimize();
+  });
+
   ipcMain.handle("window:close-overlay", () => {
-    setOverlayExpanded(false);
     overlayWindow?.hide();
   });
 
@@ -352,7 +309,6 @@ app.whenReady().then(() => {
 });
 
 app.on("will-quit", () => {
-  stopOverlayPointerMonitor();
   globalShortcut.unregisterAll();
 });
 

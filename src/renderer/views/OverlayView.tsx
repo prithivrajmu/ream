@@ -20,13 +20,8 @@ export function OverlayView() {
   const [note, setNote] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [pinned, setPinned] = useState(true);
-  const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const shellRef = useRef<HTMLElement | null>(null);
-  const barRef = useRef<HTMLElement | null>(null);
   const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const expandedRef = useRef(false);
-  const moveFrameRef = useRef<number | null>(null);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
@@ -84,95 +79,8 @@ export function OverlayView() {
   }, [activeTimer]);
 
   useEffect(() => {
-    expandedRef.current = expanded;
-  }, [expanded]);
-
-  const setOverlayExpanded = useCallback(async (nextExpanded: boolean) => {
-    if (expandedRef.current === nextExpanded) {
-      return;
-    }
-
-    expandedRef.current = nextExpanded;
-    setExpanded(nextExpanded);
-    await window.timesheetDesktop?.setOverlayInteractive?.(true);
-    await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
-
-    if (nextExpanded) {
-      window.setTimeout(() => noteInputRef.current?.focus(), 0);
-    }
+    noteInputRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const removeListener = window.timesheetDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
-      expandedRef.current = nextExpanded;
-      setExpanded(nextExpanded);
-
-      if (nextExpanded) {
-        window.setTimeout(() => noteInputRef.current?.focus(), 0);
-      }
-    });
-
-    return () => removeListener?.();
-  }, []);
-
-  useEffect(() => {
-    const handlePointerMove = (event: MouseEvent | PointerEvent) => {
-      if (moveFrameRef.current !== null) {
-        return;
-      }
-
-      moveFrameRef.current = window.requestAnimationFrame(() => {
-        moveFrameRef.current = null;
-
-        const shellBounds = shellRef.current?.getBoundingClientRect();
-        const barBounds = barRef.current?.getBoundingClientRect();
-
-        if (!shellBounds || !barBounds) {
-          return;
-        }
-
-        const insideShell =
-          event.clientX >= shellBounds.left &&
-          event.clientX <= shellBounds.right &&
-          event.clientY >= shellBounds.top &&
-          event.clientY <= shellBounds.bottom;
-        const insideBar =
-          event.clientX >= barBounds.left &&
-          event.clientX <= barBounds.right &&
-          event.clientY >= barBounds.top &&
-          event.clientY <= barBounds.bottom;
-
-        if (!expandedRef.current && insideBar) {
-          void setOverlayExpanded(true);
-          return;
-        }
-
-        if (expandedRef.current && !insideShell) {
-          void setOverlayExpanded(false);
-        }
-      });
-    };
-
-    const handleWindowBlur = () => {
-      if (expandedRef.current) {
-        void setOverlayExpanded(false);
-      }
-    };
-
-    window.addEventListener("mousemove", handlePointerMove, true);
-    window.addEventListener("pointermove", handlePointerMove, true);
-    window.addEventListener("blur", handleWindowBlur);
-
-    return () => {
-      window.removeEventListener("mousemove", handlePointerMove, true);
-      window.removeEventListener("pointermove", handlePointerMove, true);
-      window.removeEventListener("blur", handleWindowBlur);
-      if (moveFrameRef.current !== null) {
-        window.cancelAnimationFrame(moveFrameRef.current);
-        moveFrameRef.current = null;
-      }
-    };
-  }, [setOverlayExpanded]);
 
   async function togglePinned() {
     const nextPinned = !pinned;
@@ -236,82 +144,96 @@ export function OverlayView() {
   }
 
   return (
-    <main
-      ref={shellRef}
-      className={`overlay-shell ${expanded ? "overlay-expanded" : ""}`}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) {
-          void setOverlayExpanded(false);
-        }
-      }}
-      onFocus={() => void setOverlayExpanded(true)}
-      onMouseEnter={() => void setOverlayExpanded(true)}
-      onMouseLeave={() => void setOverlayExpanded(false)}
-    >
-      <section ref={barRef} className="overlay-bar" aria-label="Timesheet overlay">
-        <div className="overlay-task-summary">
-          <span className={`overlay-status-dot ${isPaused ? "paused" : ""}`} />
-          <div>
-            <p>{activeTask?.title ?? "Choose a task"}</p>
-            <span>{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}</span>
+    <main className="overlay-shell custom-overlay-shell">
+      <section className="overlay-window" aria-label="Timesheet overlay">
+        <header className="overlay-titlebar">
+          <div className="overlay-titlebar-title">
+            <span className={`overlay-status-dot ${isPaused ? "paused" : ""}`} />
+            <div>
+              <p>{activeTask?.title ?? "Timesheet"}</p>
+              <span>{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}</span>
+            </div>
           </div>
-        </div>
 
-        <strong className="overlay-time">{formatDuration(elapsed)}</strong>
-
-        <div className="overlay-bar-actions">
-          {activeTimer ? (
-            <>
-              <button className="overlay-button" onClick={handlePauseResume}>{isPaused ? "Resume" : "Pause"}</button>
-              <button className="overlay-button danger" onClick={handleOverlayStop}>Stop</button>
-            </>
-          ) : (
-            <button className="overlay-button primary" disabled={!selectedTaskId} onClick={handleOverlayStart}>Start</button>
-          )}
-        </div>
-      </section>
-
-      <section className="overlay-expanded-panel" aria-hidden={!expanded}>
-        <header className="overlay-header">
-          <span>Quick capture</span>
-          <div className="overlay-actions">
-            <button aria-label="Show main window" onClick={() => window.timesheetDesktop?.showMainWindow()}>
-              Open
-            </button>
-            <button aria-label="Pin overlay" onClick={togglePinned}>
-              {pinned ? "Pinned" : "Pin"}
-            </button>
-            <button aria-label="Hide overlay" onClick={() => window.timesheetDesktop?.closeOverlay()}>
-              Hide
-            </button>
+          <div className="overlay-window-controls">
+            <button
+              className="overlay-control minimize"
+              aria-label="Minimize overlay"
+              title="Minimize"
+              onClick={() => window.timesheetDesktop?.minimizeOverlay()}
+            />
+            <button
+              className="overlay-control close"
+              aria-label="Close overlay"
+              title="Close"
+              onClick={() => window.timesheetDesktop?.closeOverlay()}
+            />
           </div>
         </header>
 
-        <label className="overlay-field-label">
-          Task
-          <select
-            aria-label="Task"
-            value={selectedTaskId}
-            disabled={Boolean(activeTimer) || tasks.length === 0}
-            onChange={(event) => setSelectedTaskId(event.target.value)}
-          >
-            {tasks.length === 0 ? <option value="">Create a task in the main window</option> : null}
-            {tasks.map((task) => (
-              <option key={task.id} value={task.id}>{task.title}</option>
-            ))}
-          </select>
-        </label>
+        <div className="overlay-content">
+          <section className="overlay-timer-card">
+            <div className="overlay-task-summary">
+              <div>
+                <p>{activeTask?.title ?? "Choose a task"}</p>
+                <span>{activeTimer ? (isPaused ? "Timer paused" : "Timer running") : "No active timer"}</span>
+              </div>
+            </div>
 
-        <textarea
-          ref={noteInputRef}
-          aria-label="Quick note"
-          placeholder="Add notes while this stays out of your way..."
-          value={note}
-          onBlur={handleOverlayNoteBlur}
-          onChange={(event) => setNote(event.target.value)}
-        />
+            <strong className="overlay-time">{formatDuration(elapsed)}</strong>
 
-        {error ? <p className="overlay-error">{error}</p> : null}
+            <div className="overlay-bar-actions">
+              {activeTimer ? (
+                <>
+                  <button className="overlay-button" onClick={handlePauseResume}>{isPaused ? "Resume" : "Pause"}</button>
+                  <button className="overlay-button danger" onClick={handleOverlayStop}>Stop</button>
+                </>
+              ) : (
+                <button className="overlay-button primary" disabled={!selectedTaskId} onClick={handleOverlayStart}>Start</button>
+              )}
+            </div>
+          </section>
+
+          <section className="overlay-capture-card">
+            <div className="overlay-header">
+              <span>Quick capture</span>
+              <div className="overlay-actions">
+                <button aria-label="Show main window" onClick={() => window.timesheetDesktop?.showMainWindow()}>
+                  Open
+                </button>
+                <button aria-label="Pin overlay" onClick={togglePinned}>
+                  {pinned ? "Pinned" : "Pin"}
+                </button>
+              </div>
+            </div>
+
+            <label className="overlay-field-label">
+              Task
+              <select
+                aria-label="Task"
+                value={selectedTaskId}
+                disabled={Boolean(activeTimer) || tasks.length === 0}
+                onChange={(event) => setSelectedTaskId(event.target.value)}
+              >
+                {tasks.length === 0 ? <option value="">Create a task in the main window</option> : null}
+                {tasks.map((task) => (
+                  <option key={task.id} value={task.id}>{task.title}</option>
+                ))}
+              </select>
+            </label>
+
+            <textarea
+              ref={noteInputRef}
+              aria-label="Quick note"
+              placeholder="Add notes while this stays out of your way..."
+              value={note}
+              onBlur={handleOverlayNoteBlur}
+              onChange={(event) => setNote(event.target.value)}
+            />
+
+            {error ? <p className="overlay-error">{error}</p> : null}
+          </section>
+        </div>
       </section>
     </main>
   );

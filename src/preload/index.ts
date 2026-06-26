@@ -7,6 +7,7 @@ const desktopApi = {
   setOverlayPinned: (pinned: boolean) => ipcRenderer.invoke("window:set-overlay-pinned", pinned) as Promise<boolean>,
   setOverlayExpanded: (expanded: boolean) => ipcRenderer.invoke("window:set-overlay-expanded", expanded),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
+  minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, expanded: boolean) => callback(expanded);
     ipcRenderer.on("overlay:expanded-changed", listener);
