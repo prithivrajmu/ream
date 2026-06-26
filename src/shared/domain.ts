@@ -47,3 +47,10 @@ export interface UpdateTaskInput {
   defaultNote?: string;
   archived?: boolean;
 }
+
+export interface UpdateTimeEntryInput {
+  taskId: EntityId;
+  startedAt: string;
+  endedAt: string;
+  note?: string;
+}

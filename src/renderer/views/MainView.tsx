@@ -13,12 +13,12 @@ import {
 import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
-import { activeTimerElapsedSeconds, getActiveTimer, listTimeEntriesForDay, startTimer, stopTimer, updateActiveTimerNote } from "../../shared/timerRepository";
-import { downloadTextFile, formatEntryTime, totalDuration } from "../rendererUtils";
+import { activeTimerElapsedSeconds, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
+import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
 
 export function MainView() {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -28,24 +28,32 @@ export function MainView() {
   const [project, setProject] = useState("");
   const [tags, setTags] = useState("");
   const [defaultNote, setDefaultNote] = useState("");
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [entryTaskId, setEntryTaskId] = useState("");
+  const [entryStartedAt, setEntryStartedAt] = useState("");
+  const [entryEndedAt, setEntryEndedAt] = useState("");
+  const [entryNote, setEntryNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
+  const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
-  const taskTotals = useMemo(() => buildTaskTotals(allEntries, tasks), [allEntries, tasks]);
+  const taskTotals = useMemo(() => buildTaskTotals(allEntries, allTasks), [allEntries, allTasks]);
+  const recentEntries = useMemo(
+    () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
+    [allEntries]
+  );
 
   const refreshAppState = useCallback(async () => {
-    const [nextTasks, nextActiveTimer, nextEntries, exportData] = await Promise.all([
+    const [nextTasks, nextActiveTimer, exportData] = await Promise.all([
       listActiveTasks(db),
       getActiveTimer(db),
-      listTimeEntriesForDay(db),
       readAllExportData(db)
     ]);
 
     setTasks(nextTasks);
-    setEntries(nextEntries);
+    setAllTasks(exportData.tasks);
     setAllEntries(exportData.timeEntries);
     setActiveTimer(nextActiveTimer);
     setTimerNote(nextActiveTimer?.note ?? "");
@@ -169,6 +177,61 @@ export function MainView() {
     }
   }
 
+  function handleEditEntry(entry: TimeEntry) {
+    setError(null);
+    setEditingEntry(entry);
+    setEntryTaskId(entry.taskId);
+    setEntryStartedAt(toDateTimeLocalValue(entry.startedAt));
+    setEntryEndedAt(toDateTimeLocalValue(entry.endedAt));
+    setEntryNote(entry.note);
+  }
+
+  function handleCloseEntryEditor() {
+    setEditingEntry(null);
+    setEntryTaskId("");
+    setEntryStartedAt("");
+    setEntryEndedAt("");
+    setEntryNote("");
+  }
+
+  async function handleUpdateEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingEntry) {
+      return;
+    }
+
+    setError(null);
+    try {
+      await updateTimeEntry(db, editingEntry.id, {
+        taskId: entryTaskId,
+        startedAt: entryStartedAt,
+        endedAt: entryEndedAt,
+        note: entryNote
+      });
+      handleCloseEntryEditor();
+      await refreshAppState();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Unable to update time entry.");
+    }
+  }
+
+  async function handleDeleteEntry(entry: TimeEntry) {
+    if (!window.confirm("Delete this time entry permanently?")) {
+      return;
+    }
+
+    setError(null);
+    try {
+      await deleteTimeEntry(db, entry.id);
+      if (editingEntry?.id === entry.id) {
+        handleCloseEntryEditor();
+      }
+      await refreshAppState();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete time entry.");
+    }
+  }
+
   async function handleExportJson() {
     setError(null);
 
@@ -240,6 +303,8 @@ export function MainView() {
           </button>
         </div>
       </section>
+
+      {error ? <p className="error-text app-error" role="alert">{error}</p> : null}
 
       <section className="today-layout">
         <div className="panel timer-panel">
@@ -314,8 +379,6 @@ export function MainView() {
             <button className="primary-button wide" type="submit">Create Task</button>
           </form>
 
-          {error ? <p className="error-text">{error}</p> : null}
-
           <div className="task-list" aria-live="polite">
             {loading ? <p className="muted-copy">Loading tasks...</p> : null}
             {!loading && tasks.length === 0 ? <p className="muted-copy">No active tasks yet.</p> : null}
@@ -338,29 +401,81 @@ export function MainView() {
       <section className="panel entries-panel">
         <div className="panel-heading">
           <div>
-            <p className="section-label">Today</p>
-            <h2>Completed entries</h2>
+            <p className="section-label">Time entries</p>
+            <h2>Recent completed entries</h2>
           </div>
-          <span className="count-pill">{entries.length} entries</span>
+          <span className="count-pill">{recentEntries.length} entries</span>
         </div>
 
         <div className="entry-list">
-          {entries.length === 0 ? <p className="muted-copy">No completed time entries today.</p> : null}
-          {entries.map((entry) => {
+          {recentEntries.length === 0 ? <p className="muted-copy">No completed time entries yet.</p> : null}
+          {recentEntries.map((entry) => {
             const task = taskById.get(entry.taskId);
             return (
               <article className="entry-item" key={entry.id}>
                 <div>
                   <h3>{task?.title ?? "Archived task"}</h3>
-                  <p>{formatEntryTime(entry.startedAt)} - {formatEntryTime(entry.endedAt)}</p>
+                  <p>{formatEntryDateTime(entry.startedAt)} - {formatEntryDateTime(entry.endedAt)}</p>
                   {entry.note ? <p className="entry-note">{entry.note}</p> : null}
                 </div>
-                <strong>{formatDuration(entry.durationSeconds)}</strong>
+                <div className="entry-actions">
+                  <strong>{formatDuration(entry.durationSeconds)}</strong>
+                  <div className="entry-action-buttons">
+                    <button className="secondary-button" onClick={() => handleEditEntry(entry)}>Edit</button>
+                    <button className="danger-button" onClick={() => handleDeleteEntry(entry)}>Delete</button>
+                  </div>
+                </div>
               </article>
             );
           })}
         </div>
       </section>
+
+      {editingEntry ? (
+        <div className="entry-editor-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}>
+          <section
+            aria-labelledby="entry-editor-title"
+            aria-modal="true"
+            className="entry-editor"
+            role="dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="panel-heading">
+              <div>
+                <p className="section-label">Edit entry</p>
+                <h2 id="entry-editor-title">Correct a completed entry</h2>
+              </div>
+              <button aria-label="Close entry editor" className="secondary-button" onClick={handleCloseEntryEditor}>Close</button>
+            </div>
+            <form className="entry-edit-form" onSubmit={handleUpdateEntry}>
+              <label>
+                Task
+                <select value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>
+                  {allTasks.map((task) => (
+                    <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Start
+                <input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} />
+              </label>
+              <label>
+                End
+                <input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} />
+              </label>
+              <label className="entry-note-input">
+                Note
+                <textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} placeholder="What was completed?" />
+              </label>
+              <div className="button-row entry-editor-actions">
+                <button className="primary-button" type="submit">Save changes</button>
+                <button className="secondary-button" type="button" onClick={handleCloseEntryEditor}>Cancel</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       <section className="review-grid">
         <div className="panel summary-panel">
@@ -429,4 +544,10 @@ export function MainView() {
       </section>
     </main>
   );
+}
+
+function toDateTimeLocalValue(value: string): string {
+  const date = new Date(value);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
 }

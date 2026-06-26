@@ -1,4 +1,4 @@
-import type { ActiveTimer, TimeEntry } from "./domain";
+import type { ActiveTimer, TimeEntry, UpdateTimeEntryInput } from "./domain";
 import type { TimesheetDatabase } from "./db";
 import { createId } from "./id";
 
@@ -131,6 +131,58 @@ export async function stopTimer(database: TimesheetDatabase, now = new Date()): 
   });
 
   return entry;
+}
+
+export async function updateTimeEntry(
+  database: TimesheetDatabase,
+  entryId: string,
+  input: UpdateTimeEntryInput,
+  now = new Date()
+): Promise<TimeEntry> {
+  const [existing, task] = await Promise.all([
+    database.timeEntries.get(entryId),
+    database.tasks.get(input.taskId)
+  ]);
+
+  if (!existing) {
+    throw new Error("Time entry not found.");
+  }
+
+  if (!task) {
+    throw new Error("Choose a valid task for this entry.");
+  }
+
+  const startedAt = new Date(input.startedAt);
+  const endedAt = new Date(input.endedAt);
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
+    throw new Error("Enter valid start and end times.");
+  }
+
+  if (endedAt.getTime() < startedAt.getTime()) {
+    throw new Error("The end time must be after the start time.");
+  }
+
+  const updated: TimeEntry = {
+    ...existing,
+    taskId: input.taskId,
+    startedAt: startedAt.toISOString(),
+    endedAt: endedAt.toISOString(),
+    durationSeconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
+    note: input.note?.trim() ?? "",
+    updatedAt: now.toISOString()
+  };
+
+  await database.timeEntries.put(updated);
+  return updated;
+}
+
+export async function deleteTimeEntry(database: TimesheetDatabase, entryId: string): Promise<void> {
+  const entry = await database.timeEntries.get(entryId);
+  if (!entry) {
+    throw new Error("Time entry not found.");
+  }
+
+  await database.timeEntries.delete(entryId);
 }
 
 export async function listTimeEntriesForDay(

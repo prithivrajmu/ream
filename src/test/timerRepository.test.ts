@@ -4,12 +4,14 @@ import { TimesheetDatabase } from "../shared/db";
 import { createTask, updateTask } from "../shared/taskRepository";
 import {
   activeTimerElapsedSeconds,
+  deleteTimeEntry,
   getActiveTimer,
   listTimeEntriesForDay,
   pauseTimer,
   resumeTimer,
   startTimer,
   stopTimer,
+  updateTimeEntry,
   updateActiveTimerNote
 } from "../shared/timerRepository";
 
@@ -96,5 +98,48 @@ describe("timer repository", () => {
 
     expect(entries.map((entry) => entry.id)).toEqual([second.id, first.id]);
     expect(otherDayEntries).toEqual([]);
+  });
+
+  it("updates an entry's task, time range, note, and calculated duration", async () => {
+    const db = createTestDatabase();
+    const originalTask = await createTask(db, { title: "Initial task" });
+    const revisedTask = await createTask(db, { title: "Revised task" });
+
+    await startTimer(db, { taskId: originalTask.id }, new Date("2026-06-25T09:00:00.000Z"));
+    const entry = await stopTimer(db, new Date("2026-06-25T09:30:00.000Z"));
+
+    const updated = await updateTimeEntry(db, entry.id, {
+      taskId: revisedTask.id,
+      startedAt: "2026-06-24T13:00:00.000Z",
+      endedAt: "2026-06-24T14:45:00.000Z",
+      note: "Corrected entry"
+    }, new Date("2026-06-26T09:00:00.000Z"));
+
+    expect(updated).toMatchObject({
+      taskId: revisedTask.id,
+      startedAt: "2026-06-24T13:00:00.000Z",
+      endedAt: "2026-06-24T14:45:00.000Z",
+      durationSeconds: 6300,
+      note: "Corrected entry",
+      updatedAt: "2026-06-26T09:00:00.000Z"
+    });
+  });
+
+  it("rejects invalid edits and deletes an existing entry", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Entry task" });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T09:00:00.000Z"));
+    const entry = await stopTimer(db, new Date("2026-06-25T09:30:00.000Z"));
+
+    await expect(updateTimeEntry(db, entry.id, {
+      taskId: task.id,
+      startedAt: "2026-06-25T10:00:00.000Z",
+      endedAt: "2026-06-25T09:00:00.000Z"
+    })).rejects.toThrow("end time must be after");
+
+    await deleteTimeEntry(db, entry.id);
+    await expect(db.timeEntries.get(entry.id)).resolves.toBeUndefined();
+    await expect(deleteTimeEntry(db, entry.id)).rejects.toThrow("Time entry not found.");
   });
 });

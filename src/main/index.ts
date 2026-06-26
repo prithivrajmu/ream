@@ -38,7 +38,8 @@ function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
@@ -89,8 +90,8 @@ function createOverlayWindow(): BrowserWindow {
   overlayExpanded = false;
   const window = new BrowserWindow({
     ...initialBounds,
-    minWidth: OVERLAY_COMPACT_SIZE.width,
-    minHeight: OVERLAY_COMPACT_SIZE.height,
+    minWidth: initialBounds.width,
+    minHeight: initialBounds.height,
     maxWidth: OVERLAY_EXPANDED_SIZE.width,
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Timesheet Overlay",
@@ -104,7 +105,8 @@ function createOverlayWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 

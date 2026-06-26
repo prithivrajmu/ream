@@ -5,9 +5,9 @@ export type OverlayBounds = {
   height: number;
 };
 
-export const OVERLAY_COMPACT_SIZE = { width: 72, height: 72 };
-export const OVERLAY_EXPANDED_SIZE = { width: 520, height: 420 };
-export const OVERLAY_SCREEN_MARGIN = 18;
+export const OVERLAY_COMPACT_SIZE = { width: 560, height: 86 };
+export const OVERLAY_EXPANDED_SIZE = { width: 560, height: 875 };
+export const OVERLAY_SCREEN_MARGIN = 34;
 
 type WorkArea = Pick<OverlayBounds, "x" | "y" | "width" | "height">;
 
@@ -16,10 +16,13 @@ export function getTopRightOverlayBounds(
   compactSize = OVERLAY_COMPACT_SIZE,
   margin = OVERLAY_SCREEN_MARGIN
 ): OverlayBounds {
+  const width = Math.min(compactSize.width, Math.max(1, workArea.width - margin * 2));
+  const height = Math.min(compactSize.height, Math.max(1, workArea.height - margin * 2));
+
   return {
-    width: compactSize.width,
-    height: compactSize.height,
-    x: workArea.x + workArea.width - compactSize.width - margin,
+    width,
+    height,
+    x: workArea.x + Math.floor((workArea.width - width) / 2),
     y: workArea.y + margin
   };
 }

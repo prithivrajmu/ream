@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "../../shared/db";
-import type { ActiveTimer, Task } from "../../shared/domain";
+import type { ActiveTimer, Task, TimeEntry } from "../../shared/domain";
 import { listActiveTasks } from "../../shared/taskRepository";
 import { formatDuration } from "../../shared/time";
 import {
@@ -12,28 +12,50 @@ import {
   stopTimer,
   updateActiveTimerNote
 } from "../../shared/timerRepository";
+import { formatEntryDateTime } from "../rendererUtils";
+
+type IconName = "chevron" | "clock" | "close" | "list" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
 
 export function OverlayView() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [note, setNote] = useState("");
+  const [noteDirty, setNoteDirty] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [taskSearch, setTaskSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const noteInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
     [activeTimer, tasks]
   );
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, tasks]
+  );
+  const displayTask = activeTask ?? selectedTask;
   const isPaused = Boolean(activeTimer?.pausedAt);
+  const filteredTasks = useMemo(() => {
+    const query = taskSearch.trim().toLocaleLowerCase();
+    if (!query) {
+      return tasks;
+    }
+    return tasks.filter((task) => `${task.title} ${task.project} ${task.tags.join(" ")}`.toLocaleLowerCase().includes(query));
+  }, [taskSearch, tasks]);
 
   const refreshOverlayState = useCallback(async (syncNote = false) => {
-    const [nextTasks, nextActiveTimer] = await Promise.all([listActiveTasks(db), getActiveTimer(db)]);
+    const [nextTasks, nextActiveTimer, nextRecentEntries] = await Promise.all([
+      listActiveTasks(db),
+      getActiveTimer(db),
+      db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray()
+    ]);
 
     setTasks(nextTasks);
     setActiveTimer(nextActiveTimer);
+    setRecentEntries(nextRecentEntries);
 
     if (syncNote && nextActiveTimer) {
       setNote(nextActiveTimer.note);
@@ -61,7 +83,7 @@ export function OverlayView() {
 
     const intervalId = window.setInterval(() => {
       refreshOverlayState().catch(() => undefined);
-    }, 1000);
+    }, 3000);
 
     return () => window.clearInterval(intervalId);
   }, [refreshOverlayState]);
@@ -79,28 +101,31 @@ export function OverlayView() {
   }, [activeTimer]);
 
   useEffect(() => {
-    const removeListener = window.timesheetDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
-      setExpanded(nextExpanded);
-
-      if (nextExpanded) {
-        window.setTimeout(() => noteInputRef.current?.focus(), 0);
-      }
-    });
-
-    return () => removeListener?.();
+    return window.timesheetDesktop?.onOverlayExpandedChanged?.(setExpanded);
   }, []);
 
-  async function setOverlayExpanded(nextExpanded: boolean) {
-    setExpanded(nextExpanded);
-    await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
-
-    if (nextExpanded) {
-      window.setTimeout(() => noteInputRef.current?.focus(), 0);
+  useEffect(() => {
+    if (!activeTimer || !noteDirty) {
+      return;
     }
-  }
 
-  async function reassertAlwaysOnTop() {
-    await window.timesheetDesktop?.setOverlayPinned(true);
+    const timeoutId = window.setTimeout(() => {
+      updateActiveTimerNote(db, note)
+        .then((updated) => {
+          setActiveTimer((current) => current?.id === updated.id ? updated : current);
+          setNoteDirty(false);
+        })
+        .catch((noteError: unknown) => {
+          setError(noteError instanceof Error ? noteError.message : "Unable to save note.");
+        });
+    }, 600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeTimer, note, noteDirty]);
+
+  async function setOverlayExpanded(nextExpanded: boolean) {
+    await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
+    setExpanded(nextExpanded);
   }
 
   async function handleOverlayStart() {
@@ -121,7 +146,6 @@ export function OverlayView() {
     }
 
     setError(null);
-
     try {
       const updated = activeTimer.pausedAt ? await resumeTimer(db) : await pauseTimer(db);
       setActiveTimer(updated);
@@ -139,138 +163,179 @@ export function OverlayView() {
       await stopTimer(db);
       setActiveTimer(null);
       setNote("");
+      setNoteDirty(false);
       await refreshOverlayState();
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
     }
   }
 
-  async function handleOverlayNoteBlur() {
-    if (!activeTimer) {
-      return;
+  async function handleOpenMainWindow() {
+    if (expanded) {
+      await setOverlayExpanded(false);
     }
 
-    try {
-      const updated = await updateActiveTimerNote(db, note);
-      setActiveTimer(updated);
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : "Unable to save note.");
-    }
+    await window.timesheetDesktop?.showMainWindow();
   }
 
-  if (!expanded) {
-    return (
-      <main className="overlay-shell overlay-plus-shell" aria-label="Timesheet overlay compact launcher">
-        <button
-          className="overlay-plus-button"
-          aria-label="Add timesheet note"
-          title="Add timesheet note"
-          onClick={() => void setOverlayExpanded(true)}
-        >
-          +
-        </button>
-      </main>
-    );
+  function handleQuickTag(tag: string) {
+    setNoteDirty(true);
+    setNote((currentNote) => currentNote.includes(`#${tag}`) ? currentNote : `${currentNote}${currentNote ? " " : ""}#${tag}`);
   }
 
   return (
-    <main className="overlay-shell custom-overlay-shell">
-      <section className="overlay-window" aria-label="Timesheet overlay">
-        <header className="overlay-titlebar">
-          <div className="overlay-titlebar-title">
-            <span className={`overlay-status-dot ${isPaused ? "paused" : ""}`} />
-            <div>
-              <p>{activeTask?.title ?? "Timesheet"}</p>
-              <span>{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}</span>
-            </div>
-          </div>
-
-          <div className="overlay-window-controls">
-            <button
-              className="overlay-control compact"
-              aria-label="Collapse overlay"
-              title="Collapse"
-              onClick={() => void setOverlayExpanded(false)}
-            />
-            <button
-              className="overlay-control minimize"
-              aria-label="Minimize overlay"
-              title="Minimize"
-              onClick={() => window.timesheetDesktop?.minimizeOverlay()}
-            />
-            <button
-              className="overlay-control close"
-              aria-label="Close overlay"
-              title="Close"
-              onClick={() => window.timesheetDesktop?.closeOverlay()}
-            />
-          </div>
-        </header>
-
-        <div className="overlay-content">
-          <section className="overlay-timer-card">
-            <div className="overlay-task-summary">
-              <div>
-                <p>{activeTask?.title ?? "Choose a task"}</p>
-                <span>{activeTimer ? (isPaused ? "Timer paused" : "Timer running") : "No active timer"}</span>
-              </div>
-            </div>
-
-            <strong className="overlay-time">{formatDuration(elapsed)}</strong>
-
-            <div className="overlay-bar-actions">
-              {activeTimer ? (
-                <>
-                  <button className="overlay-button" onClick={handlePauseResume}>{isPaused ? "Resume" : "Pause"}</button>
-                  <button className="overlay-button danger" onClick={handleOverlayStop}>Stop</button>
-                </>
-              ) : (
-                <button className="overlay-button primary" disabled={!selectedTaskId} onClick={handleOverlayStart}>Start</button>
-              )}
-            </div>
-          </section>
-
-          <section className="overlay-capture-card">
-            <div className="overlay-header">
-              <span>Quick capture</span>
-              <div className="overlay-actions">
-                <button aria-label="Show main window" onClick={() => window.timesheetDesktop?.showMainWindow()}>
-                  Open
-                </button>
-                <button aria-label="Keep overlay on top" onClick={() => void reassertAlwaysOnTop()}>
-                  Top
-                </button>
-              </div>
-            </div>
-
-            <label className="overlay-field-label">
-              Task
-              <select
-                aria-label="Task"
-                value={selectedTaskId}
-                disabled={Boolean(activeTimer) || tasks.length === 0}
-                onChange={(event) => setSelectedTaskId(event.target.value)}
-              >
-                {tasks.length === 0 ? <option value="">Create a task in the main window</option> : null}
-                {tasks.map((task) => (
-                  <option key={task.id} value={task.id}>{task.title}</option>
-                ))}
-              </select>
-            </label>
-
-            <textarea
-              ref={noteInputRef}
-              aria-label="Quick note"
-              placeholder="Add notes while this stays out of your way..."
-              value={note}
-              onBlur={handleOverlayNoteBlur}
-              onChange={(event) => setNote(event.target.value)}
-            />
-
-            {error ? <p className="overlay-error">{error}</p> : null}
-          </section>
+    <main className={`overlay-shell reference-overlay-shell ${expanded ? "is-expanded" : ""}`} aria-label="Timesheet overlay">
+      <header className="reference-overlay-bar">
+        <div className="reference-overlay-identity">
+          <span className="reference-app-icon"><Icon name="clock" /></span>
+          <p>{displayTask?.title ?? "Select a task"}</p>
+          <span className={`reference-status ${isPaused ? "paused" : ""}`}>
+            <i />{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}
+          </span>
         </div>
-      </section>
+
+        <button
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
+          className="reference-expand-button"
+          onClick={() => void setOverlayExpanded(!expanded)}
+        >
+          <Icon name="chevron" />
+        </button>
+
+        <div className="reference-overlay-actions">
+          <strong>{formatDuration(elapsed)}</strong>
+          {activeTimer ? (
+            <button aria-label={isPaused ? "Resume timer" : "Pause timer"} className="reference-icon-button pause" onClick={handlePauseResume}>
+              <Icon name={isPaused ? "play" : "pause"} />
+            </button>
+          ) : (
+            <button aria-label="Start timer" className="reference-start-button" disabled={!selectedTaskId} onClick={handleOverlayStart}>Start</button>
+          )}
+          <button aria-label="Stop timer" className="reference-icon-button stop" disabled={!activeTimer} onClick={handleOverlayStop}>
+            <Icon name="stop" />
+          </button>
+          <button aria-label="Open main window" className="reference-plain-button" onClick={() => void handleOpenMainWindow()}>
+            <Icon name="settings" />
+          </button>
+          <button aria-label="Close overlay" className="reference-plain-button" onClick={() => window.timesheetDesktop?.closeOverlay()}>
+            <Icon name="close" />
+          </button>
+        </div>
+      </header>
+
+      {expanded ? (
+        <section className="reference-overlay-panel">
+          <div className="reference-task-picker">
+            <label htmlFor="overlay-task-select">Select Task</label>
+            <div className="reference-picker-row">
+              <div className="reference-select-wrap">
+                <Icon name="list" />
+                <select
+                  id="overlay-task-select"
+                  value={selectedTaskId}
+                  disabled={Boolean(activeTimer) || tasks.length === 0}
+                  onChange={(event) => setSelectedTaskId(event.target.value)}
+                >
+                  {tasks.length === 0 ? <option value="">Create a task in the main window</option> : null}
+                  {filteredTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+                </select>
+                <Icon name="chevron" />
+              </div>
+              <label className="reference-search" aria-label="Search tasks">
+                <Icon name="search" />
+                <input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search tasks..." />
+                <kbd>⌘K</kbd>
+              </label>
+            </div>
+          </div>
+
+          <div className="reference-workspace">
+            <section className="reference-timer-column">
+              <div className="reference-timer-card">
+                <div>
+                  <p className={`reference-timer-status ${isPaused ? "paused" : ""}`}><i />{activeTimer ? (isPaused ? "PAUSED" : "TRACKING") : "READY"} ›</p>
+                  <strong>{formatDuration(elapsed)}</strong>
+                  <p className="reference-timer-caption">{activeTimer ? `${isPaused ? "Paused" : "Started"} ${formatEntryDateTime(activeTimer.startedAt)}` : "Start tracking your next task"}</p>
+                </div>
+                <button
+                  aria-label={activeTimer ? (isPaused ? "Resume timer" : "Pause timer") : "Start timer"}
+                  className={`reference-ring-button ${isPaused ? "paused" : ""}`}
+                  disabled={!activeTimer && !selectedTaskId}
+                  onClick={activeTimer ? handlePauseResume : handleOverlayStart}
+                >
+                  <Icon name={activeTimer ? (isPaused ? "play" : "pause") : "play"} />
+                </button>
+              </div>
+
+              <div className="reference-control-row">
+                <button disabled={!activeTimer} onClick={handlePauseResume}><Icon name={isPaused ? "play" : "pause"} />{isPaused ? "Resume" : "Pause"}</button>
+                <button className="stop-control" disabled={!activeTimer} onClick={handleOverlayStop}><Icon name="stop" />Stop</button>
+                <button className="complete-control" disabled={!activeTimer} onClick={handleOverlayStop}>✓ Complete</button>
+              </div>
+
+              <div className="reference-tags">
+                <p>Quick Tags</p>
+                <div>
+                  {(displayTask?.tags.length ? displayTask.tags : ["Meeting", "Coding", "Review", "Research"]).slice(0, 4).map((tag) => (
+                    <button key={tag} onClick={() => handleQuickTag(tag)}><Icon name="tag" />{tag}</button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="reference-notes-card">
+              <div className="reference-notes-heading">
+                <span><Icon name="note" />Task Notes</span>
+                <small>Formatting&nbsp;&nbsp;&nbsp; <b>B</b>&nbsp;&nbsp;&nbsp;<em>I</em>&nbsp;&nbsp;&nbsp;☷</small>
+              </div>
+              <textarea
+                aria-label="Task notes"
+                placeholder="Write your notes here..."
+                value={note}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  setNoteDirty(true);
+                }}
+              />
+            </section>
+          </div>
+
+          <section className="reference-recent-notes">
+            <div className="reference-recent-heading"><h2>Recent Notes</h2><button onClick={() => void handleOpenMainWindow()}>View all <Icon name="chevron" /></button></div>
+            <div className="reference-recent-list">
+              {recentEntries.length === 0 ? <p>No completed entries yet.</p> : recentEntries.map((entry) => (
+                <article key={entry.id}>
+                  <span className="reference-entry-icon"><Icon name="note" /></span>
+                  <div><p>{entry.note || "No note added"}</p><small>{formatEntryDateTime(entry.startedAt)} &nbsp;•&nbsp; {tasks.find((task) => task.id === entry.taskId)?.title ?? "Archived task"}</small></div>
+                  <span className="reference-entry-tag">{tasks.find((task) => task.id === entry.taskId)?.tags[0] ?? "Entry"}</span>
+                  <button aria-label="Open entry in main window" onClick={() => void handleOpenMainWindow()}>•••</button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          {error ? <p className="reference-overlay-error">{error}</p> : null}
+        </section>
+      ) : null}
     </main>
   );
+}
+
+function Icon({ name }: { name: IconName }) {
+  const paths: Record<IconName, ReactNode> = {
+    chevron: <path d="m6 9 6 6 6-6" />,
+    clock: <><circle cx="12" cy="13" r="7" /><path d="M12 9v4l2.5 1.5M9 2h6M12 2v4M5 5 3 7M19 5l2 2" /></>,
+    close: <><path d="m7 7 10 10M17 7 7 17" /></>,
+    list: <><path d="M9 6h10M9 12h10M9 18h10" /><circle cx="4" cy="6" r=".8" fill="currentColor" /><circle cx="4" cy="12" r=".8" fill="currentColor" /><circle cx="4" cy="18" r=".8" fill="currentColor" /></>,
+    note: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6" /></>,
+    pause: <><path d="M9 6v12M15 6v12" /></>,
+    play: <path d="m9 6 8 6-8 6z" fill="currentColor" stroke="none" />,
+    search: <><circle cx="10.5" cy="10.5" r="5.5" /><path d="m15 15 4 4" /></>,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7.6 7.6 0 0 0-.1-1l2-1.5-2-3.5-2.3.9a7 7 0 0 0-1.7-1L14.5 3h-5L9 5.9a7 7 0 0 0-1.7 1L5 6 3 9.5 5 11a7.6 7.6 0 0 0 0 2l-2 1.5L5 18l2.3-.9a7 7 0 0 0 1.7 1l.5 2.9h5l.4-2.9a7 7 0 0 0 1.7-1l2.3.9 2-3.5-2-1.5c.1-.3.1-.7.1-1Z" /></>,
+    stop: <rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none" />,
+    tag: <><path d="M4 5v7l8 8 8-8-8-8z" /><circle cx="8" cy="9" r="1" fill="currentColor" /></>
+  };
+
+  return <svg aria-hidden="true" className="reference-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

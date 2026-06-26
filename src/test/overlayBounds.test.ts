@@ -7,26 +7,26 @@ import {
 } from "../shared/overlayBounds";
 
 describe("overlay bounds", () => {
-  it("places the compact overlay in the top-right work area", () => {
+  it("places the compact overlay at the top center of the work area", () => {
     expect(getTopRightOverlayBounds({ x: 0, y: 0, width: 1440, height: 900 })).toEqual({
       width: OVERLAY_COMPACT_SIZE.width,
       height: OVERLAY_COMPACT_SIZE.height,
-      x: 1350,
-      y: 18
+      x: 440,
+      y: 34
     });
   });
 
   it("preserves dragged coordinates when expansion fits", () => {
     expect(
       calculateExpandedOverlayBounds(
-        { x: 240, y: 140, width: OVERLAY_COMPACT_SIZE.width, height: OVERLAY_COMPACT_SIZE.height },
+        { x: 240, y: 20, width: OVERLAY_COMPACT_SIZE.width, height: OVERLAY_COMPACT_SIZE.height },
         { x: 0, y: 0, width: 1440, height: 900 }
       )
     ).toEqual({
       width: OVERLAY_EXPANDED_SIZE.width,
-      height: OVERLAY_EXPANDED_SIZE.height,
+      height: 832,
       x: 240,
-      y: 140
+      y: 34
     });
   });
 
@@ -38,9 +38,9 @@ describe("overlay bounds", () => {
       )
     ).toEqual({
       width: OVERLAY_EXPANDED_SIZE.width,
-      height: OVERLAY_EXPANDED_SIZE.height,
-      x: 902,
-      y: 462
+      height: 832,
+      x: 846,
+      y: 34
     });
   });
 
@@ -51,10 +51,10 @@ describe("overlay bounds", () => {
         { x: 1440, y: 24, width: 900, height: 700 }
       )
     ).toEqual({
-      width: OVERLAY_EXPANDED_SIZE.width,
-      height: OVERLAY_EXPANDED_SIZE.height,
-      x: 1802,
-      y: 60
+      width: 560,
+      height: 632,
+      x: 1746,
+      y: 58
     });
   });
 
@@ -65,10 +65,10 @@ describe("overlay bounds", () => {
         { x: 0, y: 0, width: 480, height: 360 }
       )
     ).toEqual({
-      width: 444,
-      height: 324,
-      x: 18,
-      y: 18
+      width: 412,
+      height: 292,
+      x: 34,
+      y: 34
     });
   });
 });

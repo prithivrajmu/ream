@@ -290,6 +290,20 @@ code {
   border: 1px solid rgb(255 255 255 / 72%);
 }
 
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 69 58 / 26%);
+  border-radius: 12px;
+  color: #b42318;
+  background: rgb(255 69 58 / 12%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%);
+  font-weight: 750;
+}
+
 .stop-button {
   background: linear-gradient(180deg, #ff6961, var(--danger));
   box-shadow: 0 10px 20px rgb(255 69 58 / 20%), inset 0 1px 0 rgb(255 255 255 / 36%);
@@ -334,8 +348,16 @@ code {
   margin-top: 20px;
 }
 
+.entry-edit-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
 .task-form label,
-.field-label {
+.field-label,
+.entry-edit-form label {
   display: grid;
   gap: 7px;
   color: #526174;
@@ -348,14 +370,19 @@ code {
 }
 
 .task-form label:nth-child(4),
-.task-form button {
+.task-form button,
+.entry-note-input,
+.entry-editor-actions {
   grid-column: 1 / -1;
 }
 
 .field-label select,
 .field-label textarea,
 .task-form input,
-.task-form textarea {
+.task-form textarea,
+.entry-edit-form input,
+.entry-edit-form select,
+.entry-edit-form textarea {
   width: 100%;
   border: 1px solid rgb(255 255 255 / 74%);
   border-radius: 13px;
@@ -366,7 +393,9 @@ code {
 }
 
 .field-label select,
-.task-form input {
+.task-form input,
+.entry-edit-form input,
+.entry-edit-form select {
   height: 42px;
   padding: 0 12px;
 }
@@ -376,7 +405,8 @@ code {
 }
 
 .field-label textarea,
-.task-form textarea {
+.task-form textarea,
+.entry-edit-form textarea {
   min-height: 72px;
   resize: vertical;
   padding: 10px 12px;
@@ -389,7 +419,10 @@ code {
 .field-label select:focus,
 .field-label textarea:focus,
 .task-form input:focus,
-.task-form textarea:focus {
+.task-form textarea:focus,
+.entry-edit-form input:focus,
+.entry-edit-form select:focus,
+.entry-edit-form textarea:focus {
   border-color: rgb(10 132 255 / 58%);
   box-shadow: 0 0 0 4px rgb(10 132 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 76%);
 }
@@ -412,6 +445,19 @@ code {
 
 .entry-item {
   align-items: flex-start;
+}
+
+.entry-actions {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.entry-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .task-item p,
@@ -441,6 +487,36 @@ code {
   margin-top: 12px;
   color: #526174;
   line-height: 1.6;
+}
+
+.app-error {
+  margin: -12px 0 20px;
+}
+
+.entry-editor-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(9 17 31 / 36%);
+  backdrop-filter: blur(5px);
+}
+
+.entry-editor {
+  width: min(100%, 680px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 18px;
+  background: #f4f8fd;
+  box-shadow: 0 28px 72px rgb(9 25 52 / 28%), var(--inner-glow);
+}
+
+.entry-editor .button-row {
+  margin-top: 8px;
 }
 
 .overlay-shell {
@@ -832,6 +908,810 @@ code {
 .overlay-capture-card textarea {
   min-height: 0;
   height: 100%;
+}
+
+/* Reference-style desktop overlay */
+html.overlay-route,
+body.overlay-route {
+  background: transparent;
+  overflow: hidden;
+}
+
+.reference-overlay-shell {
+  height: 100vh;
+  max-height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  color: #262a35;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.reference-overlay-bar {
+  position: relative;
+  display: flex;
+  height: 86px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px 0 18px;
+  border: 1px solid rgb(255 255 255 / 76%);
+  border-radius: 28px;
+  background: linear-gradient(112deg, rgb(255 255 255 / 96%), rgb(244 247 253 / 88%));
+  box-shadow: 0 20px 52px rgb(31 45 85 / 24%), inset 0 1px 1px #fff;
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-app-region: drag;
+}
+
+.reference-overlay-identity,
+.reference-overlay-actions,
+.reference-picker-row,
+.reference-notes-heading,
+.reference-recent-heading,
+.reference-recent-list article {
+  display: flex;
+  align-items: center;
+}
+
+.reference-overlay-identity {
+  min-width: 0;
+  gap: 18px;
+}
+
+.reference-app-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #ffe2e6;
+  border-radius: 15px;
+  color: #ff6071;
+  background: linear-gradient(145deg, #fff, #fff5f5);
+  box-shadow: 0 5px 14px rgb(199 71 88 / 10%), inset 0 1px #fff;
+}
+
+.reference-app-icon .reference-icon {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.1;
+}
+
+.reference-overlay-identity > p {
+  overflow: hidden;
+  max-width: 380px;
+  margin: 0;
+  color: #20232b;
+  font-size: 14px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #f06171;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.reference-status i,
+.reference-timer-status i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff7079;
+}
+
+.reference-status.paused,
+.reference-timer-status.paused {
+  color: #db9200;
+}
+
+.reference-status.paused i,
+.reference-timer-status.paused i {
+  background: #e5a11c;
+}
+
+.reference-expand-button {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: -27px;
+  display: grid;
+  width: 82px;
+  height: 82px;
+  place-items: center;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 8px solid #eff2f9;
+  border-radius: 50%;
+  color: #232832;
+  background: linear-gradient(145deg, #fff, #f4f6fb);
+  box-shadow: 0 8px 18px rgb(48 59 91 / 20%), inset 0 1px #fff;
+  transition: transform 160ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.reference-expand-button .reference-icon {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.2;
+}
+
+.reference-overlay-shell.is-expanded .reference-expand-button {
+  transform: translateX(-50%) rotate(180deg);
+}
+
+.reference-overlay-actions {
+  gap: 18px;
+  -webkit-app-region: no-drag;
+}
+
+.reference-overlay-actions > strong {
+  color: #1e222b;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.reference-icon-button,
+.reference-plain-button,
+.reference-start-button {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #e6e9f3;
+  border-radius: 13px;
+  background: rgb(255 255 255 / 68%);
+  box-shadow: inset 0 1px #fff, 0 4px 10px rgb(67 80 118 / 5%);
+}
+
+.reference-icon-button.pause {
+  color: #5f63ff;
+  background: linear-gradient(145deg, #f6f6ff, #fff);
+}
+
+.reference-icon-button.stop {
+  color: #ff6470;
+  background: linear-gradient(145deg, #fff6f7, #fff);
+}
+
+.reference-icon-button:disabled {
+  color: #a4abba;
+}
+
+.reference-plain-button {
+  width: 30px;
+  height: 36px;
+  min-height: 36px;
+  border: 0;
+  color: #5c6370;
+  background: transparent;
+  box-shadow: none;
+}
+
+.reference-start-button {
+  width: auto;
+  padding: 0 18px;
+  color: #fff;
+  background: linear-gradient(180deg, #7384ff, #5866ef);
+  font-weight: 700;
+}
+
+.reference-icon {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.reference-overlay-panel {
+  width: 100%;
+  max-width: none;
+  height: calc(100% - 110px);
+  min-height: 0;
+  margin: 24px 0 0;
+  padding: 29px 34px 18px;
+  border: 1px solid rgb(255 255 255 / 84%);
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgb(255 255 255 / 96%), rgb(249 250 254 / 92%));
+  box-shadow: 0 20px 50px rgb(32 45 83 / 18%), inset 0 1px #fff;
+  backdrop-filter: blur(26px) saturate(1.18);
+  -webkit-app-region: no-drag;
+}
+
+.reference-task-picker > label {
+  display: block;
+  margin-bottom: 15px;
+  color: #252935;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.reference-picker-row {
+  gap: 30px;
+}
+
+.reference-select-wrap,
+.reference-search {
+  display: flex;
+  height: 52px;
+  align-items: center;
+  border: 1px solid #e7e9ef;
+  border-radius: 13px;
+  color: #6d7482;
+  background: rgb(255 255 255 / 58%);
+  box-shadow: inset 0 1px #fff;
+}
+
+.reference-select-wrap {
+  width: 51%;
+  padding: 0 16px;
+  gap: 14px;
+}
+
+.reference-select-wrap select {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  outline: none;
+  color: #363b45;
+  background: transparent;
+  font-size: 13px;
+}
+
+.reference-select-wrap > .reference-icon:last-child {
+  width: 18px;
+  height: 18px;
+}
+
+.reference-search {
+  width: 49%;
+  padding: 0 14px;
+  gap: 12px;
+}
+
+.reference-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: #303641;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+}
+
+.reference-search input::placeholder {
+  color: #9da2ae;
+}
+
+.reference-search kbd {
+  padding: 1px 0;
+  border: 0;
+  color: #8e949f;
+  background: transparent;
+  font-size: 11px;
+}
+
+.reference-workspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.reference-timer-column,
+.reference-notes-card {
+  min-height: 319px;
+  border: 1px solid #e8eaf0;
+  border-radius: 13px;
+  background: rgb(255 255 255 / 52%);
+  box-shadow: inset 0 1px #fff;
+}
+
+.reference-timer-column {
+  overflow: hidden;
+}
+
+.reference-timer-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 151px;
+  padding: 23px 28px 20px 20px;
+}
+
+.reference-timer-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 20px;
+  color: #cb6262;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.reference-timer-card > div > strong {
+  display: block;
+  color: #252830;
+  font-size: 27px;
+  font-weight: 620;
+  letter-spacing: .04em;
+}
+
+.reference-timer-caption {
+  margin: 10px 0 0;
+  color: #7f8590;
+  font-size: 11px;
+}
+
+.reference-ring-button {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 8px solid #ff7a7a;
+  border-radius: 50%;
+  color: #4c4d52;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #fff, 0 2px 6px rgb(255 107 107 / 12%);
+}
+
+.reference-ring-button .reference-icon {
+  width: 32px;
+  height: 32px;
+  stroke-width: 2.5;
+}
+
+.reference-ring-button.paused {
+  border-color: #e5a11c;
+}
+
+.reference-control-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 13px 17px;
+  border-top: 1px solid #ebecef;
+  border-bottom: 1px solid #ebecef;
+}
+
+.reference-control-row button,
+.reference-tags button {
+  display: inline-flex;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #e1e5fb;
+  border-radius: 9px;
+  color: #6267f7;
+  background: linear-gradient(145deg, #fafaff, #f6f7ff);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.reference-control-row .stop-control {
+  border-color: #f8dedf;
+  color: #fa606a;
+  background: linear-gradient(145deg, #fffafa, #fff);
+}
+
+.reference-control-row button {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reference-control-row .complete-control {
+  border-color: #dcecdf;
+  color: #298951;
+  background: linear-gradient(145deg, #fbfffb, #f8fffa);
+}
+
+.reference-control-row .reference-icon,
+.reference-tags .reference-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.reference-tags {
+  padding: 13px 10px 11px;
+}
+
+.reference-tags > p {
+  margin: 0 0 9px;
+  color: #363b46;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.reference-tags > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.reference-tags button {
+  height: 37px;
+  padding: 0 12px;
+}
+
+.reference-tags button:nth-child(2) {
+  border-color: #dceddf;
+  color: #3f9761;
+  background: #f4fbf5;
+}
+
+.reference-tags button:nth-child(3) {
+  border-color: #f9e6d3;
+  color: #e98610;
+  background: #fffaf4;
+}
+
+.reference-tags button:nth-child(4) {
+  border-color: #eadff9;
+  color: #8c58d8;
+  background: #faf6ff;
+}
+
+.reference-notes-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 13px;
+  padding: 18px 16px 22px;
+}
+
+.reference-notes-heading {
+  justify-content: space-between;
+  color: #353a44;
+}
+
+.reference-notes-heading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.reference-notes-heading span .reference-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.reference-notes-heading small {
+  color: #9398a4;
+  font-size: 10px;
+}
+
+.reference-notes-heading b,
+.reference-notes-heading em {
+  color: #5c626d;
+  font-size: 14px;
+}
+
+.reference-notes-card textarea {
+  width: 100%;
+  min-height: 0;
+  height: 172px;
+  padding: 13px;
+  border: 1px solid #e1e4ea;
+  border-radius: 11px;
+  outline: none;
+  color: #333a45;
+  background: rgb(255 255 255 / 68%);
+  box-shadow: inset 0 1px 2px rgb(72 81 107 / 3%);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: none;
+}
+
+.reference-notes-card textarea:focus,
+.reference-search:focus-within,
+.reference-select-wrap:focus-within {
+  border-color: rgb(96 105 255 / 48%);
+  box-shadow: 0 0 0 3px rgb(96 105 255 / 10%), inset 0 1px #fff;
+}
+
+.reference-save-note {
+  display: inline-flex;
+  height: 46px;
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid #dce1ff;
+  border-radius: 10px;
+  color: #5663f2;
+  background: linear-gradient(145deg, #f5f6ff, #fff);
+  box-shadow: 0 4px 10px rgb(85 99 242 / 8%);
+  font-weight: 600;
+}
+
+.reference-save-note .reference-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.reference-recent-notes {
+  margin-top: 14px;
+  padding-top: 18px;
+  border-top: 1px solid #e9ebef;
+}
+
+.reference-recent-heading {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.reference-recent-heading h2 {
+  margin: 0;
+  color: #292e37;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.reference-recent-heading button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  color: #747984;
+  background: transparent;
+  font-size: 11px;
+}
+
+.reference-recent-heading .reference-icon {
+  width: 17px;
+  height: 17px;
+  transform: rotate(-90deg);
+}
+
+.reference-recent-list {
+  overflow: hidden;
+  border: 1px solid #e6e8ee;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 48%);
+}
+
+.reference-recent-list > p {
+  margin: 0;
+  padding: 20px;
+  color: #858b97;
+  font-size: 12px;
+}
+
+.reference-recent-list article {
+  min-height: 72px;
+  gap: 14px;
+  padding: 9px 12px;
+}
+
+.reference-recent-list article + article {
+  border-top: 1px solid #e7e9ef;
+}
+
+.reference-entry-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #dce5fb;
+  border-radius: 10px;
+  color: #6282ed;
+  background: linear-gradient(145deg, #f7f9ff, #fff);
+}
+
+.reference-entry-icon .reference-icon {
+  width: 21px;
+  height: 21px;
+}
+
+.reference-recent-list article > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.reference-recent-list article p {
+  overflow: hidden;
+  margin: 0;
+  color: #353a44;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-recent-list article small {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: #8d929d;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-entry-tag {
+  padding: 6px 12px;
+  border: 1px solid #e1e6fb;
+  border-radius: 99px;
+  color: #4f64c2;
+  background: #f5f7ff;
+  font-size: 10px;
+}
+
+.reference-recent-list article > button {
+  width: 30px;
+  border: 0;
+  color: #8b909a;
+  background: transparent;
+  letter-spacing: 2px;
+}
+
+.reference-overlay-error {
+  margin: 10px 0 0;
+  color: #c43e4a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reference-overlay-shell:not(.is-expanded) .reference-expand-button {
+  bottom: 5px;
+  width: 60px;
+  height: 60px;
+  border-width: 5px;
+}
+
+.reference-overlay-shell:not(.is-expanded) .reference-expand-button .reference-icon {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 600px) {
+  .reference-overlay-bar {
+    padding: 0 12px;
+    border-radius: 24px;
+  }
+
+  .reference-overlay-identity {
+    gap: 10px;
+  }
+
+  .reference-app-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .reference-app-icon .reference-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .reference-overlay-identity > p {
+    max-width: 70px;
+    font-size: 14px;
+  }
+
+  .reference-status {
+    display: none;
+  }
+
+  .reference-overlay-actions {
+    gap: 6px;
+  }
+
+  .reference-overlay-actions > strong {
+    font-size: 18px;
+  }
+
+  .reference-icon-button,
+  .reference-start-button {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    border-radius: 11px;
+  }
+
+  .reference-start-button {
+    width: auto;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .reference-plain-button {
+    width: 20px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .reference-plain-button .reference-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .reference-expand-button,
+  .reference-overlay-shell:not(.is-expanded) .reference-expand-button {
+    bottom: 15px;
+    width: 54px;
+    height: 54px;
+    border-width: 5px;
+  }
+
+  .reference-expand-button .reference-icon,
+  .reference-overlay-shell:not(.is-expanded) .reference-expand-button .reference-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .reference-timer-card {
+    padding: 20px 16px;
+  }
+
+  .reference-timer-caption {
+    display: none;
+  }
+
+  .reference-ring-button {
+    width: 80px;
+    height: 80px;
+    border-width: 7px;
+  }
+
+  .reference-ring-button .reference-icon {
+    width: 27px;
+    height: 27px;
+  }
+
+  .reference-control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 13px 10px;
+  }
+
+  .reference-control-row button {
+    gap: 4px;
+    padding: 0 6px;
+    font-size: 13px;
+  }
+
+  .reference-control-row .complete-control {
+    font-size: 0;
+  }
+
+  .reference-control-row .complete-control::after {
+    content: "✓";
+    font-size: 15px;
+  }
+
+  .reference-tags > div {
+    gap: 6px;
+  }
+
+  .reference-tags button {
+    gap: 5px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .reference-notes-heading small {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {

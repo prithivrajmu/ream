@@ -20,3 +20,10 @@ export function formatEntryTime(value: string): string {
     minute: "2-digit"
   }).format(new Date(value));
 }
+
+export function formatEntryDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
