@@ -2124,6 +2124,7 @@ body.overlay-route {
   font-weight: 650;
 }
 
+.dashboard-entry-list article.has-ai-preview,
 .notes-list article.has-ai-preview {
   align-items: flex-start;
 }

@@ -474,6 +474,23 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
     }
   }
 
+  function renderImproveNoteButton(entry: TimeEntry): ReactNode {
+    if (!entry.note.trim()) {
+      return null;
+    }
+
+    return <button className="ai-note-button" disabled={aiLoadingNoteId === entry.id} onClick={() => void handleImproveNote(entry)}>{aiLoadingNoteId === entry.id ? "Improving..." : "Improve with AI"}</button>;
+  }
+
+  function renderAiPreview(entry: TimeEntry): ReactNode {
+    const preview = aiPreview?.entryId === entry.id ? aiPreview : null;
+    if (!preview) {
+      return null;
+    }
+
+    return <div className="ai-note-preview"><section><h3>Raw note</h3><p>{preview.rawNote}</p></section><section><h3>AI suggestion</h3><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
+  }
+
   async function handleExportJson() {
     setError(null);
 
@@ -590,8 +607,8 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
           <footer className="dashboard-footer"><MainIcon name="note" />Notes live with your tasks.</footer>
         </> : null}
 
-        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div><div className="dashboard-entry-list">
-          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
+        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
+          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><button className="text-action" onClick={() => setIsTaskComposerOpen(true)}>Create task</button></div><div className="project-management-list">
@@ -609,8 +626,7 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
 
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
-            const preview = aiPreview?.entryId === entry.id ? aiPreview : null;
-            return <article className={preview ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div><button className="ai-note-button" disabled={aiLoadingNoteId === entry.id} onClick={() => void handleImproveNote(entry)}>{aiLoadingNoteId === entry.id ? "Improving..." : "Improve with AI"}</button></div>{preview ? <div className="ai-note-preview"><section><h3>Raw note</h3><p>{preview.rawNote}</p></section><section><h3>AI suggestion</h3><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div> : null}</div></article>;
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div>{renderImproveNoteButton(entry)}</div>{renderAiPreview(entry)}</div></article>;
           })}
         </div></section> : null}
 
