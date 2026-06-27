@@ -4,7 +4,7 @@ import { DEFAULT_OLLAMA_MODEL, type ImproveNoteRequest, validateImprovedNoteOutp
 const DEFAULT_PORT = Number(process.env.REAM_AI_SIDECAR_PORT ?? 39271);
 const OLLAMA_CHAT_URL = process.env.REAM_OLLAMA_CHAT_URL ?? "http://localhost:11434/api/chat";
 const OLLAMA_HEALTH_URL = process.env.REAM_OLLAMA_HEALTH_URL ?? "http://localhost:11434/api/tags";
-const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 300_000;
 const HEALTH_TIMEOUT_MS = 1_500;
 const MAX_REQUEST_BYTES = 128 * 1024;
 
@@ -91,6 +91,7 @@ async function handleImproveNote(request: IncomingMessage, response: ServerRespo
             }
           ],
           options: {
+            num_predict: 512,
             temperature: 0.2
           }
         })
@@ -112,12 +113,17 @@ async function handleImproveNote(request: IncomingMessage, response: ServerRespo
     sendJson(response, 200, output);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to improve note.";
-    const unavailable = isNetworkOrTimeoutError(error);
-    sendJson(response, unavailable ? 503 : 502, {
-      error: unavailable
-        ? `Ollama is not available at ${OLLAMA_CHAT_URL}. Start Ollama and pull ${model}, then try again.`
-        : message
-    });
+    if (isTimeoutError(error)) {
+      sendJson(response, 504, { error: `Ollama timed out while running ${model}. Try again after the model is loaded, or choose a smaller local model.` });
+      return;
+    }
+
+    if (isNetworkError(error)) {
+      sendJson(response, 503, { error: `Ollama is not available at ${OLLAMA_CHAT_URL}. Start Ollama and pull ${model}, then try again.` });
+      return;
+    }
+
+    sendJson(response, 502, { error: message });
   }
 }
 
@@ -208,11 +214,18 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-function isNetworkOrTimeoutError(error: unknown): boolean {
+function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
-  return error.name === "AbortError" || error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED");
+  return error.name === "AbortError";
+}
+
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED");
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown) {
