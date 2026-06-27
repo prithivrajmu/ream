@@ -947,6 +947,8 @@ body.overlay-route {
 .reference-overlay-shell[class*="theme-"] .reference-search,
 .reference-overlay-shell[class*="theme-"] .reference-notes-card textarea,
 .reference-overlay-shell[class*="theme-"] .reference-icon-button,
+.reference-overlay-shell[class*="theme-"] .reference-ai-button,
+.reference-overlay-shell[class*="theme-"] .reference-ai-actions button,
 .reference-overlay-shell[class*="theme-"] .reference-control-row button,
 .reference-overlay-shell[class*="theme-"] .reference-tags button {
   border-color: var(--theme-subtle);
@@ -1236,6 +1238,7 @@ body.overlay-route {
   box-shadow: 0 20px 50px rgb(32 45 83 / 18%), inset 0 1px #fff;
   backdrop-filter: blur(26px) saturate(1.18);
   -webkit-app-region: no-drag;
+  overflow: auto;
 }
 
 .reference-task-picker > label {
@@ -1485,6 +1488,7 @@ body.overlay-route {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 13px;
+  overflow: auto;
   padding: 18px 16px 22px;
 }
 
@@ -1509,6 +1513,33 @@ body.overlay-route {
 .reference-notes-heading small {
   color: #9398a4;
   font-size: 10px;
+}
+
+.reference-ai-button,
+.reference-ai-actions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid #dce1ff;
+  border-radius: 9px;
+  color: #5663f2;
+  background: linear-gradient(145deg, #f5f6ff, #fff);
+  box-shadow: 0 4px 10px rgb(85 99 242 / 8%);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.reference-ai-button.is-muted {
+  border-color: #d8dde5;
+  color: #5a6272;
+  background: linear-gradient(145deg, #f8f9fb, #fff);
+}
+
+.reference-ai-button:disabled {
+  cursor: not-allowed;
+  opacity: .52;
 }
 
 .reference-notes-heading b,
@@ -1539,6 +1570,81 @@ body.overlay-route {
 .reference-select-wrap:focus-within {
   border-color: rgb(96 105 255 / 48%);
   box-shadow: 0 0 0 3px rgb(96 105 255 / 10%), inset 0 1px #fff;
+}
+
+.reference-ai-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reference-ai-preview section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e4e6ef;
+  border-radius: 11px;
+  background: rgb(255 255 255 / 72%);
+}
+
+.reference-ai-preview h3 {
+  margin: 0 0 8px;
+  color: #252b36;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reference-ai-preview p {
+  margin: 0;
+  color: #3a414d;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.reference-ai-preview dl {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+}
+
+.reference-ai-preview dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.reference-ai-preview dt {
+  color: #5663f2;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.reference-ai-preview dd {
+  margin: 0;
+  color: #4e5561;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.reference-ai-preview small {
+  display: block;
+  margin-top: 10px;
+  color: #8c929e;
+  font-size: 10px;
+}
+
+.reference-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.reference-ai-actions button {
+  min-height: 31px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 
 .reference-save-note {
@@ -1668,6 +1774,12 @@ body.overlay-route {
   color: #4f64c2;
   background: #f5f7ff;
   font-size: 10px;
+}
+
+.reference-entry-tag.is-ai {
+  border-color: #dfe4ee;
+  color: #5d6473;
+  background: #f8f9fc;
 }
 
 .reference-recent-list article > button {
@@ -2078,6 +2190,268 @@ body.overlay-route {
   padding-right: 6px;
 }
 
+.note-row-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.note-row-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.note-row-header > div {
+  min-width: 0;
+}
+
+.ai-note-button,
+.ai-note-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #ddd5c8;
+  border-radius: 8px;
+  color: #223d33;
+  background: #fbf8f1;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ai-note-button:hover,
+.ai-note-actions button:hover {
+  border-color: #c9d4c2;
+  background: #f2f5ef;
+}
+
+.ai-note-button.is-muted {
+  border-color: #d8dde5;
+  color: #5a6272;
+  background: linear-gradient(145deg, #f8f9fb, #fff);
+}
+
+.ai-note-status {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 1px solid #dfe4ee;
+  border-radius: 999px;
+  color: #6b7280;
+  background: #f7f9fc;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ai-note-error {
+  margin: 0 0 12px;
+  padding: 11px 12px;
+  border: 1px solid #efd5cf;
+  border-radius: 9px;
+  color: #9f433f;
+  background: #fff7f3;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dashboard-entry-list article.has-ai-preview,
+.notes-list article.has-ai-preview {
+  align-items: flex-start;
+}
+
+.ai-note-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 15px;
+}
+
+.ai-note-preview section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e3ded3;
+  border-radius: 11px;
+  background: #fbf8f1;
+}
+
+.ai-note-preview h3 {
+  margin: 0 0 9px;
+  color: #1d2026;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.ai-note-preview p {
+  color: #3d403b;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.ai-note-preview dl {
+  display: grid;
+  gap: 8px;
+  margin: 13px 0 0;
+}
+
+.ai-note-preview dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.ai-note-preview dt {
+  color: #7b542e;
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.ai-note-preview dd {
+  margin: 0;
+  color: #4f514c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ai-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.ai-model-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  color: #5e6372;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ai-model-field input {
+  width: 100%;
+  height: 43px;
+  padding: 0 12px;
+  border: 1px solid #e4e3ea;
+  border-radius: 9px;
+  outline: 0;
+  color: #252936;
+  background: #fff;
+}
+
+.ai-model-field input:focus {
+  border-color: #8aa082;
+  box-shadow: 0 0 0 3px rgb(47 111 79 / 12%);
+}
+
+.dev-ai-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dev-ai-metrics p {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e9e8ef;
+  border-radius: 12px;
+  background: #fbfaf7;
+}
+
+.dev-ai-metrics span,
+.dev-ai-list small {
+  color: #858999;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dev-ai-metrics strong {
+  display: block;
+  margin-top: 7px;
+  color: #252936;
+  font-size: 18px;
+}
+
+.dev-ai-subheading {
+  margin: 0 0 10px;
+  color: #6b7180;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.dev-ai-list {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.dev-ai-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid #efeff3;
+}
+
+.dev-ai-list article > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.dev-ai-list strong {
+  color: #232733;
+  font-size: 13px;
+}
+
+.dev-ai-list p {
+  overflow: hidden;
+  margin: 5px 0;
+  color: #5f6572;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-ai-list article > span {
+  color: #4f416f;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.dev-ai-status {
+  padding: 5px 9px;
+  border: 1px solid #e2e3ea;
+  border-radius: 999px;
+  color: #636978;
+  background: #f7f8fb;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.dev-ai-status.is-accepted {
+  border-color: #dcecdf;
+  color: #298951;
+  background: #f8fffa;
+}
+
+.dev-ai-status.is-rejected {
+  border-color: #f3d5d8;
+  color: #c33f4b;
+  background: #fff7f8;
+}
+
+.dev-ai-status.is-copied {
+  border-color: #dce1ff;
+  color: #5663f2;
+  background: #f7f8ff;
+}
+
 .project-management-list article.is-archived {
   opacity: 0.76;
 }
@@ -2129,6 +2503,16 @@ body.overlay-route {
   .notes-list,
   .settings-grid {
     overflow: visible;
+  }
+
+  .note-row-header,
+  .ai-note-preview {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ai-note-button {
+    justify-self: start;
   }
 }
 
