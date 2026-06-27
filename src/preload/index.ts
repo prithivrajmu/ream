@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ImproveNoteRequest, ImproveNoteResult } from "../shared/ai";
 
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
@@ -8,6 +9,7 @@ const desktopApi = {
   setOverlayExpanded: (expanded: boolean) => ipcRenderer.invoke("window:set-overlay-expanded", expanded),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
+  improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, expanded: boolean) => callback(expanded);
     ipcRenderer.on("overlay:expanded-changed", listener);

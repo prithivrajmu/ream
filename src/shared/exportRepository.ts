@@ -18,8 +18,9 @@ export async function readAllExportData(database: TimesheetDatabase): Promise<Ti
 }
 
 export async function importTimesheetData(database: TimesheetDatabase, exportData: TimesheetExport): Promise<void> {
-  await database.transaction("rw", database.tasks, database.projects, database.timeEntries, database.activeTimers, async () => {
+  await database.transaction("rw", database.tasks, database.projects, database.timeEntries, database.activeTimers, database.noteAiSuggestions, async () => {
     await database.activeTimers.clear();
+    await database.noteAiSuggestions.clear();
     await database.tasks.clear();
     await database.projects.clear();
     await database.timeEntries.clear();

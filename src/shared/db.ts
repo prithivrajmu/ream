@@ -1,11 +1,12 @@
 import Dexie, { type Table } from "dexie";
-import type { ActiveTimer, Project, Task, TimeEntry } from "./domain";
+import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "./domain";
 
 export class TimesheetDatabase extends Dexie {
   tasks!: Table<Task, string>;
   projects!: Table<Project, string>;
   timeEntries!: Table<TimeEntry, string>;
   activeTimers!: Table<ActiveTimer, string>;
+  noteAiSuggestions!: Table<NoteAiSuggestion, string>;
 
   constructor(name = "timesheet-tracker") {
     super(name);
@@ -47,6 +48,14 @@ export class TimesheetDatabase extends Dexie {
       if (projects.length) {
         await (transaction.table("projects") as Table<Project, string>).bulkPut(projects);
       }
+    });
+
+    this.version(3).stores({
+      tasks: "id, title, *projectIds, archived, createdAt, updatedAt",
+      projects: "id, title, archived, createdAt, updatedAt",
+      timeEntries: "id, taskId, startedAt, endedAt, createdAt",
+      activeTimers: "id, taskId, startedAt",
+      noteAiSuggestions: "id, noteId, status, createdAt, acceptedAt"
     });
   }
 }

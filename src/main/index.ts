@@ -1,5 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { join } from "node:path";
+import { DEFAULT_OLLAMA_MODEL, type ImproveNoteRequest, type ImproveNoteResult, validateImprovedNoteOutput } from "../shared/ai";
+import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
   getTopRightOverlayBounds as getTopRightOverlayBoundsForWorkArea,
@@ -13,6 +15,7 @@ const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
@@ -278,6 +281,13 @@ app.whenReady().then(() => {
   buildAppMenu();
   setupTray();
   registerShortcuts();
+  startAiSidecar()
+    .then((handle) => {
+      aiSidecar = handle;
+    })
+    .catch((error: unknown) => {
+      console.warn("AI sidecar failed to start.", error);
+    });
 
   ipcMain.handle("window:show-main", () => {
     showMainWindow();
@@ -315,6 +325,32 @@ app.whenReady().then(() => {
     overlayWindow?.hide();
   });
 
+  ipcMain.handle("ai:improve-note", async (_event, input: ImproveNoteRequest): Promise<ImproveNoteResult> => {
+    if (!aiSidecar) {
+      throw new Error("AI sidecar is not available. Restart Ream and try again.");
+    }
+
+    const model = input.model?.trim() || DEFAULT_OLLAMA_MODEL;
+    const response = await fetch(`${aiSidecar.url}/ai/improve-note`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...input, model })
+    });
+    const payload = (await response.json()) as unknown;
+
+    if (!response.ok) {
+      const message = payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : "Unable to improve note with AI.";
+      throw new Error(message);
+    }
+
+    return {
+      model,
+      output: validateImprovedNoteOutput(payload)
+    };
+  });
+
   app.on("activate", () => {
     ensureMainWindow();
   });
@@ -322,6 +358,7 @@ app.whenReady().then(() => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  void aiSidecar?.close();
 });
 
 app.on("window-all-closed", () => {

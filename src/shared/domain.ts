@@ -41,6 +41,19 @@ export interface ActiveTimer {
   updatedAt: string;
 }
 
+export type NoteAiSuggestionStatus = "pending" | "accepted" | "rejected" | "copied";
+
+export interface NoteAiSuggestion {
+  id: EntityId;
+  noteId: EntityId;
+  model: string;
+  inputText: string;
+  outputJson: unknown;
+  status: NoteAiSuggestionStatus;
+  createdAt: string;
+  acceptedAt: string | null;
+}
+
 export interface CreateTaskInput {
   title: string;
   projectIds?: EntityId[];
