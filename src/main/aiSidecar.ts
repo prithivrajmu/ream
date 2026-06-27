@@ -1,5 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { DEFAULT_OLLAMA_MODEL, type ImproveNoteRequest, validateImprovedNoteOutput } from "../shared/ai";
+import {
+  DEFAULT_OLLAMA_MODEL,
+  FALLBACK_OLLAMA_MODEL,
+  type ImprovedNoteOutput,
+  type ImproveNoteRequest,
+  validateImprovedNoteOutput
+} from "../shared/ai";
 
 const DEFAULT_PORT = Number(process.env.REAM_AI_SIDECAR_PORT ?? 39271);
 const OLLAMA_CHAT_URL = process.env.REAM_OLLAMA_CHAT_URL ?? "http://localhost:11434/api/chat";
@@ -7,6 +13,8 @@ const OLLAMA_HEALTH_URL = process.env.REAM_OLLAMA_HEALTH_URL ?? "http://localhos
 const REQUEST_TIMEOUT_MS = 300_000;
 const HEALTH_TIMEOUT_MS = 1_500;
 const MAX_REQUEST_BYTES = 128 * 1024;
+const USED_MODEL_HEADER = "x-ream-ai-model";
+const FALLBACK_FROM_HEADER = "x-ream-ai-fallback-from";
 
 export interface AiSidecarHandle {
   url: string;
@@ -58,73 +66,115 @@ async function routeRequest(request: IncomingMessage, response: ServerResponse) 
 
 async function handleHealth(response: ServerResponse) {
   const model = readModelName();
+  const fallbackModel = readFallbackModelName();
   try {
     await fetchWithTimeout(OLLAMA_HEALTH_URL, { method: "GET" }, HEALTH_TIMEOUT_MS);
-    sendJson(response, 200, { ok: true, ollama: { ok: true }, model });
+    sendJson(response, 200, { ok: true, ollama: { ok: true }, model, fallbackModel });
   } catch {
-    sendJson(response, 200, { ok: true, ollama: { ok: false }, model });
+    sendJson(response, 200, { ok: true, ollama: { ok: false }, model, fallbackModel });
   }
 }
 
 async function handleImproveNote(request: IncomingMessage, response: ServerResponse) {
   const input = validateImproveNoteRequest(await readJsonBody(request));
-  const model = normalizeModel(input.model);
+  const primaryModel = input.model?.trim() || readModelName();
+  const fallbackModel = readFallbackModelName();
 
   try {
-    const ollamaResponse = await fetchWithTimeout(
-      OLLAMA_CHAT_URL,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model,
-          stream: false,
-          format: "json",
-          messages: [
-            {
-              role: "system",
-              content: buildSystemPrompt()
-            },
-            {
-              role: "user",
-              content: buildUserPrompt(input)
-            }
-          ],
-          options: {
-            num_predict: 512,
-            temperature: 0.2
-          }
-        })
-      },
-      REQUEST_TIMEOUT_MS
-    );
-
-    if (!ollamaResponse.ok) {
-      throw new Error(`Ollama returned ${ollamaResponse.status}.`);
-    }
-
-    const chatResponse = (await ollamaResponse.json()) as OllamaChatResponse;
-    const content = chatResponse.message?.content;
-    if (typeof content !== "string") {
-      throw new Error("Ollama response did not include text content.");
-    }
-
-    const output = validateImprovedNoteOutput(JSON.parse(content));
+    const output = await improveNoteWithModel(input, primaryModel);
+    response.setHeader(USED_MODEL_HEADER, primaryModel);
     sendJson(response, 200, output);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to improve note.";
-    if (isTimeoutError(error)) {
-      sendJson(response, 504, { error: `Ollama timed out while running ${model}. Try again after the model is loaded, or choose a smaller local model.` });
-      return;
+    if (shouldTryFallback(input.model, primaryModel, fallbackModel)) {
+      try {
+        const output = await improveNoteWithModel(input, fallbackModel);
+        response.setHeader(USED_MODEL_HEADER, fallbackModel);
+        response.setHeader(FALLBACK_FROM_HEADER, primaryModel);
+        sendJson(response, 200, output);
+        return;
+      } catch (fallbackError) {
+        sendAiError(response, fallbackError, fallbackModel, `Ollama failed with ${primaryModel} and fallback ${fallbackModel}.`);
+        return;
+      }
     }
 
-    if (isNetworkError(error)) {
-      sendJson(response, 503, { error: `Ollama is not available at ${OLLAMA_CHAT_URL}. Start Ollama and pull ${model}, then try again.` });
-      return;
-    }
-
-    sendJson(response, 502, { error: message });
+    sendAiError(response, error, primaryModel);
   }
+}
+
+async function improveNoteWithModel(input: ImproveNoteRequest, model: string): Promise<ImprovedNoteOutput> {
+  const ollamaResponse = await fetchWithTimeout(
+    OLLAMA_CHAT_URL,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: "json",
+        messages: [
+          {
+            role: "system",
+            content: buildSystemPrompt()
+          },
+          {
+            role: "user",
+            content: buildUserPrompt(input)
+          }
+        ],
+        options: {
+          num_predict: 512,
+          temperature: 0.2
+        }
+      })
+    },
+    REQUEST_TIMEOUT_MS
+  );
+
+  if (!ollamaResponse.ok) {
+    throw new Error(`Ollama returned ${ollamaResponse.status}.`);
+  }
+
+  const chatResponse = (await ollamaResponse.json()) as OllamaChatResponse;
+  const content = chatResponse.message?.content;
+  if (typeof content !== "string") {
+    throw new Error("Ollama response did not include text content.");
+  }
+
+  return validateImprovedNoteOutput(JSON.parse(content));
+}
+
+function sendAiError(response: ServerResponse, error: unknown, model: string, prefix?: string) {
+  const message = error instanceof Error ? error.message : "Unable to improve note.";
+  const fullMessage = prefix ? `${prefix} ${message}` : message;
+
+  if (isTimeoutError(error)) {
+    sendJson(response, 504, {
+      error: `${prefix ? `${prefix} ` : ""}Ollama timed out while running ${model}. Try again after the model is loaded, or choose a smaller local model.`
+    });
+    return;
+  }
+
+  if (isNetworkError(error)) {
+    sendJson(response, 503, {
+      error: `${prefix ? `${prefix} ` : ""}Ollama is not available at ${OLLAMA_CHAT_URL}. Start Ollama and pull ${model}, then try again.`
+    });
+    return;
+  }
+
+  sendJson(response, 502, { error: fullMessage });
+}
+
+function shouldTryFallback(explicitModel: string | undefined, primaryModel: string, fallbackModel: string): boolean {
+  if (primaryModel === fallbackModel) {
+    return false;
+  }
+
+  if (!explicitModel) {
+    return true;
+  }
+
+  return explicitModel === DEFAULT_OLLAMA_MODEL;
 }
 
 function buildSystemPrompt(): string {
@@ -181,11 +231,11 @@ function readRequiredString(value: unknown, field: string): string {
 }
 
 function readModelName(): string {
-  return normalizeModel(process.env.REAM_OLLAMA_MODEL);
+  return process.env.REAM_OLLAMA_MODEL?.trim() || DEFAULT_OLLAMA_MODEL;
 }
 
-function normalizeModel(model: string | undefined): string {
-  return model?.trim() || DEFAULT_OLLAMA_MODEL;
+function readFallbackModelName(): string {
+  return process.env.REAM_OLLAMA_FALLBACK_MODEL?.trim() || FALLBACK_OLLAMA_MODEL;
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {

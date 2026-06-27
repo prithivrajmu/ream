@@ -346,7 +346,7 @@ app.whenReady().then(() => {
     }
 
     return {
-      model,
+      model: response.headers.get("x-ream-ai-model")?.trim() || model,
       output: validateImprovedNoteOutput(payload)
     };
   });
