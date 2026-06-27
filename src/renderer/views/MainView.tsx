@@ -15,10 +15,15 @@ import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
-import { persistTheme, readStoredTheme, themeOptions, type ThemeId } from "../themeOptions";
+import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
-export function MainView() {
+interface MainViewProps {
+  themeId: ThemeId;
+  setThemeId: (themeId: ThemeId) => void;
+}
+
+export function MainView({ themeId, setThemeId }: MainViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -45,7 +50,6 @@ export function MainView() {
   const [isProjectComposerOpen, setIsProjectComposerOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [quickCapture, setQuickCapture] = useState("");
-  const [themeId, setThemeId] = useState<ThemeId>(() => readStoredTheme());
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -133,10 +137,6 @@ export function MainView() {
 
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
-
-  useEffect(() => {
-    persistTheme(window.localStorage, themeId);
-  }, [themeId]);
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
