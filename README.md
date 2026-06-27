@@ -156,54 +156,11 @@ Later, add a GitHub integration using a personal access token or OAuth device
 flow. That should be optional because local-only use must remain private and
 fully functional.
 
-## Build Plan
+## Documentation
 
-### Phase 1: Project Foundation
-
-- Create Electron + Vite + React TypeScript app.
-- Add lint/build/test scripts.
-- Establish basic layout, typography, and color tokens.
-- Set up IndexedDB schema and typed repository functions.
-- Add main and overlay window bootstrapping.
-
-### Phase 2: Timer And Entries
-
-- Implement task creation.
-- Implement one active timer at a time.
-- Persist active timer state.
-- Save completed time entries.
-- Add manual entry create/edit/delete.
-- Wire timer state so the main window and overlay stay in sync.
-
-### Phase 3: Overlay
-
-- Build always-on-top overlay window.
-- Add compact and expanded overlay states.
-- Add task switcher, start/stop control, elapsed timer, and quick note input.
-- Add pin/unpin and show main window actions.
-- Add tray/menu entry for showing and hiding the overlay.
-
-### Phase 4: Notes And Review
-
-- Add notes to tasks and entries.
-- Build Today view.
-- Build weekly summary and task totals.
-- Add CSV and JSON export.
-
-### Phase 5: Private Backup Path
-
-- Add JSON import.
-- Add backup instructions inside Settings.
-- Optionally add a local `backups/` directory convention for git-tracked exports.
-
-### Phase 6: Polish
-
-- Keyboard-friendly controls.
-- Global shortcut for show/hide overlay.
-- Empty states.
-- Validation and conflict handling.
-- Playwright smoke test for create task, start timer, stop timer, note capture,
-  and export.
+- [Task roadmap](TASKS.md)
+- [AI sidecar guide](docs/ai-sidecar.md)
+- [Private backup guide](BACKUP.md)
 
 ## Open Decisions
 
