@@ -110,3 +110,22 @@ Done when:
 - All tests pass.
 - Build passes.
 - Manual smoke flow passes on the development machine.
+
+## Stage 7: Local AI Sidecar
+
+Goal: add a local Ollama-backed sidecar for note improvement and keep AI work isolated from the core app.
+
+Tasks:
+
+- Add a local HTTP sidecar for AI requests.
+- Validate structured JSON responses before the renderer sees them.
+- Improve task notes with a preview, accept/reject, and copy workflow.
+- Record request duration and terminal status for Dev telemetry.
+- Keep raw notes unchanged unless the user explicitly accepts the suggestion.
+- Document the sidecar endpoints, model settings, and fallback behavior.
+
+Done when:
+
+- All tests pass.
+- Build passes.
+- Manual smoke flow can improve a note against a local Ollama instance.
