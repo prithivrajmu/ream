@@ -1,8 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput } from "../../shared/ai";
-import { createNoteAiSuggestion, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
+import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
-import type { ActiveTimer, Project, Task, TimeEntry } from "../../shared/domain";
+import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
 import { listActiveProjects } from "../../shared/projectRepository";
 import { listActiveTasks } from "../../shared/taskRepository";
 import { formatDuration } from "../../shared/time";
@@ -36,6 +36,7 @@ export function OverlayView({ themeId }: OverlayViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<NoteAiSuggestion[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
   const [note, setNote] = useState("");
@@ -52,6 +53,15 @@ export function OverlayView({ themeId }: OverlayViewProps) {
     [activeTimer, tasks]
   );
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
+  const aiSuggestionByNoteId = useMemo(() => {
+    const map = new Map<string, NoteAiSuggestion>();
+    for (const suggestion of aiSuggestions) {
+      if (!map.has(suggestion.noteId)) {
+        map.set(suggestion.noteId, suggestion);
+      }
+    }
+    return map;
+  }, [aiSuggestions]);
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks]
@@ -67,17 +77,19 @@ export function OverlayView({ themeId }: OverlayViewProps) {
   }, [taskSearch, tasks]);
 
   const refreshOverlayState = useCallback(async (syncNote = false) => {
-    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries] = await Promise.all([
+    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextAiSuggestions] = await Promise.all([
       listActiveTasks(db),
       listActiveProjects(db),
       getActiveTimer(db),
-      db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray()
+      db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray(),
+      listNoteAiSuggestions(db)
     ]);
 
     setTasks(nextTasks);
     setProjects(nextProjects);
     setActiveTimer(nextActiveTimer);
     setRecentEntries(nextRecentEntries);
+    setAiSuggestions(nextAiSuggestions);
 
     if (syncNote && nextActiveTimer) {
       setNote(nextActiveTimer.note);
@@ -324,6 +336,52 @@ export function OverlayView({ themeId }: OverlayViewProps) {
     }
   }
 
+  async function handleOpenSavedAiSuggestion(preview: OverlayAiPreview) {
+    setError(null);
+    setAiPreview(preview);
+  }
+
+  function renderImproveNoteButton() {
+    if (!activeTimer) {
+      return null;
+    }
+
+    const noteText = note.trim();
+    const savedSuggestion = aiSuggestionByNoteId.get(activeTimer.id);
+    if (savedSuggestion && savedSuggestion.inputText === noteText) {
+      return <button className="reference-ai-button is-muted" onClick={() => void handleOpenSavedAiSuggestion({
+        suggestionId: savedSuggestion.id,
+        activeTimerId: activeTimer.id,
+        model: savedSuggestion.model,
+        rawNote: savedSuggestion.inputText,
+        output: validateImprovedNoteOutput(savedSuggestion.outputJson)
+      })}>{getAiSuggestionButtonLabel(savedSuggestion)}</button>;
+    }
+
+    return (
+      <button
+        className="reference-ai-button"
+        disabled={!noteText || aiLoading}
+        onClick={handleImproveOverlayNote}
+      >
+        {aiLoading ? "Improving..." : "Improve with AI"}
+      </button>
+    );
+  }
+
+  function getAiSuggestionButtonLabel(suggestion: NoteAiSuggestion): string {
+    if (suggestion.status === "accepted") {
+      return "AI improved";
+    }
+    if (suggestion.status === "rejected") {
+      return "AI rejected";
+    }
+    if (suggestion.status === "copied") {
+      return "AI copied";
+    }
+    return "AI preview";
+  }
+
   return (
     <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""}`} aria-label="Ream overlay">
       <header className="reference-overlay-bar">
@@ -438,13 +496,7 @@ export function OverlayView({ themeId }: OverlayViewProps) {
             <section className="reference-notes-card">
               <div className="reference-notes-heading">
                 <span><Icon name="note" />Task Notes</span>
-                <button
-                  className="reference-ai-button"
-                  disabled={!activeTimer || !note.trim() || aiLoading}
-                  onClick={handleImproveOverlayNote}
-                >
-                  {aiLoading ? "Improving..." : "Improve with AI"}
-                </button>
+                {renderImproveNoteButton()}
               </div>
               <textarea
                 aria-label="Task notes"
@@ -482,14 +534,16 @@ export function OverlayView({ themeId }: OverlayViewProps) {
           <section className="reference-recent-notes">
             <div className="reference-recent-heading"><h2>Recent Notes</h2><button onClick={() => void handleOpenMainWindow()}>View all <Icon name="chevron" /></button></div>
             <div className="reference-recent-list">
-              {recentEntries.length === 0 ? <p>No completed entries yet.</p> : recentEntries.map((entry) => (
-                <article key={entry.id}>
+              {recentEntries.length === 0 ? <p>No completed entries yet.</p> : recentEntries.map((entry) => {
+                const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
+                return <article key={entry.id}>
                   <span className="reference-entry-icon"><Icon name="note" /></span>
                   <div><p>{entry.note || "No note added"}</p><small>{formatEntryDateTime(entry.startedAt)} &nbsp;•&nbsp; {tasks.find((task) => task.id === entry.taskId)?.title ?? "Archived task"}</small></div>
                   <span className="reference-entry-tag">{tasks.find((task) => task.id === entry.taskId)?.tags[0] ?? "Entry"}</span>
+                  {aiSuggestion ? <span className="reference-entry-tag is-ai">{getAiSuggestionButtonLabel(aiSuggestion)}</span> : null}
                   <button aria-label="Open entry in main window" onClick={() => void handleOpenMainWindow()}>•••</button>
-                </article>
-              ))}
+                </article>;
+              })}
             </div>
           </section>
 

@@ -1531,6 +1531,12 @@ body.overlay-route {
   font-weight: 650;
 }
 
+.reference-ai-button.is-muted {
+  border-color: #d8dde5;
+  color: #5a6272;
+  background: linear-gradient(145deg, #f8f9fb, #fff);
+}
+
 .reference-ai-button:disabled {
   cursor: not-allowed;
   opacity: .52;
@@ -1768,6 +1774,12 @@ body.overlay-route {
   color: #4f64c2;
   background: #f5f7ff;
   font-size: 10px;
+}
+
+.reference-entry-tag.is-ai {
+  border-color: #dfe4ee;
+  color: #5d6473;
+  background: #f8f9fc;
 }
 
 .reference-recent-list article > button {
@@ -2213,6 +2225,24 @@ body.overlay-route {
   background: #f2f5ef;
 }
 
+.ai-note-button.is-muted {
+  border-color: #d8dde5;
+  color: #5a6272;
+  background: linear-gradient(145deg, #f8f9fb, #fff);
+}
+
+.ai-note-status {
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 1px solid #dfe4ee;
+  border-radius: 999px;
+  color: #6b7280;
+  background: #f7f9fc;
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .ai-note-error {
   margin: 0 0 12px;
   padding: 11px 12px;
@@ -2341,6 +2371,15 @@ body.overlay-route {
   margin-top: 7px;
   color: #252936;
   font-size: 18px;
+}
+
+.dev-ai-subheading {
+  margin: 0 0 10px;
+  color: #6b7180;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
 }
 
 .dev-ai-list {

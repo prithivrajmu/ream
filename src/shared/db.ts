@@ -67,8 +67,13 @@ export class TimesheetDatabase extends Dexie {
     }).upgrade(async (transaction) => {
       const suggestions = transaction.table("noteAiSuggestions") as Table<NoteAiSuggestion, string>;
       await suggestions.toCollection().modify((suggestion) => {
-        suggestion.durationMs = typeof suggestion.durationMs === "number" ? suggestion.durationMs : 0;
-        suggestion.statusUpdatedAt = suggestion.statusUpdatedAt ?? suggestion.acceptedAt ?? null;
+        const statusTimestamp = suggestion.statusUpdatedAt ?? suggestion.acceptedAt ?? null;
+        suggestion.durationMs = typeof suggestion.durationMs === "number"
+          ? suggestion.durationMs
+          : statusTimestamp
+            ? Math.max(0, new Date(statusTimestamp).getTime() - new Date(suggestion.createdAt).getTime())
+            : -1;
+        suggestion.statusUpdatedAt = statusTimestamp;
       });
     });
   }

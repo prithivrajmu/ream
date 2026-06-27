@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput } from "../../shared/ai";
+import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
@@ -71,6 +71,15 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
+  const aiSuggestionByNoteId = useMemo(() => {
+    const map = new Map<string, NoteAiSuggestion>();
+    for (const suggestion of aiSuggestions) {
+      if (!map.has(suggestion.noteId)) {
+        map.set(suggestion.noteId, suggestion);
+      }
+    }
+    return map;
+  }, [aiSuggestions]);
   const archivedTasks = useMemo(() => allTasks.filter((task) => task.archived), [allTasks]);
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
@@ -80,15 +89,19 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
     [allEntries]
   );
   const noteEntries = useMemo(() => recentEntries.filter((entry) => entry.note.trim()), [recentEntries]);
+  const improvedAiSuggestions = useMemo(() => aiSuggestions.filter((suggestion) => suggestion.status !== "pending"), [aiSuggestions]);
   const aiSuggestionStats = useMemo(() => {
-    const totalDurationMs = aiSuggestions.reduce((total, suggestion) => total + normalizeSuggestionDuration(suggestion), 0);
+    const recordedDurations = aiSuggestions
+      .map((suggestion) => normalizeSuggestionDuration(suggestion))
+      .filter((durationMs): durationMs is number => durationMs >= 0);
+    const totalDurationMs = recordedDurations.reduce((total, durationMs) => total + durationMs, 0);
     return {
       total: aiSuggestions.length,
       pending: aiSuggestions.filter((suggestion) => suggestion.status === "pending").length,
       accepted: aiSuggestions.filter((suggestion) => suggestion.status === "accepted").length,
       rejected: aiSuggestions.filter((suggestion) => suggestion.status === "rejected").length,
       copied: aiSuggestions.filter((suggestion) => suggestion.status === "copied").length,
-      averageDurationMs: aiSuggestions.length ? totalDurationMs / aiSuggestions.length : 0
+      averageDurationMs: recordedDurations.length ? totalDurationMs / recordedDurations.length : -1
     };
   }, [aiSuggestions]);
   const today = useMemo(() => new Date().toDateString(), []);
@@ -496,6 +509,11 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
       return null;
     }
 
+    const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
+    if (aiSuggestion) {
+      return <button className="ai-note-button is-muted" onClick={() => void handleOpenSavedAiSuggestion(entry, aiSuggestion)}>{getAiSuggestionButtonLabel(aiSuggestion)}</button>;
+    }
+
     return <button className="ai-note-button" disabled={aiLoadingNoteId === entry.id} onClick={() => void handleImproveNote(entry)}>{aiLoadingNoteId === entry.id ? "Improving..." : "Improve with AI"}</button>;
   }
 
@@ -506,6 +524,20 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
     }
 
     return <div className="ai-note-preview"><section><h3>Raw note</h3><p>{preview.rawNote}</p></section><section><h3>AI suggestion</h3><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
+  }
+
+  async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
+    setAiError(null);
+    setAiPreview({
+      entryId: entry.id,
+      taskId: entry.taskId,
+      startedAt: entry.startedAt,
+      endedAt: entry.endedAt,
+      suggestionId: suggestion.id,
+      model: suggestion.model,
+      rawNote: suggestion.inputText,
+      output: validateImprovedNoteOutput(suggestion.outputJson)
+    });
   }
 
   async function handleExportJson() {
@@ -626,7 +658,10 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
         </> : null}
 
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
-          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>)}
+          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
+            const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
+          })}
         </div></section> : null}
 
         {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><button className="text-action" onClick={() => setIsTaskComposerOpen(true)}>Create task</button></div><div className="project-management-list">
@@ -644,14 +679,15 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
 
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div>{renderImproveNoteButton(entry)}</div>{renderAiPreview(entry)}</div></article>;
+            const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small>{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}</div>{renderImproveNoteButton(entry)}</div>{renderAiPreview(entry)}</div></article>;
           })}
         </div></section> : null}
 
         {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel ai-settings-panel"><p className="panel-kicker">Local AI</p><h2>Ollama sidecar</h2><p>Improve notes with a local Ollama model. Default: <code>{DEFAULT_OLLAMA_MODEL}</code>. Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code>.</p><label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label></section><section className="dashboard-panel theme-panel"><p className="panel-kicker">Theme lab</p><h2>{activeTheme.label}</h2><p>{activeTheme.description}</p><div className="theme-options" role="list" aria-label="Theme exploration options">{themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => setThemeId(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Overlay</p><h2>Focus mode</h2><p>The overlay opens when this window is minimized, or when you choose Show overlay in the sidebar. Shortcut: Cmd/Ctrl+Shift+T.</p><button onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>Show overlay now</button></section></div> : null}
 
-        {activeSection === "dev" ? <section className="dashboard-panel dev-ai-panel"><div className="section-title"><h2>AI note requests</h2><span>{aiSuggestionStats.total} total</span></div><div className="dev-ai-metrics"><p><span>Average response</span><strong>{formatDurationMs(aiSuggestionStats.averageDurationMs)}</strong></p><p><span>Accepted</span><strong>{aiSuggestionStats.accepted}</strong></p><p><span>Rejected</span><strong>{aiSuggestionStats.rejected}</strong></p><p><span>Copied</span><strong>{aiSuggestionStats.copied}</strong></p><p><span>Pending</span><strong>{aiSuggestionStats.pending}</strong></p></div><div className="dev-ai-list">
-          {aiSuggestions.length === 0 ? <p className="empty-state">AI request telemetry will appear after the first note improvement.</p> : aiSuggestions.slice(0, 25).map((suggestion) => <article key={suggestion.id}><div><strong>{suggestion.model}</strong><p>{suggestion.inputText}</p><small>Created {formatEntryDateTime(suggestion.createdAt)}{suggestion.statusUpdatedAt ? ` · ${formatAiStatus(suggestion.status)} ${formatEntryDateTime(suggestion.statusUpdatedAt)}` : ""}</small></div><span>{formatDurationMs(normalizeSuggestionDuration(suggestion))}</span><b className={`dev-ai-status is-${suggestion.status}`}>{suggestion.status}</b></article>)}
+        {activeSection === "dev" ? <section className="dashboard-panel dev-ai-panel"><div className="section-title"><h2>AI note requests</h2><span>{aiSuggestionStats.total} total</span></div><div className="dev-ai-metrics"><p><span>Average response</span><strong>{formatDurationMs(aiSuggestionStats.averageDurationMs)}</strong></p><p><span>Accepted</span><strong>{aiSuggestionStats.accepted}</strong></p><p><span>Rejected</span><strong>{aiSuggestionStats.rejected}</strong></p><p><span>Copied</span><strong>{aiSuggestionStats.copied}</strong></p><p><span>Pending</span><strong>{aiSuggestionStats.pending}</strong></p></div><h3 className="dev-ai-subheading">Improved notes</h3><div className="dev-ai-list">
+          {improvedAiSuggestions.length === 0 ? <p className="empty-state">AI request telemetry will appear after the first note improvement.</p> : improvedAiSuggestions.slice(0, 25).map((suggestion) => <article key={suggestion.id}><div><strong>{suggestion.model}</strong><p>{suggestion.inputText}</p><small>Created {formatEntryDateTime(suggestion.createdAt)}{suggestion.statusUpdatedAt ? ` · ${formatAiStatus(suggestion.status)} ${formatEntryDateTime(suggestion.statusUpdatedAt)}` : ""}</small></div><span>{formatDurationMs(normalizeSuggestionDuration(suggestion))}</span><b className={`dev-ai-status is-${suggestion.status}`}>{suggestion.status}</b></article>)}
         </div></section> : null}
       </section>
 
@@ -708,11 +744,11 @@ function readClockMs(): number {
 }
 
 function normalizeSuggestionDuration(suggestion: NoteAiSuggestion): number {
-  return typeof suggestion.durationMs === "number" && Number.isFinite(suggestion.durationMs) ? suggestion.durationMs : 0;
+  return typeof suggestion.durationMs === "number" && Number.isFinite(suggestion.durationMs) ? suggestion.durationMs : -1;
 }
 
 function formatDurationMs(durationMs: number): string {
-  if (!durationMs) {
+  if (durationMs < 0) {
     return "n/a";
   }
 
@@ -734,4 +770,24 @@ function formatAiStatus(status: NoteAiSuggestion["status"]): string {
     return "Copied";
   }
   return "Pending";
+}
+
+function getAiSuggestionButtonLabel(suggestion: NoteAiSuggestion): string {
+  if (suggestion.status === "accepted") {
+    return "AI improved";
+  }
+
+  if (suggestion.status === "rejected") {
+    return "AI rejected";
+  }
+
+  if (suggestion.status === "copied") {
+    return "AI copied";
+  }
+
+  return "AI preview";
+}
+
+function getAiSuggestionSummary(suggestion: NoteAiSuggestion): string {
+  return `${getAiSuggestionButtonLabel(suggestion)} · ${formatDurationMs(normalizeSuggestionDuration(suggestion))}`;
 }
