@@ -15,9 +15,15 @@ import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
+import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
-export function MainView() {
+interface MainViewProps {
+  themeId: ThemeId;
+  setThemeId: (themeId: ThemeId) => void;
+}
+
+export function MainView({ themeId, setThemeId }: MainViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -430,8 +436,10 @@ export function MainView() {
     return null;
   })();
 
+  const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
+
   return (
-    <main className="dashboard-shell">
+    <main className={`dashboard-shell theme-${themeId}`}>
       <aside className="dashboard-sidebar">
         <div className="brand-lockup"><span className="brand-mark"><img alt="Ream" src={reamIcon} /></span><div><strong>Ream</strong><p>Time on what matters.</p></div></div>
         <nav className="dashboard-nav" aria-label="Main navigation">
@@ -487,7 +495,7 @@ export function MainView() {
           {recentEntries.filter((entry) => entry.note.trim()).length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : recentEntries.filter((entry) => entry.note.trim()).map((entry) => <article key={entry.id}><span><MainIcon name="note" /></span><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></article>)}
         </div></section> : null}
 
-        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Overlay</p><h2>Focus mode</h2><p>The overlay opens when this window is minimized, or when you choose Show overlay in the sidebar. Shortcut: Cmd/Ctrl+Shift+T.</p><button onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>Show overlay now</button></section></div> : null}
+        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel theme-panel"><p className="panel-kicker">Theme lab</p><h2>{activeTheme.label}</h2><p>{activeTheme.description}</p><div className="theme-options" role="list" aria-label="Theme exploration options">{themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => setThemeId(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Overlay</p><h2>Focus mode</h2><p>The overlay opens when this window is minimized, or when you choose Show overlay in the sidebar. Shortcut: Cmd/Ctrl+Shift+T.</p><button onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}>Show overlay now</button></section></div> : null}
       </section>
 
       {isTaskComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsTaskComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-task-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new task" className="modal-close" onClick={() => setIsTaskComposerOpen(false)}>×</button><p className="panel-kicker">New task</p><h2 id="new-task-heading">What needs your attention?</h2><form onSubmit={handleCreateTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create task</button></form></section></div> : null}

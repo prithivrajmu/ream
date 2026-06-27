@@ -13,10 +13,15 @@ import {
   updateActiveTimerNote
 } from "../../shared/timerRepository";
 import { formatEntryDateTime } from "../rendererUtils";
+import type { ThemeId } from "../themeOptions";
 
 type IconName = "chevron" | "clock" | "close" | "list" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
 
-export function OverlayView() {
+interface OverlayViewProps {
+  themeId: ThemeId;
+}
+
+export function OverlayView({ themeId }: OverlayViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
@@ -192,7 +197,7 @@ export function OverlayView() {
   }
 
   return (
-    <main className={`overlay-shell reference-overlay-shell ${expanded ? "is-expanded" : ""}`} aria-label="Ream overlay">
+    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""}`} aria-label="Ream overlay">
       <header className="reference-overlay-bar">
         <div className="reference-overlay-identity">
           <span className="reference-app-icon"><Icon name="clock" /></span>

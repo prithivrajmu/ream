@@ -926,6 +926,119 @@ body.overlay-route {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.reference-overlay-shell[class*="theme-"] {
+  color: var(--theme-ink);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-overlay-bar,
+.reference-overlay-shell[class*="theme-"] .reference-overlay-panel,
+.reference-overlay-shell[class*="theme-"] .reference-timer-column,
+.reference-overlay-shell[class*="theme-"] .reference-notes-card,
+.reference-overlay-shell[class*="theme-"] .reference-recent-list {
+  border-color: var(--theme-subtle);
+  background: color-mix(in srgb, var(--theme-panel) 92%, white 8%);
+  box-shadow: var(--theme-shadow), inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-app-icon,
+.reference-overlay-shell[class*="theme-"] .reference-entry-icon,
+.reference-overlay-shell[class*="theme-"] .reference-entry-tag,
+.reference-overlay-shell[class*="theme-"] .reference-select-wrap,
+.reference-overlay-shell[class*="theme-"] .reference-search,
+.reference-overlay-shell[class*="theme-"] .reference-notes-card textarea,
+.reference-overlay-shell[class*="theme-"] .reference-icon-button,
+.reference-overlay-shell[class*="theme-"] .reference-control-row button,
+.reference-overlay-shell[class*="theme-"] .reference-tags button {
+  border-color: var(--theme-subtle);
+  color: var(--theme-ink);
+  background: var(--theme-panel-alt);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-overlay-identity > p,
+.reference-overlay-shell[class*="theme-"] .reference-overlay-actions > strong,
+.reference-overlay-shell[class*="theme-"] .reference-task-picker > label,
+.reference-overlay-shell[class*="theme-"] .reference-timer-card > div > strong,
+.reference-overlay-shell[class*="theme-"] .reference-notes-heading,
+.reference-overlay-shell[class*="theme-"] .reference-notes-heading b,
+.reference-overlay-shell[class*="theme-"] .reference-notes-heading em,
+.reference-overlay-shell[class*="theme-"] .reference-recent-heading h2,
+.reference-overlay-shell[class*="theme-"] .reference-recent-list article p,
+.reference-overlay-shell[class*="theme-"] .reference-select-wrap select,
+.reference-overlay-shell[class*="theme-"] .reference-search input,
+.reference-overlay-shell[class*="theme-"] .reference-notes-card textarea {
+  color: var(--theme-ink);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-search input::placeholder,
+.reference-overlay-shell[class*="theme-"] .reference-notes-card textarea::placeholder,
+.reference-overlay-shell[class*="theme-"] .reference-timer-caption,
+.reference-overlay-shell[class*="theme-"] .reference-recent-heading button,
+.reference-overlay-shell[class*="theme-"] .reference-recent-list article small,
+.reference-overlay-shell[class*="theme-"] .reference-search kbd,
+.reference-overlay-shell[class*="theme-"] .reference-notes-heading small {
+  color: var(--theme-muted);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-app-icon,
+.reference-overlay-shell[class*="theme-"] .reference-entry-icon {
+  color: var(--theme-accent);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-entry-tag,
+.reference-overlay-shell[class*="theme-"] .reference-icon-button.pause,
+.reference-overlay-shell[class*="theme-"] .reference-control-row .complete-control,
+.reference-overlay-shell[class*="theme-"] .reference-tags button,
+.reference-overlay-shell[class*="theme-"] .reference-timer-status.paused,
+.reference-overlay-shell[class*="theme-"] .reference-status.paused {
+  color: var(--theme-accent-2);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-start-button {
+  border-color: var(--theme-accent);
+  color: #fff;
+  background: var(--theme-accent);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-status,
+.reference-overlay-shell[class*="theme-"] .reference-timer-status,
+.reference-overlay-shell[class*="theme-"] .reference-icon-button.stop,
+.reference-overlay-shell[class*="theme-"] .reference-control-row .stop-control {
+  color: var(--theme-danger);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-status i,
+.reference-overlay-shell[class*="theme-"] .reference-timer-status i {
+  background: var(--theme-danger);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-status.paused i,
+.reference-overlay-shell[class*="theme-"] .reference-timer-status.paused i {
+  background: var(--theme-accent-2);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-expand-button,
+.reference-overlay-shell[class*="theme-"] .reference-ring-button {
+  border-color: var(--theme-subtle);
+  color: var(--theme-ink);
+  background: var(--theme-panel);
+  box-shadow: var(--theme-shadow);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-ring-button {
+  border-color: var(--theme-danger);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-ring-button.paused {
+  border-color: var(--theme-accent-2);
+}
+
+.reference-overlay-shell[class*="theme-"] .reference-notes-card textarea:focus,
+.reference-overlay-shell[class*="theme-"] .reference-search:focus-within,
+.reference-overlay-shell[class*="theme-"] .reference-select-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--theme-accent) 54%, white 46%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 16%, transparent);
+}
+
 .reference-overlay-bar {
   position: relative;
   display: flex;
@@ -1753,11 +1866,12 @@ body.overlay-route {
 .quick-capture { height: 86px; gap: 22px; margin-top: 48px; padding: 0 20px; border: 1px solid #ededf2; border-radius: 14px; background: #fff; box-shadow: 0 8px 21px rgb(42 37 78 / 7%); }.quick-capture > span { display: grid; width: 51px; height: 51px; place-items: center; border-radius: 11px; color: #6847e8; background: linear-gradient(135deg, #ede9ff, #faf9ff); }.quick-capture > span .main-icon { width: 26px; height: 26px; }.quick-capture input { width: 100%; min-width: 0; border: 0; outline: 0; color: #252a37; background: transparent; font-size: 16px; }.quick-capture input::placeholder { color: #a2a3ab; }.quick-capture button { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 9px; color: #6d4bea; background: #f5f2ff; opacity: 0; transition: opacity .16s ease; }.quick-capture:focus-within button { opacity: 1; }
 .active-timer-banner { min-height: 66px; gap: 18px; margin-top: 18px; padding: 10px 13px 10px 18px; border: 1px solid #e5ddff; border-radius: 12px; color: #514288; background: #faf9ff; font-size: 14px; }.active-timer-banner > div { display: flex; align-items: center; gap: 7px; white-space: nowrap; }.active-timer-banner strong { color: #26223d; }.active-timer-banner small { margin-left: 8px; color: #7555e2; font-size: 14px; font-weight: 700; }.timer-pulse { width: 8px; height: 8px; border-radius: 50%; background: #6d4fea; box-shadow: 0 0 0 5px #e9e4ff; }.active-timer-banner input { width: 100%; min-width: 120px; border: 0; outline: 0; color: #39334f; background: transparent; font-size: 13px; }.active-timer-banner button { min-height: 38px; padding: 0 15px; border-radius: 8px; color: #fff; background: #e65364; font-size: 13px; font-weight: 650; }
 .projects-section { margin-top: 42px; }.section-title { justify-content: space-between; gap: 16px; margin-bottom: 20px; }.section-title h2,.dashboard-panel h2,.project-composer h2 { margin: 0; color: #171b27; font-size: 19px; font-weight: 700; letter-spacing: -.25px; }.section-title > span { color: #9699a6; font-size: 13px; }.project-cards { display: grid; gap: 12px; }.project-card { min-height: 116px; gap: 26px; padding: 18px 23px 18px 19px; border: 1px solid #ededf2; border-radius: 14px; background: linear-gradient(105deg, #fff, #fefeff); box-shadow: 0 5px 15px rgb(49 47 75 / 4%); transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }.project-card:hover { border-color: #e3ddfb; box-shadow: 0 10px 25px rgb(49 47 75 / 7%); transform: translateY(-1px); }.project-icon { display: grid; width: 68px; height: 68px; flex: 0 0 auto; place-items: center; border-radius: 13px; color: #6b4cef; background: linear-gradient(135deg, #f4f1ff, #fbfaff); }.project-icon .main-icon { width: 31px; height: 31px; stroke-width: 1.75; }.project-icon.tone-1 { color: #6650e4; background: linear-gradient(135deg, #f0edff, #fbfaff); }.project-icon.tone-2 { color: #7650f0; background: linear-gradient(135deg, #f8f0ff, #fbf9ff); }.project-icon.tone-3 { color: #7552ef; background: linear-gradient(135deg, #f0f3ff, #fcfbff); }.project-icon.tone-4 { color: #7049e8; background: linear-gradient(135deg, #f6efff, #fcfaff); }.project-copy { min-width: 0; flex: 1; }.project-copy h3 { overflow: hidden; margin: 0; color: #161a26; font-size: 16px; font-weight: 660; text-overflow: ellipsis; white-space: nowrap; }.project-copy p,.project-copy small { overflow: hidden; display: block; margin: 6px 0 0; color: #868a9c; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.project-copy p i { padding: 0 8px; color: #9297a8; font-style: normal; }.project-copy small { margin-top: 8px; color: #9296a6; }.card-timer-button { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: #6b4be7; background: #f4f1ff; }.card-timer-button:hover { background: #ebe5ff; }.card-timer-button:disabled { opacity: .32; }.card-timer-button .main-icon { width: 17px; height: 17px; }.card-timer-button.is-running { width: auto; padding: 0 12px; color: #fff; background: #eb5867; font-size: 12px; font-weight: 700; }.project-menu { display: grid; width: 30px; height: 40px; place-items: center; color: #8f94a4; background: transparent; }.project-menu:hover { color: #5e46d5; }.project-menu .main-icon { width: 21px; }.empty-state { margin: 0; padding: 25px; border: 1px dashed #dddde5; border-radius: 12px; color: #858999; text-align: center; }.dashboard-footer { justify-content: center; gap: 11px; margin-top: 27px; color: #969aae; font-size: 13px; }.dashboard-footer .main-icon { width: 20px; }
-.dashboard-panel { margin-top: 48px; padding: 27px; border: 1px solid #ededf2; border-radius: 15px; background: #fff; box-shadow: 0 8px 22px rgb(50 43 87 / 4%); }.dashboard-panel .section-title { margin-bottom: 11px; }.panel-kicker { margin: 0 0 9px; color: #7859e7; font-size: 12px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }.dashboard-entry-list,.project-management-list,.notes-list { display: grid; gap: 0; }.dashboard-entry-list article,.project-management-list article { gap: 14px; min-height: 77px; padding: 15px 0; border-top: 1px solid #efeff3; }.dashboard-entry-list article > div,.project-management-list article > div { min-width: 0; flex: 1; }.dashboard-entry-list strong,.project-management-list strong,.notes-list strong { color: #232733; font-size: 14px; }.dashboard-entry-list p,.project-management-list p,.notes-list p { margin: 5px 0 0; color: #858999; font-size: 13px; }.dashboard-entry-list small { display: block; overflow: hidden; margin-top: 5px; color: #6d7180; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.dashboard-entry-list article > span,.project-management-list article > span { color: #4f416f; font-size: 13px; font-weight: 700; white-space: nowrap; }.dashboard-entry-list button,.project-management-list button,.backup-actions > button,.backup-actions > label,.dashboard-panel > button,.composer-actions > button { min-height: 36px; padding: 0 13px; border: 1px solid #e7e5ed; border-radius: 8px; color: #4b5060; background: #fff; font-size: 12px; font-weight: 650; }.dashboard-entry-list .delete-entry { color: #c33f4b; }.text-action { color: #694ae3; background: transparent; font-size: 13px; font-weight: 700; }.notes-list article { display: flex; gap: 15px; padding: 17px 0; border-top: 1px solid #efeff3; }.notes-list article > span { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: #6949e7; background: #f2efff; }.notes-list article > div { min-width: 0; }.notes-list small { display: block; margin-top: 8px; color: #989baa; font-size: 12px; }.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }.settings-grid .dashboard-panel { margin-top: 48px; }.backup-panel { grid-row: span 2; }.dashboard-panel > p:not(.panel-kicker) { color: #747989; font-size: 14px; line-height: 1.6; }.backup-actions { flex-wrap: wrap; gap: 10px; margin-top: 28px; }.backup-actions > label { display: inline-flex; align-items: center; cursor: pointer; }.backup-actions input { display: none; }.totals-list { margin-top: 21px; }.totals-list p { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0eff3; color: #858999; font-size: 13px; }.totals-list strong { color: #323645; }
+.dashboard-panel { margin-top: 48px; padding: 27px; border: 1px solid #ededf2; border-radius: 15px; background: #fff; box-shadow: 0 8px 22px rgb(50 43 87 / 4%); }.dashboard-panel .section-title { margin-bottom: 11px; }.panel-kicker { margin: 0 0 9px; color: #7859e7; font-size: 12px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }.dashboard-entry-list,.project-management-list,.notes-list { display: grid; gap: 0; }.dashboard-entry-list article,.project-management-list article { gap: 14px; min-height: 77px; padding: 15px 0; border-top: 1px solid #efeff3; }.dashboard-entry-list article > div,.project-management-list article > div { min-width: 0; flex: 1; }.dashboard-entry-list strong,.project-management-list strong,.notes-list strong { color: #232733; font-size: 14px; }.dashboard-entry-list p,.project-management-list p,.notes-list p { margin: 5px 0 0; color: #858999; font-size: 13px; }.dashboard-entry-list small { display: block; overflow: hidden; margin-top: 5px; color: #6d7180; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }.dashboard-entry-list article > span,.project-management-list article > span { color: #4f416f; font-size: 13px; font-weight: 700; white-space: nowrap; }.dashboard-entry-list button,.project-management-list button,.backup-actions > button,.backup-actions > label,.dashboard-panel > button,.composer-actions > button { min-height: 36px; padding: 0 13px; border: 1px solid #e7e5ed; border-radius: 8px; color: #4b5060; background: #fff; font-size: 12px; font-weight: 650; }.dashboard-entry-list .delete-entry { color: #c33f4b; }.text-action { color: #694ae3; background: transparent; font-size: 13px; font-weight: 700; }.notes-list article { display: flex; gap: 15px; padding: 17px 0; border-top: 1px solid #efeff3; }.notes-list article > span { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: #6949e7; background: #f2efff; }.notes-list article > div { min-width: 0; }.notes-list small { display: block; margin-top: 8px; color: #989baa; font-size: 12px; }.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 48px; align-items: stretch; }.settings-grid .dashboard-panel { height: 100%; margin-top: 0; }.dashboard-panel > p:not(.panel-kicker) { color: #747989; font-size: 14px; line-height: 1.6; }.backup-actions { flex-wrap: wrap; gap: 10px; margin-top: 28px; }.backup-actions > label { display: inline-flex; align-items: center; cursor: pointer; }.backup-actions input { display: none; }.totals-list { margin-top: 21px; }.totals-list p { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0eff3; color: #858999; font-size: 13px; }.totals-list strong { color: #323645; }
 .dashboard-modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: rgb(19 16 35 / 28%); backdrop-filter: blur(5px); }.project-composer { position: relative; width: min(100%, 560px); max-height: calc(100vh - 48px); overflow: auto; padding: 31px; border: 1px solid #fff; border-radius: 17px; background: #fff; box-shadow: 0 27px 75px rgb(20 15 47 / 24%); }.project-composer h2 { margin-bottom: 25px; font-size: 24px; }.modal-close { position: absolute; top: 15px; right: 16px; display: grid; width: 31px; height: 31px; place-items: center; border-radius: 50%; color: #6a6e7c; background: #f5f4f8; font-size: 23px; line-height: 1; }.project-composer form { display: grid; gap: 15px; }.project-composer label { display: grid; gap: 7px; color: #5e6372; font-size: 13px; font-weight: 650; }.project-composer input,.project-composer textarea,.project-composer select { width: 100%; border: 1px solid #e4e3ea; border-radius: 9px; outline: 0; color: #252936; background: #fff; font: inherit; }.project-composer input,.project-composer select { height: 43px; padding: 0 12px; }.project-composer textarea { min-height: 80px; padding: 11px 12px; resize: vertical; }.project-composer input:focus,.project-composer textarea:focus,.project-composer select:focus { border-color: #7859e8; box-shadow: 0 0 0 3px #eeeaff; }.composer-row { align-items: flex-start; gap: 14px; }.composer-row label { flex: 1; }.composer-actions { gap: 10px; }.composer-actions .new-project-button { min-height: 42px; }
 .project-composer select[multiple] { height: auto; min-height: 78px; padding: 7px; }.field-hint { color: #8a8d99; font-size: 11px; font-weight: 500; }
 .project-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid #e4e3ea; border-radius: 9px; }.project-options label { display: flex; align-items: center; gap: 7px; color: #4c5160; font-size: 12px; font-weight: 550; }.project-options input { width: 15px; height: 15px; padding: 0; accent-color: #7050e8; }
 @media (max-width: 1050px) { .dashboard-shell { grid-template-columns: 230px minmax(0, 1fr); }.dashboard-sidebar { padding-right: 18px; padding-left: 18px; }.dashboard-page { padding-right: 30px; padding-left: 30px; }.project-card { gap: 15px; }.project-icon { width: 58px; height: 58px; }.settings-grid { grid-template-columns: 1fr; }.backup-panel { grid-row: auto; } }
+@media (min-width: 1580px) { .settings-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .dashboard-shell { display: block; min-width: 320px; }.dashboard-sidebar { min-height: auto; padding: 18px; }.brand-lockup { display: none; }.dashboard-nav { display: flex; overflow-x: auto; margin: 0; }.dashboard-nav button { width: auto; flex: 0 0 auto; padding: 11px; font-size: 13px; }.dashboard-nav button .main-icon { width: 18px; }.sidebar-bottom { display: none; }.dashboard-page { padding: 28px 18px; border-radius: 0; }.dashboard-header h1 { font-size: 24px; }.dashboard-header p { font-size: 14px; }.new-project-button { min-height: 44px; padding: 0 14px; }.quick-capture { height: 68px; margin-top: 30px; }.quick-capture > span { width: 40px; height: 40px; }.project-card { min-height: 96px; padding: 15px; }.project-icon { width: 52px; height: 52px; }.project-copy small { display: none; }.dashboard-entry-list article { align-items: flex-start; flex-wrap: wrap; }.dashboard-entry-list article > div { min-width: 60%; }.active-timer-banner { align-items: flex-start; flex-wrap: wrap; }.active-timer-banner input { min-height: 28px; }.project-composer { padding: 24px; }.composer-row { display: grid; } }
 
 /* Main workspace refinements */
@@ -2015,5 +2129,700 @@ body.overlay-route {
   .notes-list,
   .settings-grid {
     overflow: visible;
+  }
+}
+
+/* Theme exploration */
+.dashboard-shell.theme-old-money,
+.reference-overlay-shell.theme-old-money {
+  --theme-bg: #f4f2ec;
+  --theme-page: #f8f6f0;
+  --theme-sidebar: #e8dfd1;
+  --theme-panel: #fffdf7;
+  --theme-panel-alt: #eef3ea;
+  --theme-ink: #1d2026;
+  --theme-muted: #74706a;
+  --theme-subtle: #e3ded3;
+  --theme-accent: #223d33;
+  --theme-accent-2: #7b542e;
+  --theme-danger: #9f433f;
+  --theme-shadow: 0 8px 18px rgb(55 49 38 / 5%);
+  --theme-radius: 14px;
+}
+
+.dashboard-shell.theme-retro-console,
+.reference-overlay-shell.theme-retro-console {
+  --theme-bg: #f3df9b;
+  --theme-page: #f7f1d0;
+  --theme-sidebar: #2d2b71;
+  --theme-panel: #fff8cf;
+  --theme-panel-alt: #dce8ff;
+  --theme-ink: #171531;
+  --theme-muted: #4e4b64;
+  --theme-subtle: #211d56;
+  --theme-accent: #e9402f;
+  --theme-accent-2: #2458d7;
+  --theme-danger: #cc2b24;
+  --theme-shadow: 5px 5px 0 #171531;
+  --theme-radius: 5px;
+}
+
+.dashboard-shell.theme-indian-miniature,
+.reference-overlay-shell.theme-indian-miniature {
+  --theme-bg: #ead29f;
+  --theme-page: #f4e3bd;
+  --theme-sidebar: #153f63;
+  --theme-panel: #fff2cd;
+  --theme-panel-alt: #dfefd6;
+  --theme-ink: #251b13;
+  --theme-muted: #66513c;
+  --theme-subtle: #c9a86d;
+  --theme-accent: #153f63;
+  --theme-accent-2: #b43f2f;
+  --theme-danger: #9e2f24;
+  --theme-shadow: 0 9px 0 rgb(180 63 47 / 17%);
+  --theme-radius: 8px;
+}
+
+.dashboard-shell.theme-manga-ink,
+.reference-overlay-shell.theme-manga-ink {
+  --theme-bg: #e9e9df;
+  --theme-page: #f8f8f1;
+  --theme-sidebar: #101010;
+  --theme-panel: #fffefa;
+  --theme-panel-alt: #eeeeea;
+  --theme-ink: #111111;
+  --theme-muted: #4f4f4b;
+  --theme-subtle: #111111;
+  --theme-accent: #111111;
+  --theme-accent-2: #d52f35;
+  --theme-danger: #d52f35;
+  --theme-shadow: 4px 4px 0 #111111;
+  --theme-radius: 2px;
+}
+
+.dashboard-shell.theme-dark-studio,
+.reference-overlay-shell.theme-dark-studio {
+  --theme-bg: #0d1117;
+  --theme-page: #111820;
+  --theme-sidebar: #151d27;
+  --theme-panel: #1a232e;
+  --theme-panel-alt: #172f35;
+  --theme-ink: #f3f7fb;
+  --theme-muted: #a9b6c4;
+  --theme-subtle: #2b3947;
+  --theme-accent: #2ec4b6;
+  --theme-accent-2: #ffb347;
+  --theme-danger: #ff6b6b;
+  --theme-shadow: 0 16px 36px rgb(0 0 0 / 28%);
+  --theme-radius: 11px;
+}
+
+.dashboard-shell.theme-color-blind,
+.reference-overlay-shell.theme-color-blind {
+  --theme-bg: #e9ecef;
+  --theme-page: #f7f7f5;
+  --theme-sidebar: #ffffff;
+  --theme-panel: #ffffff;
+  --theme-panel-alt: #e7f2f8;
+  --theme-ink: #1a1f25;
+  --theme-muted: #5d646b;
+  --theme-subtle: #c9ced3;
+  --theme-accent: #0072b2;
+  --theme-accent-2: #e69f00;
+  --theme-danger: #cc79a7;
+  --theme-shadow: 0 10px 22px rgb(16 35 50 / 10%);
+  --theme-radius: 10px;
+}
+
+.dashboard-shell.theme-old-money,
+.dashboard-shell.theme-retro-console,
+.dashboard-shell.theme-indian-miniature,
+.dashboard-shell.theme-manga-ink,
+.dashboard-shell.theme-dark-studio,
+.dashboard-shell.theme-color-blind {
+  color: var(--theme-ink);
+  background: var(--theme-bg);
+}
+
+.dashboard-shell.theme-old-money .dashboard-sidebar,
+.dashboard-shell.theme-retro-console .dashboard-sidebar,
+.dashboard-shell.theme-indian-miniature .dashboard-sidebar,
+.dashboard-shell.theme-manga-ink .dashboard-sidebar,
+.dashboard-shell.theme-dark-studio .dashboard-sidebar,
+.dashboard-shell.theme-color-blind .dashboard-sidebar {
+  border-right-color: var(--theme-subtle);
+  background: var(--theme-sidebar);
+}
+
+.dashboard-shell.theme-retro-console .dashboard-sidebar,
+.dashboard-shell.theme-indian-miniature .dashboard-sidebar,
+.dashboard-shell.theme-manga-ink .dashboard-sidebar {
+  color: #fff;
+}
+
+.dashboard-shell.theme-manga-ink .dashboard-sidebar {
+  background:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 8%) 0 1px, transparent 1px 8px),
+    var(--theme-sidebar);
+}
+
+.dashboard-shell.theme-retro-console .dashboard-sidebar {
+  box-shadow: inset -5px 0 0 #171531;
+}
+
+.dashboard-shell.theme-old-money .dashboard-page,
+.dashboard-shell.theme-retro-console .dashboard-page,
+.dashboard-shell.theme-indian-miniature .dashboard-page,
+.dashboard-shell.theme-manga-ink .dashboard-page,
+.dashboard-shell.theme-dark-studio .dashboard-page,
+.dashboard-shell.theme-color-blind .dashboard-page {
+  border-color: var(--theme-subtle);
+  background: var(--theme-page);
+  box-shadow: none;
+}
+
+.dashboard-shell.theme-manga-ink .dashboard-page {
+  background:
+    radial-gradient(#d8d8cf 1px, transparent 1px) 0 0 / 10px 10px,
+    var(--theme-page);
+}
+
+.dashboard-shell.theme-retro-console .brand-mark,
+.dashboard-shell.theme-indian-miniature .brand-mark,
+.dashboard-shell.theme-manga-ink .brand-mark,
+.dashboard-shell.theme-dark-studio .brand-mark,
+.dashboard-shell.theme-color-blind .brand-mark {
+  background: var(--theme-accent);
+  box-shadow: var(--theme-shadow);
+}
+
+.dashboard-shell.theme-retro-console .brand-lockup strong,
+.dashboard-shell.theme-retro-console .brand-lockup p,
+.dashboard-shell.theme-indian-miniature .brand-lockup strong,
+.dashboard-shell.theme-indian-miniature .brand-lockup p,
+.dashboard-shell.theme-manga-ink .brand-lockup strong,
+.dashboard-shell.theme-manga-ink .brand-lockup p {
+  color: #fff;
+}
+
+.dashboard-shell.theme-dark-studio .brand-lockup strong,
+.dashboard-shell.theme-dark-studio .brand-lockup p {
+  color: var(--theme-ink);
+}
+
+.dashboard-shell.theme-old-money .dashboard-header h1,
+.dashboard-shell.theme-old-money .section-title h2,
+.dashboard-shell.theme-old-money .dashboard-panel h2,
+.dashboard-shell.theme-old-money .project-composer h2,
+.dashboard-shell.theme-old-money .project-copy h3,
+.dashboard-shell.theme-old-money .dashboard-entry-list strong,
+.dashboard-shell.theme-old-money .project-management-list strong,
+.dashboard-shell.theme-old-money .notes-list strong,
+.dashboard-shell.theme-old-money .active-timer-banner strong,
+.dashboard-shell.theme-old-money .totals-list strong,
+.dashboard-shell.theme-old-money .profile-row p,
+.dashboard-shell.theme-retro-console .dashboard-header h1,
+.dashboard-shell.theme-retro-console .section-title h2,
+.dashboard-shell.theme-retro-console .dashboard-panel h2,
+.dashboard-shell.theme-retro-console .project-composer h2,
+.dashboard-shell.theme-retro-console .project-copy h3,
+.dashboard-shell.theme-retro-console .dashboard-entry-list strong,
+.dashboard-shell.theme-retro-console .project-management-list strong,
+.dashboard-shell.theme-retro-console .notes-list strong,
+.dashboard-shell.theme-retro-console .active-timer-banner strong,
+.dashboard-shell.theme-retro-console .totals-list strong,
+.dashboard-shell.theme-retro-console .profile-row p,
+.dashboard-shell.theme-indian-miniature .dashboard-header h1,
+.dashboard-shell.theme-indian-miniature .section-title h2,
+.dashboard-shell.theme-indian-miniature .dashboard-panel h2,
+.dashboard-shell.theme-indian-miniature .project-composer h2,
+.dashboard-shell.theme-indian-miniature .project-copy h3,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list strong,
+.dashboard-shell.theme-indian-miniature .project-management-list strong,
+.dashboard-shell.theme-indian-miniature .notes-list strong,
+.dashboard-shell.theme-indian-miniature .active-timer-banner strong,
+.dashboard-shell.theme-indian-miniature .totals-list strong,
+.dashboard-shell.theme-indian-miniature .profile-row p,
+.dashboard-shell.theme-manga-ink .dashboard-header h1,
+.dashboard-shell.theme-manga-ink .section-title h2,
+.dashboard-shell.theme-manga-ink .dashboard-panel h2,
+.dashboard-shell.theme-manga-ink .project-composer h2,
+.dashboard-shell.theme-manga-ink .project-copy h3,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list strong,
+.dashboard-shell.theme-manga-ink .project-management-list strong,
+.dashboard-shell.theme-manga-ink .notes-list strong,
+.dashboard-shell.theme-manga-ink .active-timer-banner strong,
+.dashboard-shell.theme-manga-ink .totals-list strong,
+.dashboard-shell.theme-manga-ink .profile-row p,
+.dashboard-shell.theme-dark-studio .dashboard-header h1,
+.dashboard-shell.theme-dark-studio .section-title h2,
+.dashboard-shell.theme-dark-studio .dashboard-panel h2,
+.dashboard-shell.theme-dark-studio .project-composer h2,
+.dashboard-shell.theme-dark-studio .project-copy h3,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list strong,
+.dashboard-shell.theme-dark-studio .project-management-list strong,
+.dashboard-shell.theme-dark-studio .notes-list strong,
+.dashboard-shell.theme-dark-studio .active-timer-banner strong,
+.dashboard-shell.theme-dark-studio .totals-list strong,
+.dashboard-shell.theme-dark-studio .profile-row p,
+.dashboard-shell.theme-color-blind .dashboard-header h1,
+.dashboard-shell.theme-color-blind .section-title h2,
+.dashboard-shell.theme-color-blind .dashboard-panel h2,
+.dashboard-shell.theme-color-blind .project-composer h2,
+.dashboard-shell.theme-color-blind .project-copy h3,
+.dashboard-shell.theme-color-blind .dashboard-entry-list strong,
+.dashboard-shell.theme-color-blind .project-management-list strong,
+.dashboard-shell.theme-color-blind .notes-list strong,
+.dashboard-shell.theme-color-blind .active-timer-banner strong,
+.dashboard-shell.theme-color-blind .totals-list strong,
+.dashboard-shell.theme-color-blind .profile-row p {
+  color: var(--theme-ink);
+}
+
+.dashboard-shell.theme-old-money .dashboard-header p,
+.dashboard-shell.theme-old-money .section-title > span,
+.dashboard-shell.theme-old-money .project-copy p,
+.dashboard-shell.theme-old-money .project-copy small,
+.dashboard-shell.theme-old-money .dashboard-entry-list p,
+.dashboard-shell.theme-old-money .project-management-list p,
+.dashboard-shell.theme-old-money .notes-list p,
+.dashboard-shell.theme-old-money .dashboard-entry-list small,
+.dashboard-shell.theme-old-money .notes-list small,
+.dashboard-shell.theme-old-money .totals-list p,
+.dashboard-shell.theme-retro-console .dashboard-header p,
+.dashboard-shell.theme-retro-console .section-title > span,
+.dashboard-shell.theme-retro-console .project-copy p,
+.dashboard-shell.theme-retro-console .project-copy small,
+.dashboard-shell.theme-retro-console .dashboard-entry-list p,
+.dashboard-shell.theme-retro-console .project-management-list p,
+.dashboard-shell.theme-retro-console .notes-list p,
+.dashboard-shell.theme-retro-console .dashboard-entry-list small,
+.dashboard-shell.theme-retro-console .notes-list small,
+.dashboard-shell.theme-retro-console .totals-list p,
+.dashboard-shell.theme-indian-miniature .dashboard-header p,
+.dashboard-shell.theme-indian-miniature .section-title > span,
+.dashboard-shell.theme-indian-miniature .project-copy p,
+.dashboard-shell.theme-indian-miniature .project-copy small,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list p,
+.dashboard-shell.theme-indian-miniature .project-management-list p,
+.dashboard-shell.theme-indian-miniature .notes-list p,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list small,
+.dashboard-shell.theme-indian-miniature .notes-list small,
+.dashboard-shell.theme-indian-miniature .totals-list p,
+.dashboard-shell.theme-manga-ink .dashboard-header p,
+.dashboard-shell.theme-manga-ink .section-title > span,
+.dashboard-shell.theme-manga-ink .project-copy p,
+.dashboard-shell.theme-manga-ink .project-copy small,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list p,
+.dashboard-shell.theme-manga-ink .project-management-list p,
+.dashboard-shell.theme-manga-ink .notes-list p,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list small,
+.dashboard-shell.theme-manga-ink .notes-list small,
+.dashboard-shell.theme-manga-ink .totals-list p,
+.dashboard-shell.theme-dark-studio .dashboard-header p,
+.dashboard-shell.theme-dark-studio .section-title > span,
+.dashboard-shell.theme-dark-studio .project-copy p,
+.dashboard-shell.theme-dark-studio .project-copy small,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list p,
+.dashboard-shell.theme-dark-studio .project-management-list p,
+.dashboard-shell.theme-dark-studio .notes-list p,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list small,
+.dashboard-shell.theme-dark-studio .notes-list small,
+.dashboard-shell.theme-dark-studio .totals-list p,
+.dashboard-shell.theme-color-blind .dashboard-header p,
+.dashboard-shell.theme-color-blind .section-title > span,
+.dashboard-shell.theme-color-blind .project-copy p,
+.dashboard-shell.theme-color-blind .project-copy small,
+.dashboard-shell.theme-color-blind .dashboard-entry-list p,
+.dashboard-shell.theme-color-blind .project-management-list p,
+.dashboard-shell.theme-color-blind .notes-list p,
+.dashboard-shell.theme-color-blind .dashboard-entry-list small,
+.dashboard-shell.theme-color-blind .notes-list small,
+.dashboard-shell.theme-color-blind .totals-list p {
+  color: var(--theme-muted);
+}
+
+.dashboard-shell.theme-old-money .dashboard-nav button,
+.dashboard-shell.theme-old-money .overlay-launcher {
+  color: #344139;
+}
+
+.dashboard-shell.theme-retro-console .dashboard-nav button,
+.dashboard-shell.theme-retro-console .overlay-launcher,
+.dashboard-shell.theme-indian-miniature .dashboard-nav button,
+.dashboard-shell.theme-indian-miniature .overlay-launcher,
+.dashboard-shell.theme-manga-ink .dashboard-nav button,
+.dashboard-shell.theme-manga-ink .overlay-launcher {
+  color: rgb(255 255 255 / 86%);
+}
+
+.dashboard-shell.theme-dark-studio .dashboard-nav button,
+.dashboard-shell.theme-dark-studio .overlay-launcher {
+  color: #d8e4ef;
+}
+
+.dashboard-shell.theme-color-blind .dashboard-nav button,
+.dashboard-shell.theme-color-blind .overlay-launcher {
+  color: #27313a;
+}
+
+.dashboard-shell.theme-old-money .dashboard-nav button:hover,
+.dashboard-shell.theme-old-money .overlay-launcher:hover,
+.dashboard-shell.theme-old-money .dashboard-nav button.is-active,
+.dashboard-shell.theme-retro-console .dashboard-nav button:hover,
+.dashboard-shell.theme-retro-console .overlay-launcher:hover,
+.dashboard-shell.theme-retro-console .dashboard-nav button.is-active,
+.dashboard-shell.theme-indian-miniature .dashboard-nav button:hover,
+.dashboard-shell.theme-indian-miniature .overlay-launcher:hover,
+.dashboard-shell.theme-indian-miniature .dashboard-nav button.is-active,
+.dashboard-shell.theme-manga-ink .dashboard-nav button:hover,
+.dashboard-shell.theme-manga-ink .overlay-launcher:hover,
+.dashboard-shell.theme-manga-ink .dashboard-nav button.is-active,
+.dashboard-shell.theme-dark-studio .dashboard-nav button:hover,
+.dashboard-shell.theme-dark-studio .overlay-launcher:hover,
+.dashboard-shell.theme-dark-studio .dashboard-nav button.is-active,
+.dashboard-shell.theme-color-blind .dashboard-nav button:hover,
+.dashboard-shell.theme-color-blind .overlay-launcher:hover,
+.dashboard-shell.theme-color-blind .dashboard-nav button.is-active {
+  color: #fff;
+  background: var(--theme-accent);
+}
+
+.dashboard-shell.theme-manga-ink .dashboard-nav button.is-active {
+  outline: 2px solid #fff;
+  outline-offset: -4px;
+}
+
+.dashboard-shell.theme-color-blind .dashboard-nav button:hover,
+.dashboard-shell.theme-color-blind .overlay-launcher:hover,
+.dashboard-shell.theme-color-blind .dashboard-nav button.is-active {
+  color: #fff;
+}
+
+.dashboard-shell.theme-old-money .quick-capture,
+.dashboard-shell.theme-old-money .dashboard-panel,
+.dashboard-shell.theme-old-money .project-card,
+.dashboard-shell.theme-retro-console .quick-capture,
+.dashboard-shell.theme-retro-console .dashboard-panel,
+.dashboard-shell.theme-retro-console .project-card,
+.dashboard-shell.theme-indian-miniature .quick-capture,
+.dashboard-shell.theme-indian-miniature .dashboard-panel,
+.dashboard-shell.theme-indian-miniature .project-card,
+.dashboard-shell.theme-manga-ink .quick-capture,
+.dashboard-shell.theme-manga-ink .dashboard-panel,
+.dashboard-shell.theme-manga-ink .project-card,
+.dashboard-shell.theme-dark-studio .quick-capture,
+.dashboard-shell.theme-dark-studio .dashboard-panel,
+.dashboard-shell.theme-dark-studio .project-card,
+.dashboard-shell.theme-color-blind .quick-capture,
+.dashboard-shell.theme-color-blind .dashboard-panel,
+.dashboard-shell.theme-color-blind .project-card {
+  border-color: var(--theme-subtle);
+  border-radius: var(--theme-radius);
+  background: var(--theme-panel);
+  box-shadow: var(--theme-shadow);
+}
+
+.dashboard-shell.theme-retro-console .quick-capture,
+.dashboard-shell.theme-retro-console .dashboard-panel,
+.dashboard-shell.theme-retro-console .project-card,
+.dashboard-shell.theme-manga-ink .quick-capture,
+.dashboard-shell.theme-manga-ink .dashboard-panel,
+.dashboard-shell.theme-manga-ink .project-card {
+  border-width: 2px;
+}
+
+.dashboard-shell.theme-old-money .new-project-button,
+.dashboard-shell.theme-retro-console .new-project-button,
+.dashboard-shell.theme-indian-miniature .new-project-button,
+.dashboard-shell.theme-manga-ink .new-project-button,
+.dashboard-shell.theme-dark-studio .new-project-button,
+.dashboard-shell.theme-color-blind .new-project-button {
+  color: #fff;
+  background: var(--theme-accent);
+  box-shadow: var(--theme-shadow);
+}
+
+.dashboard-shell.theme-retro-console .new-project-button,
+.dashboard-shell.theme-retro-console .card-timer-button,
+.dashboard-shell.theme-retro-console .archive-task-button {
+  border: 2px solid #171531;
+}
+
+.dashboard-shell.theme-manga-ink .new-project-button,
+.dashboard-shell.theme-manga-ink .card-timer-button,
+.dashboard-shell.theme-manga-ink .archive-task-button {
+  border: 2px solid #111;
+}
+
+.dashboard-shell.theme-old-money .quick-capture > span,
+.dashboard-shell.theme-old-money .card-timer-button,
+.dashboard-shell.theme-old-money .project-icon,
+.dashboard-shell.theme-old-money .notes-list article > span,
+.dashboard-shell.theme-retro-console .quick-capture > span,
+.dashboard-shell.theme-retro-console .card-timer-button,
+.dashboard-shell.theme-retro-console .project-icon,
+.dashboard-shell.theme-retro-console .notes-list article > span,
+.dashboard-shell.theme-indian-miniature .quick-capture > span,
+.dashboard-shell.theme-indian-miniature .card-timer-button,
+.dashboard-shell.theme-indian-miniature .project-icon,
+.dashboard-shell.theme-indian-miniature .notes-list article > span,
+.dashboard-shell.theme-manga-ink .quick-capture > span,
+.dashboard-shell.theme-manga-ink .card-timer-button,
+.dashboard-shell.theme-manga-ink .project-icon,
+.dashboard-shell.theme-manga-ink .notes-list article > span,
+.dashboard-shell.theme-dark-studio .quick-capture > span,
+.dashboard-shell.theme-dark-studio .card-timer-button,
+.dashboard-shell.theme-dark-studio .project-icon,
+.dashboard-shell.theme-dark-studio .notes-list article > span,
+.dashboard-shell.theme-color-blind .quick-capture > span,
+.dashboard-shell.theme-color-blind .card-timer-button,
+.dashboard-shell.theme-color-blind .project-icon,
+.dashboard-shell.theme-color-blind .notes-list article > span {
+  color: var(--theme-accent);
+  background: var(--theme-panel-alt);
+}
+
+.dashboard-shell.theme-old-money .project-icon.tone-1,
+.dashboard-shell.theme-retro-console .project-icon.tone-1,
+.dashboard-shell.theme-indian-miniature .project-icon.tone-1,
+.dashboard-shell.theme-manga-ink .project-icon.tone-1,
+.dashboard-shell.theme-dark-studio .project-icon.tone-1,
+.dashboard-shell.theme-color-blind .project-icon.tone-1 {
+  color: var(--theme-accent-2);
+}
+
+.dashboard-shell.theme-old-money .card-timer-button.is-running,
+.dashboard-shell.theme-old-money .active-timer-banner button,
+.dashboard-shell.theme-retro-console .card-timer-button.is-running,
+.dashboard-shell.theme-retro-console .active-timer-banner button,
+.dashboard-shell.theme-indian-miniature .card-timer-button.is-running,
+.dashboard-shell.theme-indian-miniature .active-timer-banner button,
+.dashboard-shell.theme-manga-ink .card-timer-button.is-running,
+.dashboard-shell.theme-manga-ink .active-timer-banner button,
+.dashboard-shell.theme-dark-studio .card-timer-button.is-running,
+.dashboard-shell.theme-dark-studio .active-timer-banner button,
+.dashboard-shell.theme-color-blind .card-timer-button.is-running,
+.dashboard-shell.theme-color-blind .active-timer-banner button {
+  color: #fff;
+  background: var(--theme-danger);
+}
+
+.dashboard-shell.theme-old-money .active-timer-banner,
+.dashboard-shell.theme-retro-console .active-timer-banner,
+.dashboard-shell.theme-indian-miniature .active-timer-banner,
+.dashboard-shell.theme-manga-ink .active-timer-banner,
+.dashboard-shell.theme-dark-studio .active-timer-banner,
+.dashboard-shell.theme-color-blind .active-timer-banner {
+  border-color: var(--theme-subtle);
+  color: var(--theme-ink);
+  background: var(--theme-panel-alt);
+}
+
+.dashboard-shell.theme-old-money .timer-pulse,
+.dashboard-shell.theme-retro-console .timer-pulse,
+.dashboard-shell.theme-indian-miniature .timer-pulse,
+.dashboard-shell.theme-manga-ink .timer-pulse,
+.dashboard-shell.theme-dark-studio .timer-pulse,
+.dashboard-shell.theme-color-blind .timer-pulse {
+  background: var(--theme-accent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+.dashboard-shell.theme-old-money .panel-kicker,
+.dashboard-shell.theme-retro-console .panel-kicker,
+.dashboard-shell.theme-indian-miniature .panel-kicker,
+.dashboard-shell.theme-manga-ink .panel-kicker,
+.dashboard-shell.theme-dark-studio .panel-kicker,
+.dashboard-shell.theme-color-blind .panel-kicker,
+.dashboard-shell.theme-old-money .text-action,
+.dashboard-shell.theme-retro-console .text-action,
+.dashboard-shell.theme-indian-miniature .text-action,
+.dashboard-shell.theme-manga-ink .text-action,
+.dashboard-shell.theme-dark-studio .text-action,
+.dashboard-shell.theme-color-blind .text-action {
+  color: var(--theme-accent-2);
+}
+
+.dashboard-shell.theme-old-money .dashboard-entry-list article,
+.dashboard-shell.theme-old-money .project-management-list article,
+.dashboard-shell.theme-old-money .notes-list article,
+.dashboard-shell.theme-retro-console .dashboard-entry-list article,
+.dashboard-shell.theme-retro-console .project-management-list article,
+.dashboard-shell.theme-retro-console .notes-list article,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list article,
+.dashboard-shell.theme-indian-miniature .project-management-list article,
+.dashboard-shell.theme-indian-miniature .notes-list article,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list article,
+.dashboard-shell.theme-manga-ink .project-management-list article,
+.dashboard-shell.theme-manga-ink .notes-list article,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list article,
+.dashboard-shell.theme-dark-studio .project-management-list article,
+.dashboard-shell.theme-dark-studio .notes-list article,
+.dashboard-shell.theme-color-blind .dashboard-entry-list article,
+.dashboard-shell.theme-color-blind .project-management-list article,
+.dashboard-shell.theme-color-blind .notes-list article {
+  border-top-color: var(--theme-subtle);
+}
+
+.dashboard-shell.theme-old-money .dashboard-entry-list article > span,
+.dashboard-shell.theme-old-money .project-management-list article > span,
+.dashboard-shell.theme-retro-console .dashboard-entry-list article > span,
+.dashboard-shell.theme-retro-console .project-management-list article > span,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list article > span,
+.dashboard-shell.theme-indian-miniature .project-management-list article > span,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list article > span,
+.dashboard-shell.theme-manga-ink .project-management-list article > span,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list article > span,
+.dashboard-shell.theme-dark-studio .project-management-list article > span,
+.dashboard-shell.theme-color-blind .dashboard-entry-list article > span,
+.dashboard-shell.theme-color-blind .project-management-list article > span {
+  color: var(--theme-accent-2);
+}
+
+.dashboard-shell.theme-old-money .dashboard-entry-list button,
+.dashboard-shell.theme-old-money .project-management-list button,
+.dashboard-shell.theme-old-money .backup-actions > button,
+.dashboard-shell.theme-old-money .backup-actions > label,
+.dashboard-shell.theme-old-money .dashboard-panel > button,
+.dashboard-shell.theme-old-money .composer-actions > button,
+.dashboard-shell.theme-old-money .archive-task-button,
+.dashboard-shell.theme-retro-console .dashboard-entry-list button,
+.dashboard-shell.theme-retro-console .project-management-list button,
+.dashboard-shell.theme-retro-console .backup-actions > button,
+.dashboard-shell.theme-retro-console .backup-actions > label,
+.dashboard-shell.theme-retro-console .dashboard-panel > button,
+.dashboard-shell.theme-retro-console .composer-actions > button,
+.dashboard-shell.theme-retro-console .archive-task-button,
+.dashboard-shell.theme-indian-miniature .dashboard-entry-list button,
+.dashboard-shell.theme-indian-miniature .project-management-list button,
+.dashboard-shell.theme-indian-miniature .backup-actions > button,
+.dashboard-shell.theme-indian-miniature .backup-actions > label,
+.dashboard-shell.theme-indian-miniature .dashboard-panel > button,
+.dashboard-shell.theme-indian-miniature .composer-actions > button,
+.dashboard-shell.theme-indian-miniature .archive-task-button,
+.dashboard-shell.theme-manga-ink .dashboard-entry-list button,
+.dashboard-shell.theme-manga-ink .project-management-list button,
+.dashboard-shell.theme-manga-ink .backup-actions > button,
+.dashboard-shell.theme-manga-ink .backup-actions > label,
+.dashboard-shell.theme-manga-ink .dashboard-panel > button,
+.dashboard-shell.theme-manga-ink .composer-actions > button,
+.dashboard-shell.theme-manga-ink .archive-task-button,
+.dashboard-shell.theme-dark-studio .dashboard-entry-list button,
+.dashboard-shell.theme-dark-studio .project-management-list button,
+.dashboard-shell.theme-dark-studio .backup-actions > button,
+.dashboard-shell.theme-dark-studio .backup-actions > label,
+.dashboard-shell.theme-dark-studio .dashboard-panel > button,
+.dashboard-shell.theme-dark-studio .composer-actions > button,
+.dashboard-shell.theme-dark-studio .archive-task-button,
+.dashboard-shell.theme-color-blind .dashboard-entry-list button,
+.dashboard-shell.theme-color-blind .project-management-list button,
+.dashboard-shell.theme-color-blind .backup-actions > button,
+.dashboard-shell.theme-color-blind .backup-actions > label,
+.dashboard-shell.theme-color-blind .dashboard-panel > button,
+.dashboard-shell.theme-color-blind .composer-actions > button,
+.dashboard-shell.theme-color-blind .archive-task-button {
+  border-color: var(--theme-subtle);
+  color: var(--theme-ink);
+  background: var(--theme-panel-alt);
+}
+
+.dashboard-shell.theme-dark-studio input,
+.dashboard-shell.theme-dark-studio textarea,
+.dashboard-shell.theme-dark-studio select {
+  color: var(--theme-ink);
+}
+
+.dashboard-shell.theme-dark-studio .quick-capture input,
+.dashboard-shell.theme-dark-studio .active-timer-banner input {
+  color: var(--theme-ink);
+}
+
+.dashboard-panel.theme-panel {
+  min-height: 0;
+}
+
+.theme-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 0;
+  margin-top: 20px;
+  overflow: auto;
+  padding-right: 5px;
+  align-content: start;
+}
+
+.theme-options button {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 3px 13px;
+  align-items: center;
+  min-height: 76px;
+  padding: 11px;
+  border: 1px solid var(--theme-subtle);
+  border-radius: 10px;
+  color: var(--theme-ink);
+  background: var(--theme-panel);
+  text-align: left;
+}
+
+.theme-options button.is-active {
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 2px var(--theme-accent);
+}
+
+.theme-swatch-row {
+  display: flex;
+  grid-row: span 2;
+  width: 76px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid var(--theme-subtle);
+  border-radius: 8px;
+}
+
+.theme-swatch-row i {
+  display: block;
+  flex: 1;
+}
+
+.theme-options strong {
+  overflow: hidden;
+  color: var(--theme-ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-options small {
+  overflow: hidden;
+  color: var(--theme-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (min-width: 1580px) {
+  .theme-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .theme-options {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .theme-options button {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .theme-swatch-row {
+    width: 64px;
   }
 }
