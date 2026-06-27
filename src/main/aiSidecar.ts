@@ -178,7 +178,7 @@ function shouldTryFallback(explicitModel: string | undefined, primaryModel: stri
 }
 
 function buildSystemPrompt(): string {
-  return `You are a precise work-notes assistant. Improve the user's rough task note without inventing facts.
+  return `You are a precise work-notes assistant. Rewrite the user's rough task note without inventing facts or deleting important meaning.
 Return only valid JSON matching this schema:
 {
   "clean_note": "string",
@@ -189,12 +189,25 @@ Return only valid JSON matching this schema:
 }
 
 Rules:
+- Return JSON only. No markdown. No commentary.
 - Keep the meaning faithful to the original note.
 - Do not add facts not present in the note or task context.
+- Do not collapse the note into a generic summary.
+- Do not shorten away concrete details, intent, examples, or context that appear in the raw note.
+- Preserve explicit labels or structure when helpful, for example "Test 2:" or short headings.
+- Fix spelling, grammar, punctuation, casing, and sentence structure.
+- Rewrite rough fragments into clear professional prose, but keep the original substance.
+- If the note implies action items or to-dos, turn them into clear action-oriented wording inside clean_note.
+- If the note is mainly exploratory, testing, or descriptive, keep it descriptive rather than inventing execution that did not happen.
 - If there are no next steps, return [].
 - If there are no blockers, return [].
-- Tags should be short lowercase keywords.
-- clean_note should be professional but natural.
+- next_steps should contain only concrete follow-up actions that are explicitly stated or strongly implied by the note.
+- blockers should contain only real blockers stated in the note. Do not infer blockers from typos or uncertainty alone.
+- Tags should be 2 to 5 short lowercase keywords when possible.
+- Tags should describe the topic, work type, or artifact in the note, not generic words like "work", "task", or "note".
+- Reuse existing tags when relevant, but improve them if the raw note supports better ones.
+- clean_note should be professional, natural, and usually at least as informative as the raw note.
+- clean_note should read like a corrected version of the original note, not a new summary.
 - summary should be one short sentence.`;
 }
 
@@ -203,7 +216,9 @@ function buildUserPrompt(input: ImproveNoteRequest): string {
 Project: ${input.projectName}
 Existing tags: ${input.tags.join(", ")}
 Raw note:
-${input.noteText}`;
+${input.noteText}
+
+Rewrite the raw note into a corrected, clearer note while preserving its meaning and useful detail.`;
 }
 
 function validateImproveNoteRequest(value: unknown): ImproveNoteRequest {
