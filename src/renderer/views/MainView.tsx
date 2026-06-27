@@ -528,6 +528,12 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
 
   async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
     setAiError(null);
+    const isSamePreview = aiPreview?.entryId === entry.id && aiPreview?.suggestionId === suggestion.id;
+    if (isSamePreview) {
+      setAiPreview(null);
+      return;
+    }
+
     setAiPreview({
       entryId: entry.id,
       taskId: entry.taskId,
