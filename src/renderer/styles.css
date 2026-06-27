@@ -2054,6 +2054,10 @@ body.overlay-route {
   background: var(--theme-panel-alt);
 }
 
+.dashboard-shell[class*="theme-"] .ai-note-footer {
+  color: var(--theme-muted);
+}
+
 .dashboard-shell[class*="theme-"] .dev-ai-list article {
   border-top-color: var(--theme-subtle);
 }
@@ -2545,6 +2549,11 @@ body.overlay-route {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 13px;
+}
+
+.ai-note-footer {
+  display: flex;
+  margin-top: 12px;
 }
 
 .ai-model-field {
