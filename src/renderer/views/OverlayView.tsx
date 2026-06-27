@@ -250,6 +250,7 @@ export function OverlayView({ themeId }: OverlayViewProps) {
 
       const projectName = activeTask.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
       const model = window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() || DEFAULT_OLLAMA_MODEL;
+      const requestStartedAt = readClockMs();
       const result = await window.timesheetDesktop.improveNoteWithAi({
         noteText,
         taskTitle: activeTask.title,
@@ -257,11 +258,13 @@ export function OverlayView({ themeId }: OverlayViewProps) {
         tags: activeTask.tags,
         model
       });
+      const durationMs = readClockMs() - requestStartedAt;
       const savedSuggestion = await createNoteAiSuggestion(db, {
         noteId: activeTimer.id,
         model: result.model,
         inputText: noteText,
-        outputJson: result.output
+        outputJson: result.output,
+        durationMs
       });
 
       setAiPreview({
@@ -513,4 +516,8 @@ function Icon({ name }: { name: IconName }) {
   };
 
   return <svg aria-hidden="true" className="reference-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
+function readClockMs(): number {
+  return globalThis.performance?.now() ?? Date.now();
 }

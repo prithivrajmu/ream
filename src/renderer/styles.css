@@ -2314,6 +2314,105 @@ body.overlay-route {
   box-shadow: 0 0 0 3px rgb(47 111 79 / 12%);
 }
 
+.dev-ai-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dev-ai-metrics p {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e9e8ef;
+  border-radius: 12px;
+  background: #fbfaf7;
+}
+
+.dev-ai-metrics span,
+.dev-ai-list small {
+  color: #858999;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dev-ai-metrics strong {
+  display: block;
+  margin-top: 7px;
+  color: #252936;
+  font-size: 18px;
+}
+
+.dev-ai-list {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.dev-ai-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid #efeff3;
+}
+
+.dev-ai-list article > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.dev-ai-list strong {
+  color: #232733;
+  font-size: 13px;
+}
+
+.dev-ai-list p {
+  overflow: hidden;
+  margin: 5px 0;
+  color: #5f6572;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-ai-list article > span {
+  color: #4f416f;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.dev-ai-status {
+  padding: 5px 9px;
+  border: 1px solid #e2e3ea;
+  border-radius: 999px;
+  color: #636978;
+  background: #f7f8fb;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.dev-ai-status.is-accepted {
+  border-color: #dcecdf;
+  color: #298951;
+  background: #f8fffa;
+}
+
+.dev-ai-status.is-rejected {
+  border-color: #f3d5d8;
+  color: #c33f4b;
+  background: #fff7f8;
+}
+
+.dev-ai-status.is-copied {
+  border-color: #dce1ff;
+  color: #5663f2;
+  background: #f7f8ff;
+}
+
 .project-management-list article.is-archived {
   opacity: 0.76;
 }

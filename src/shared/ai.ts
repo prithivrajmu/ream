@@ -1,6 +1,6 @@
-export const DEFAULT_OLLAMA_MODEL = "llama3.2:3b";
-export const FALLBACK_OLLAMA_MODEL = "llama3.2:1b";
-export const OLLAMA_MODEL_STORAGE_KEY = "ream.ollamaModel";
+export const DEFAULT_OLLAMA_MODEL = "llama3.2:1b";
+export const FALLBACK_OLLAMA_MODEL = "llama3.2:3b";
+export const OLLAMA_MODEL_STORAGE_KEY = "ream.ollamaModel.v2";
 
 export interface ImproveNoteRequest {
   noteText: string;

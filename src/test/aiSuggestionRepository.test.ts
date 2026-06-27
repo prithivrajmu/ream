@@ -33,15 +33,19 @@ describe("AI note suggestions", () => {
       noteId: "entry-1",
       model: "llama3.2:3b",
       inputText: "done review blocker api creds",
-      outputJson: output
+      outputJson: output,
+      durationMs: 1234.4
     });
 
     expect(suggestion.status).toBe("pending");
     expect(suggestion.inputText).toBe("done review blocker api creds");
     expect(suggestion.outputJson).toEqual(output);
+    expect(suggestion.durationMs).toBe(1234);
+    expect(suggestion.statusUpdatedAt).toBeNull();
 
     const accepted = await updateNoteAiSuggestionStatus(db, suggestion.id, "accepted", new Date("2026-01-01T00:00:00.000Z"));
     expect(accepted.status).toBe("accepted");
+    expect(accepted.statusUpdatedAt).toBe("2026-01-01T00:00:00.000Z");
     expect(accepted.acceptedAt).toBe("2026-01-01T00:00:00.000Z");
   });
 

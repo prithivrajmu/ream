@@ -8,6 +8,7 @@ export interface CreateNoteAiSuggestionInput {
   model: string;
   inputText: string;
   outputJson: ImprovedNoteOutput;
+  durationMs: number;
 }
 
 export async function createNoteAiSuggestion(
@@ -23,7 +24,9 @@ export async function createNoteAiSuggestion(
     inputText: input.inputText,
     outputJson: input.outputJson,
     status: "pending",
+    durationMs: Math.max(0, Math.round(input.durationMs)),
     createdAt: timestamp,
+    statusUpdatedAt: null,
     acceptedAt: null
   };
 
@@ -45,9 +48,14 @@ export async function updateNoteAiSuggestionStatus(
   const updated: NoteAiSuggestion = {
     ...suggestion,
     status,
+    statusUpdatedAt: now.toISOString(),
     acceptedAt: status === "accepted" ? now.toISOString() : suggestion.acceptedAt
   };
 
   await database.noteAiSuggestions.put(updated);
   return updated;
+}
+
+export async function listNoteAiSuggestions(database: TimesheetDatabase): Promise<NoteAiSuggestion[]> {
+  return database.noteAiSuggestions.orderBy("createdAt").reverse().toArray();
 }

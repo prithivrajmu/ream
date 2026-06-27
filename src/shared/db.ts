@@ -57,6 +57,20 @@ export class TimesheetDatabase extends Dexie {
       activeTimers: "id, taskId, startedAt",
       noteAiSuggestions: "id, noteId, status, createdAt, acceptedAt"
     });
+
+    this.version(4).stores({
+      tasks: "id, title, *projectIds, archived, createdAt, updatedAt",
+      projects: "id, title, archived, createdAt, updatedAt",
+      timeEntries: "id, taskId, startedAt, endedAt, createdAt",
+      activeTimers: "id, taskId, startedAt",
+      noteAiSuggestions: "id, noteId, status, createdAt, statusUpdatedAt, acceptedAt"
+    }).upgrade(async (transaction) => {
+      const suggestions = transaction.table("noteAiSuggestions") as Table<NoteAiSuggestion, string>;
+      await suggestions.toCollection().modify((suggestion) => {
+        suggestion.durationMs = typeof suggestion.durationMs === "number" ? suggestion.durationMs : 0;
+        suggestion.statusUpdatedAt = suggestion.statusUpdatedAt ?? suggestion.acceptedAt ?? null;
+      });
+    });
   }
 }
 

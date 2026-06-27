@@ -50,7 +50,9 @@ export interface NoteAiSuggestion {
   inputText: string;
   outputJson: unknown;
   status: NoteAiSuggestionStatus;
+  durationMs: number;
   createdAt: string;
+  statusUpdatedAt: string | null;
   acceptedAt: string | null;
 }
 
