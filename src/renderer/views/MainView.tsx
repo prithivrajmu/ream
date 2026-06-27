@@ -661,7 +661,7 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
           {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
             const improveButton = renderImproveNoteButton(entry);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
           })}
         </div></section> : null}
 
@@ -682,7 +682,7 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
             const improveButton = renderImproveNoteButton(entry);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small>{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}</div></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
           })}
         </div></section> : null}
 

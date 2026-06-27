@@ -2556,6 +2556,10 @@ body.overlay-route {
   margin-top: 12px;
 }
 
+.ai-note-footer .ai-note-button {
+  width: fit-content;
+}
+
 .ai-model-field {
   display: grid;
   gap: 7px;
