@@ -2058,6 +2058,24 @@ body.overlay-route {
   border-top-color: var(--theme-subtle);
 }
 
+.dashboard-shell[class*="theme-"] .dev-ai-metrics p {
+  border-color: var(--theme-subtle);
+  background: var(--theme-panel-alt);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-ink) 8%, transparent);
+}
+
+.dashboard-shell[class*="theme-"] .dev-ai-metrics span {
+  color: var(--theme-muted);
+}
+
+.dashboard-shell[class*="theme-"] .dev-ai-metrics strong {
+  color: var(--theme-ink);
+}
+
+.dashboard-shell[class*="theme-"] .dev-ai-subheading {
+  color: var(--theme-accent-2);
+}
+
 .dashboard-shell[class*="theme-"] .dev-ai-list strong,
 .dashboard-shell[class*="theme-"] .dev-ai-list p,
 .dashboard-shell[class*="theme-"] .dev-ai-list article > span,
