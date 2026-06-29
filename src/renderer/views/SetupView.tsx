@@ -174,7 +174,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
 
           <section className="setup-card setup-transparency-card">
             <div className="setup-card-header"><span>Overlay</span><button type="button" onClick={() => setOverlayTransparency(initialSettings.overlayTransparency)}>Skip</button></div>
-            <label className="setup-slider-field">Transparency <strong>{formatTransparency(overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="78" onChange={(event) => setOverlayTransparency(Number(event.target.value) / 100)} type="range" value={Math.round(overlayTransparency * 100)} /></label>
+            <label className="setup-slider-field">Transparency <strong>{formatTransparency(overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => setOverlayTransparency(Number(event.target.value) / 100)} type="range" value={Math.round(overlayTransparency * 100)} /></label>
             <div className="setup-slider-scale"><span>Subtle</span><span>Solid</span></div>
           </section>
 

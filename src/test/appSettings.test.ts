@@ -32,7 +32,7 @@ describe("app settings", () => {
       userName: "Prithiv",
       setupCompletedAt: "2026-06-29T00:00:00.000Z",
       themeId: "retro-console",
-      overlayTransparency: 0.78,
+      overlayTransparency: 0.5,
       aiSetupPreference: "enabled",
       ollamaModel: "llama3.2:3b"
     });

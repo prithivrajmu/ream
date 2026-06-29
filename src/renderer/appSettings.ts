@@ -74,5 +74,5 @@ function normalizeAppSettings(candidate: Partial<AppSettings>, defaults: AppSett
 }
 
 function clampOverlayTransparency(value: number): number {
-  return Math.min(1, Math.max(0.78, value));
+  return Math.min(1, Math.max(0.5, value));
 }
