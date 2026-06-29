@@ -55,6 +55,9 @@ local storage.
   to the main app surface.
 - CSS variables define shared surfaces, ink, muted text, accents, danger, shadow,
   and corner radius.
+- New UI surfaces should follow `docs/theme-implementation-guide.md` so theme
+  selection is accounted for when controls, dialogs, or settings panels are
+  added later.
 - The overlay keeps its current style for now; it should get the same theme
   tokens only after the main workspace direction is chosen.
 
