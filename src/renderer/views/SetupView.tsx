@@ -165,7 +165,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
           </label>
 
           <section className="setup-card setup-theme-card">
-            <div className="setup-card-header"><span>Theme</span><button type="button" onClick={() => selectTheme(initialSettings.themeId)}>Skip</button></div>
+            <div className="setup-card-header"><span>Theme</span></div>
             <div className="setup-theme-list">
               {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => selectTheme(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong></button>)}
             </div>
@@ -173,13 +173,13 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
           </section>
 
           <section className="setup-card setup-transparency-card">
-            <div className="setup-card-header"><span>Overlay</span><button type="button" onClick={() => setOverlayTransparency(initialSettings.overlayTransparency)}>Skip</button></div>
+            <div className="setup-card-header"><span>Overlay</span></div>
             <label className="setup-slider-field">Transparency <strong>{formatTransparency(overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => setOverlayTransparency(Number(event.target.value) / 100)} type="range" value={Math.round(overlayTransparency * 100)} /></label>
             <div className="setup-slider-scale"><span>Subtle</span><span>Solid</span></div>
           </section>
 
           <section className="setup-card setup-list-card">
-            <div className="setup-card-header"><span>Starter workspace</span><button type="button" onClick={() => { setStarterTasks([]); setStarterProjects([]); }}>Skip</button></div>
+            <div className="setup-card-header"><span>Starter workspace</span></div>
             <div className="setup-chip-row">
               {STARTER_TASKS.map((task) => <button key={task} onClick={() => addTask(task)} type="button">+ {task}</button>)}
               {STARTER_PROJECTS.map((project) => <button key={project} onClick={() => addProject(project)} type="button">+ {project}</button>)}
@@ -196,7 +196,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
           </section>
 
           <section className="setup-card setup-ai-card">
-            <div className="setup-card-header"><span>Local AI</span><button type="button" onClick={() => setAiEnabled(false)}>Skip</button></div>
+            <div className="setup-card-header"><span>Local AI</span></div>
             <label className="setup-toggle"><input checked={aiEnabled} onChange={(event) => setAiEnabled(event.target.checked)} type="checkbox" />Enable note improvement setup</label>
             <select disabled={!aiEnabled} value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)}>
               {OLLAMA_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}

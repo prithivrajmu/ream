@@ -2106,7 +2106,6 @@ body.overlay-route {
   gap: 14px;
 }
 
-.setup-card-header button,
 .setup-chip-row button,
 .setup-inline-add button,
 .setup-ai-actions button,
@@ -2291,7 +2290,6 @@ body.overlay-route {
 .setup-shell.theme-retro-console .setup-hero,
 .setup-shell.theme-retro-console .setup-card,
 .setup-shell.theme-retro-console .setup-theme-list button,
-.setup-shell.theme-retro-console .setup-card-header button,
 .setup-shell.theme-retro-console .setup-chip-row button,
 .setup-shell.theme-retro-console .setup-inline-add button,
 .setup-shell.theme-retro-console .setup-ai-actions button,
@@ -2303,7 +2301,6 @@ body.overlay-route {
 .setup-shell.theme-manga-ink .setup-hero,
 .setup-shell.theme-manga-ink .setup-card,
 .setup-shell.theme-manga-ink .setup-theme-list button,
-.setup-shell.theme-manga-ink .setup-card-header button,
 .setup-shell.theme-manga-ink .setup-chip-row button,
 .setup-shell.theme-manga-ink .setup-inline-add button,
 .setup-shell.theme-manga-ink .setup-ai-actions button,
