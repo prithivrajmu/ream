@@ -2085,6 +2085,7 @@ body.overlay-route {
 .setup-card-header button,
 .setup-chip-row button,
 .setup-inline-add button,
+.setup-ai-actions button,
 .setup-segments button,
 .settings-action-button {
   min-height: 34px;
@@ -2160,10 +2161,25 @@ body.overlay-route {
 
 .setup-segments,
 .setup-chip-row,
+.setup-ai-actions,
 .setup-selected-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.setup-ai-status {
+  max-height: 94px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--theme-subtle, #e3ded3);
+  border-radius: 8px;
+  color: var(--theme-muted, #74706a);
+  background: var(--theme-panel-alt, #eef3ea);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .setup-inline-add {
@@ -2224,6 +2240,7 @@ body.overlay-route {
 .setup-shell.theme-retro-console .setup-card-header button,
 .setup-shell.theme-retro-console .setup-chip-row button,
 .setup-shell.theme-retro-console .setup-inline-add button,
+.setup-shell.theme-retro-console .setup-ai-actions button,
 .setup-shell.theme-retro-console .setup-segments button,
 .setup-shell.theme-retro-console .settings-action-button {
   border: 2px solid #171531;
@@ -2235,6 +2252,7 @@ body.overlay-route {
 .setup-shell.theme-manga-ink .setup-card-header button,
 .setup-shell.theme-manga-ink .setup-chip-row button,
 .setup-shell.theme-manga-ink .setup-inline-add button,
+.setup-shell.theme-manga-ink .setup-ai-actions button,
 .setup-shell.theme-manga-ink .setup-segments button,
 .setup-shell.theme-manga-ink .settings-action-button {
   border: 2px solid #111;

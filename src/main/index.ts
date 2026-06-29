@@ -1,6 +1,15 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
+import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { DEFAULT_OLLAMA_MODEL, type ImproveNoteRequest, type ImproveNoteResult, validateImprovedNoteOutput } from "../shared/ai";
+import {
+  DEFAULT_OLLAMA_MODEL,
+  FALLBACK_OLLAMA_MODEL,
+  type ImproveNoteRequest,
+  type ImproveNoteResult,
+  type OllamaHealthStatus,
+  type OllamaPullResult,
+  validateImprovedNoteOutput
+} from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
@@ -12,6 +21,7 @@ import {
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const STABLE_USER_DATA_DIR = "timesheet-tracker";
+const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
 
 app.setPath("userData", join(app.getPath("appData"), STABLE_USER_DATA_DIR));
 
@@ -294,6 +304,68 @@ function registerShortcuts() {
   globalShortcut.register("CommandOrControl+Shift+T", toggleOverlayWindow);
 }
 
+async function readOllamaStatus(): Promise<OllamaHealthStatus> {
+  if (!aiSidecar) {
+    return {
+      ok: false,
+      ollama: { ok: false },
+      model: DEFAULT_OLLAMA_MODEL,
+      fallbackModel: FALLBACK_OLLAMA_MODEL
+    };
+  }
+
+  const response = await fetch(`${aiSidecar.url}/ai/health`);
+  const payload = await response.json() as unknown;
+  return normalizeOllamaHealthStatus(payload);
+}
+
+async function pullOllamaModel(model: string): Promise<OllamaPullResult> {
+  const normalizedModel = normalizeOllamaModelName(model);
+  return new Promise((resolve, reject) => {
+    execFile("ollama", ["pull", normalizedModel], { timeout: 600_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = error.message.includes("ENOENT")
+          ? "Ollama CLI is not installed or is not on PATH."
+          : stderr.trim() || error.message;
+        reject(new Error(message));
+        return;
+      }
+
+      resolve({ model: normalizedModel, output: [stdout, stderr].map((value) => value.trim()).filter(Boolean).join("\n") });
+    });
+  });
+}
+
+function normalizeOllamaModelName(value: string): string {
+  const model = value.trim();
+  if (!model) {
+    throw new Error("Choose an Ollama model first.");
+  }
+
+  if (!/^[a-zA-Z0-9._:-]+$/.test(model)) {
+    throw new Error("Ollama model names can only include letters, numbers, dots, underscores, colons, and hyphens.");
+  }
+
+  return model;
+}
+
+function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Ollama status response was invalid.");
+  }
+
+  const payload = value as Record<string, unknown>;
+  const ollama = payload.ollama && typeof payload.ollama === "object" && !Array.isArray(payload.ollama)
+    ? payload.ollama as Record<string, unknown>
+    : {};
+  return {
+    ok: payload.ok === true,
+    ollama: { ok: ollama.ok === true },
+    model: typeof payload.model === "string" && payload.model.trim() ? payload.model.trim() : DEFAULT_OLLAMA_MODEL,
+    fallbackModel: typeof payload.fallbackModel === "string" && payload.fallbackModel.trim() ? payload.fallbackModel.trim() : FALLBACK_OLLAMA_MODEL
+  };
+}
+
 app.whenReady().then(() => {
   ensureMainWindow();
   buildAppMenu();
@@ -367,6 +439,14 @@ app.whenReady().then(() => {
       output: validateImprovedNoteOutput(payload)
     };
   });
+
+  ipcMain.handle("ai:ollama-status", () => readOllamaStatus());
+
+  ipcMain.handle("ai:open-ollama-download", async () => {
+    await shell.openExternal(OLLAMA_DOWNLOAD_URL);
+  });
+
+  ipcMain.handle("ai:pull-ollama-model", (_event, model: string) => pullOllamaModel(model));
 
   app.on("activate", () => {
     ensureMainWindow();

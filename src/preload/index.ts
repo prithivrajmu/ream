@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ImproveNoteRequest, ImproveNoteResult } from "../shared/ai";
+import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus, OllamaPullResult } from "../shared/ai";
 
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
@@ -10,6 +10,9 @@ const desktopApi = {
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
+  getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
+  openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
+  pullOllamaModel: (model: string) => ipcRenderer.invoke("ai:pull-ollama-model", model) as Promise<OllamaPullResult>,
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, expanded: boolean) => callback(expanded);
     ipcRenderer.on("overlay:expanded-changed", listener);

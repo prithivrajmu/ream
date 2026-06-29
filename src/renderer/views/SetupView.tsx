@@ -32,6 +32,8 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
   const [starterProjects, setStarterProjects] = useState<string[]>([]);
   const [aiEnabled, setAiEnabled] = useState(initialSettings.aiSetupPreference === "enabled");
   const [ollamaModel, setOllamaModel] = useState(initialSettings.ollamaModel || DEFAULT_OLLAMA_MODEL);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const activeTheme = useMemo(() => themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0], [themeId]);
@@ -107,6 +109,46 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
     }
   }
 
+  async function handleCheckOllamaStatus() {
+    setAiBusy(true);
+    setAiStatus(null);
+    try {
+      const status = await window.timesheetDesktop?.getOllamaStatus?.();
+      if (!status) {
+        throw new Error("Ollama setup is only available in the desktop app.");
+      }
+      setAiStatus(status.ollama.ok ? `Ollama is running. Default model: ${status.model}.` : "Ollama is not running yet.");
+    } catch (statusError) {
+      setAiStatus(statusError instanceof Error ? statusError.message : "Unable to check Ollama.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function handleOpenOllamaDownload() {
+    try {
+      await window.timesheetDesktop?.openOllamaDownload?.();
+    } catch (downloadError) {
+      setAiStatus(downloadError instanceof Error ? downloadError.message : "Unable to open Ollama download.");
+    }
+  }
+
+  async function handlePullOllamaModel() {
+    setAiBusy(true);
+    setAiStatus(`Installing ${ollamaModel}...`);
+    try {
+      const result = await window.timesheetDesktop?.pullOllamaModel?.(ollamaModel);
+      if (!result) {
+        throw new Error("Model install is only available in the desktop app.");
+      }
+      setAiStatus(result.output || `${result.model} is installed.`);
+    } catch (pullError) {
+      setAiStatus(pullError instanceof Error ? pullError.message : "Unable to install Ollama model.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   return (
     <main className={`setup-shell theme-${themeId}`}>
       <form className="setup-panel" onSubmit={handleSubmit}>
@@ -165,6 +207,12 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
             <select disabled={!aiEnabled} value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)}>
               {OLLAMA_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
             </select>
+            <div className="setup-ai-actions">
+              <button disabled={!aiEnabled || aiBusy} onClick={() => void handleCheckOllamaStatus()} type="button">Check</button>
+              <button disabled={!aiEnabled} onClick={() => void handleOpenOllamaDownload()} type="button">Install Ollama</button>
+              <button disabled={!aiEnabled || aiBusy} onClick={() => void handlePullOllamaModel()} type="button">Pull model</button>
+            </div>
+            {aiStatus ? <p className="setup-ai-status">{aiStatus}</p> : null}
             <small>Default: {DEFAULT_OLLAMA_MODEL}. Fallback: {FALLBACK_OLLAMA_MODEL}.</small>
           </section>
         </section>
