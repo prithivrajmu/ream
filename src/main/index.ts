@@ -193,18 +193,33 @@ function setOverlayExpanded(expanded: boolean) {
 
 function showOverlayWindow() {
   const window = ensureOverlayWindow();
+  setOverlayMousePassthrough(window, false);
   window.show();
   applyOverlayPinned(window, true);
   window.focus();
 }
 
+function hideOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+
+  if (overlayExpanded) {
+    setOverlayExpanded(false);
+  }
+
+  setOverlayMousePassthrough(overlayWindow, true);
+  overlayWindow.blur();
+  overlayWindow.hide();
+}
+
 function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
-    setOverlayExpanded(false);
-    window.hide();
+    hideOverlayWindow();
     return;
   }
+  setOverlayMousePassthrough(window, false);
   window.show();
   applyOverlayPinned(window, true);
   window.focus();
@@ -321,8 +336,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
-    setOverlayExpanded(false);
-    overlayWindow?.hide();
+    hideOverlayWindow();
   });
 
   ipcMain.handle("ai:improve-note", async (_event, input: ImproveNoteRequest): Promise<ImproveNoteResult> => {

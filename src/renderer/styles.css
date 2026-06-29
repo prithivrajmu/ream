@@ -2182,12 +2182,30 @@ body.overlay-route {
   overflow: hidden;
 }
 
+.dashboard-entry-list article {
+  align-items: flex-start;
+}
+
 .dashboard-entry-list,
 .project-management-list,
 .notes-list {
   min-height: 0;
   overflow: auto;
   padding-right: 6px;
+}
+
+.dashboard-entry-list .entry-note-text {
+  max-width: 100%;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.dashboard-entry-list .ai-note-status {
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .note-row-body {
@@ -2469,6 +2487,10 @@ body.overlay-route {
 .settings-grid {
   min-height: 0;
   overflow: auto;
+}
+
+.settings-grid .dashboard-panel {
+  justify-content: flex-start;
 }
 
 .project-options input {
@@ -3110,6 +3132,27 @@ body.overlay-route {
   border-color: var(--theme-subtle);
   color: var(--theme-ink);
   background: var(--theme-panel-alt);
+}
+
+.dashboard-shell.theme-old-money .backup-actions > .new-project-button,
+.dashboard-shell.theme-retro-console .backup-actions > .new-project-button,
+.dashboard-shell.theme-indian-miniature .backup-actions > .new-project-button,
+.dashboard-shell.theme-manga-ink .backup-actions > .new-project-button,
+.dashboard-shell.theme-dark-studio .backup-actions > .new-project-button,
+.dashboard-shell.theme-color-blind .backup-actions > .new-project-button {
+  color: #fff;
+  background: var(--theme-accent);
+  box-shadow: var(--theme-shadow);
+}
+
+.dashboard-shell.theme-retro-console .settings-grid .dashboard-panel,
+.dashboard-shell.theme-retro-console .backup-actions > .new-project-button {
+  border: 2px solid #171531;
+}
+
+.dashboard-shell.theme-manga-ink .settings-grid .dashboard-panel,
+.dashboard-shell.theme-manga-ink .backup-actions > .new-project-button {
+  border: 2px solid #111;
 }
 
 .dashboard-shell.theme-dark-studio input,
