@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { readAppSettings, persistAppSettings, type AppSettings } from "./appSettings";
 import { MainView } from "./views/MainView";
 import { OverlayView } from "./views/OverlayView";
+import { SetupView } from "./views/SetupView";
 import { persistTheme, readStoredTheme, THEME_STORAGE_KEY, type ThemeId } from "./themeOptions";
 
 type Route = "main" | "overlay";
@@ -12,6 +14,8 @@ function getRoute(): Route {
 export function App() {
   const [route] = useState<Route>(() => getRoute());
   const [themeId, setThemeId] = useState<ThemeId>(() => readStoredTheme());
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => readAppSettings(window.localStorage, readStoredTheme()));
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
 
   useEffect(() => {
     const isOverlay = route === "overlay";
@@ -29,8 +33,13 @@ export function App() {
   }, [themeId]);
 
   useEffect(() => {
+    persistAppSettings(window.localStorage, appSettings);
+  }, [appSettings]);
+
+  useEffect(() => {
     function syncThemeFromStorage() {
       setThemeId(readStoredTheme());
+      setAppSettings((currentSettings) => readAppSettings(window.localStorage, currentSettings.themeId));
     }
 
     function handleStorage(event: StorageEvent) {
@@ -57,8 +66,16 @@ export function App() {
   }, []);
 
   if (route === "overlay") {
-    return <OverlayView themeId={themeId} />;
+    return <OverlayView overlayTransparency={appSettings.overlayTransparency} themeId={themeId} />;
   }
 
-  return <MainView setThemeId={setThemeId} themeId={themeId} />;
+  if (!appSettings.setupCompletedAt || isSetupOpen) {
+    return <SetupView initialSettings={{ ...appSettings, themeId }} onComplete={(nextSettings) => {
+      setAppSettings(nextSettings);
+      setThemeId(nextSettings.themeId);
+      setIsSetupOpen(false);
+    }} onThemeChange={setThemeId} />;
+  }
+
+  return <MainView onOpenSetup={() => setIsSetupOpen(true)} setThemeId={setThemeId} themeId={themeId} userName={appSettings.userName} />;
 }

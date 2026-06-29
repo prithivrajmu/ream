@@ -23,6 +23,8 @@ import reamIcon from "../assets/ream-icon.png";
 interface MainViewProps {
   themeId: ThemeId;
   setThemeId: (themeId: ThemeId) => void;
+  userName: string;
+  onOpenSetup: () => void;
 }
 
 interface AiNotePreview {
@@ -36,7 +38,7 @@ interface AiNotePreview {
   output: ImprovedNoteOutput;
 }
 
-export function MainView({ themeId, setThemeId }: MainViewProps) {
+export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -626,6 +628,8 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
   })();
 
   const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
+  const displayName = userName.trim() || "there";
+  const profileInitials = getInitials(displayName);
 
   return (
     <main className={`dashboard-shell theme-${themeId}`}>
@@ -636,13 +640,13 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
         </nav>
         <div className="sidebar-bottom">
           <button className="overlay-launcher" onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
-          <div className="profile-row"><span>PR</span><p>Prithiv Raj</p><MainIcon name="chevron" /></div>
+          <div className="profile-row"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></div>
         </div>
       </aside>
 
       <section className="dashboard-page">
         <header className="dashboard-header">
-          <div><h1>{activeSection === "home" ? `${greeting}, Prithiv.` : navigation.find((item) => item.id === activeSection)?.label}</h1><p>{activeSection === "home" ? "Stay focused. Make steady progress." : "Everything stays local to this device."}</p></div>
+          <div><h1>{activeSection === "home" ? `${greeting}, ${displayName}.` : navigation.find((item) => item.id === activeSection)?.label}</h1><p>{activeSection === "home" ? "Stay focused. Make steady progress." : "Everything stays local to this device."}</p></div>
           {headerAction}
         </header>
 
@@ -666,8 +670,7 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
           {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
-            const improveButton = renderImproveNoteButton(entry);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small>{entry.note}</small> : null}{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small className="entry-note-text">{entry.note}</small> : null}{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
           })}
         </div></section> : null}
 
@@ -686,13 +689,12 @@ export function MainView({ themeId, setThemeId }: MainViewProps) {
 
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
-            const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
             const improveButton = renderImproveNoteButton(entry);
             return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
           })}
         </div></section> : null}
 
-        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel ai-settings-panel"><div className="ai-settings-header"><div><p className="panel-kicker">Local AI</p><h2>Ollama sidecar</h2></div><span className="ai-settings-badge">Optional</span></div><p className="ai-settings-copy">Improve notes with a local Ollama model.</p><div className="ai-model-summary"><div><span>Default</span><strong>{DEFAULT_OLLAMA_MODEL}</strong></div><div><span>Fallback</span><strong>{FALLBACK_OLLAMA_MODEL}</strong></div></div><label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label><p className="ai-settings-footnote">Leave blank to use the default model. The fallback is used when the primary model fails.</p></section><section className="dashboard-panel theme-panel"><p className="panel-kicker">Theme lab</p><h2>{activeTheme.label}</h2><p>{activeTheme.description}</p><div className="theme-options" role="list" aria-label="Theme exploration options">{themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => setThemeId(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section></div> : null}
+        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel ai-settings-panel"><p className="panel-kicker">Local AI</p><h2>Ollama sidecar</h2><p>Improve notes with a local Ollama model. Default: <code>{DEFAULT_OLLAMA_MODEL}</code>. Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code>.</p><label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label><button className="settings-action-button" onClick={onOpenSetup} type="button">Open setup</button></section><section className="dashboard-panel theme-panel"><p className="panel-kicker">Theme lab</p><h2>{activeTheme.label}</h2><p>{activeTheme.description}</p><div className="theme-options" role="list" aria-label="Theme exploration options">{themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => setThemeId(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section></div> : null}
 
         {activeSection === "dev" ? <section className="dashboard-panel dev-ai-panel"><div className="section-title"><h2>AI note requests</h2><span>{aiSuggestionStats.total} total</span></div><div className="dev-ai-metrics"><p><span>Average response</span><strong>{formatDurationMs(aiSuggestionStats.averageDurationMs)}</strong></p><p><span>Accepted</span><strong>{aiSuggestionStats.accepted}</strong></p><p><span>Rejected</span><strong>{aiSuggestionStats.rejected}</strong></p><p><span>Copied</span><strong>{aiSuggestionStats.copied}</strong></p><p><span>Pending</span><strong>{aiSuggestionStats.pending}</strong></p></div><h3 className="dev-ai-subheading">Improved notes</h3><div className="dev-ai-list">
           {improvedAiSuggestions.length === 0 ? <p className="empty-state">AI request telemetry will appear after the first note improvement.</p> : improvedAiSuggestions.slice(0, 25).map((suggestion) => <article key={suggestion.id}><div><strong>{suggestion.model}</strong><p>{suggestion.inputText}</p><small>Created {formatEntryDateTime(suggestion.createdAt)}{suggestion.statusUpdatedAt ? ` · ${formatAiStatus(suggestion.status)} ${formatEntryDateTime(suggestion.statusUpdatedAt)}` : ""}</small></div><span>{formatDurationMs(normalizeSuggestionDuration(suggestion))}</span><b className={`dev-ai-status is-${suggestion.status}`}>{suggestion.status}</b></article>)}
@@ -745,6 +747,16 @@ function toDateTimeLocalValue(value: string): string {
 
 function readStoredOllamaModel(): string {
   return window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() || DEFAULT_OLLAMA_MODEL;
+}
+
+function getInitials(name: string): string {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase())
+    .join("");
+  return initials || "R";
 }
 
 function readClockMs(): number {

@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
@@ -22,6 +22,7 @@ type IconName = "chevron" | "clock" | "close" | "list" | "note" | "pause" | "pla
 
 interface OverlayViewProps {
   themeId: ThemeId;
+  overlayTransparency: number;
 }
 
 interface OverlayAiPreview {
@@ -32,7 +33,7 @@ interface OverlayAiPreview {
   output: ImprovedNoteOutput;
 }
 
-export function OverlayView({ themeId }: OverlayViewProps) {
+export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
@@ -383,7 +384,7 @@ export function OverlayView({ themeId }: OverlayViewProps) {
   }
 
   return (
-    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""}`} aria-label="Ream overlay">
+    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""}`} style={{ "--overlay-opacity": overlayTransparency } as CSSProperties} aria-label="Ream overlay">
       <header className="reference-overlay-bar">
         <div className="reference-overlay-identity">
           <span className="reference-app-icon"><Icon name="clock" /></span>
