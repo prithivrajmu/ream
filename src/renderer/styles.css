@@ -2045,8 +2045,14 @@ body.overlay-route {
 
 .setup-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(260px, .86fr) minmax(0, 1.14fr);
+  grid-template-areas:
+    "name workspace"
+    "theme workspace"
+    "theme workspace"
+    "transparency ai";
   gap: 14px;
+  align-items: start;
 }
 
 .setup-card {
@@ -2061,9 +2067,27 @@ body.overlay-route {
   box-shadow: var(--theme-shadow, 0 8px 18px rgb(55 49 38 / 5%));
 }
 
-.setup-name-card,
+.setup-name-card {
+  grid-area: name;
+  gap: 8px;
+  padding: 12px 14px;
+  box-shadow: none;
+}
+
+.setup-theme-card {
+  grid-area: theme;
+}
+
 .setup-list-card {
-  grid-column: span 2;
+  grid-area: workspace;
+}
+
+.setup-transparency-card {
+  grid-area: transparency;
+}
+
+.setup-ai-card {
+  grid-area: ai;
 }
 
 .setup-card > span,
@@ -2299,11 +2323,12 @@ body.overlay-route {
 
   .setup-grid {
     grid-template-columns: 1fr;
-  }
-
-  .setup-name-card,
-  .setup-list-card {
-    grid-column: auto;
+    grid-template-areas:
+      "name"
+      "theme"
+      "workspace"
+      "transparency"
+      "ai";
   }
 }
 
