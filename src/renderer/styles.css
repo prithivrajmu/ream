@@ -2147,6 +2147,36 @@ body.overlay-route {
   background: var(--theme-accent, #223d33);
 }
 
+.setup-slider-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 11px;
+  color: var(--theme-muted, #74706a);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.setup-slider-field strong {
+  color: var(--theme-ink, #1d2026);
+}
+
+.setup-slider-field input {
+  grid-column: 1 / -1;
+  height: 30px;
+  padding: 0;
+  accent-color: var(--theme-accent, #223d33);
+  background: transparent;
+}
+
+.setup-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--theme-muted, #74706a);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .setup-theme-list .theme-swatch-row {
   width: 64px;
   height: 36px;

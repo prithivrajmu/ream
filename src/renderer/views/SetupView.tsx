@@ -15,11 +15,6 @@ interface SetupViewProps {
 
 const STARTER_TASKS = ["Plan today", "Deep work", "Admin follow-up"];
 const STARTER_PROJECTS = ["Client work", "Internal"];
-const TRANSPARENCY_OPTIONS = [
-  { label: "Solid", value: 1 },
-  { label: "Balanced", value: 0.92 },
-  { label: "Light", value: 0.84 }
-] as const;
 const OLLAMA_MODELS = [DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, "mistral:7b", "qwen2.5:3b"];
 
 export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupViewProps) {
@@ -179,9 +174,8 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
 
           <section className="setup-card">
             <div className="setup-card-header"><span>Overlay</span><button type="button" onClick={() => setOverlayTransparency(initialSettings.overlayTransparency)}>Skip</button></div>
-            <div className="setup-segments">
-              {TRANSPARENCY_OPTIONS.map((option) => <button aria-pressed={overlayTransparency === option.value} className={overlayTransparency === option.value ? "is-active" : ""} key={option.label} onClick={() => setOverlayTransparency(option.value)} type="button">{option.label}</button>)}
-            </div>
+            <label className="setup-slider-field">Transparency <strong>{formatTransparency(overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="78" onChange={(event) => setOverlayTransparency(Number(event.target.value) / 100)} type="range" value={Math.round(overlayTransparency * 100)} /></label>
+            <div className="setup-slider-scale"><span>Subtle</span><span>Solid</span></div>
           </section>
 
           <section className="setup-card setup-list-card">
@@ -232,4 +226,8 @@ function SelectedItems({ items }: { items: string[] }) {
   }
 
   return <div className="setup-selected-list">{items.map((item) => <span key={item}>{item}</span>)}</div>;
+}
+
+function formatTransparency(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
