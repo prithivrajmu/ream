@@ -11,6 +11,9 @@ import {
 } from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
+const STABLE_USER_DATA_DIR = "timesheet-tracker";
+
+app.setPath("userData", join(app.getPath("appData"), STABLE_USER_DATA_DIR));
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
