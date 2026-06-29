@@ -530,6 +530,12 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
 
   async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
     setAiError(null);
+    const isSamePreview = aiPreview?.entryId === entry.id && aiPreview?.suggestionId === suggestion.id;
+    if (isSamePreview) {
+      setAiPreview(null);
+      return;
+    }
+
     setAiPreview({
       entryId: entry.id,
       taskId: entry.taskId,
@@ -683,8 +689,8 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
 
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
-            const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small>{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}</div>{renderImproveNoteButton(entry)}</div>{renderAiPreview(entry)}</div></article>;
+            const improveButton = renderImproveNoteButton(entry);
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
           })}
         </div></section> : null}
 
