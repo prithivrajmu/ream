@@ -1,7 +1,7 @@
-import type { TimesheetDatabase } from "./db";
-import type { TimesheetExport } from "./reporting";
+import type { ReamDatabase } from "./db";
+import type { ReamExport } from "./reporting";
 
-export async function readAllExportData(database: TimesheetDatabase): Promise<TimesheetExport> {
+export async function readAllExportData(database: ReamDatabase): Promise<ReamExport> {
   const [tasks, projects, timeEntries] = await Promise.all([
     database.tasks.toArray(),
     database.projects.toArray(),
@@ -17,7 +17,7 @@ export async function readAllExportData(database: TimesheetDatabase): Promise<Ti
   };
 }
 
-export async function importTimesheetData(database: TimesheetDatabase, exportData: TimesheetExport): Promise<void> {
+export async function importReamData(database: ReamDatabase, exportData: ReamExport): Promise<void> {
   await database.transaction("rw", database.tasks, database.projects, database.timeEntries, database.activeTimers, database.noteAiSuggestions, async () => {
     await database.activeTimers.clear();
     await database.noteAiSuggestions.clear();

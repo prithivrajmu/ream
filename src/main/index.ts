@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
   DEFAULT_OLLAMA_MODEL,
   FALLBACK_OLLAMA_MODEL,
@@ -20,10 +21,15 @@ import {
 } from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
-const STABLE_USER_DATA_DIR = "timesheet-tracker";
+const STABLE_USER_DATA_DIR = "ream";
+const LEGACY_USER_DATA_DIR = "timesheet-tracker";
+const DATA_LOCATION_CONFIG_FILE = "ream-data-location.json";
 const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
 
-app.setPath("userData", join(app.getPath("appData"), STABLE_USER_DATA_DIR));
+const defaultUserDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
+const userDataPath = readConfiguredUserDataPath() ?? defaultUserDataPath;
+migrateLegacyUserData(userDataPath);
+app.setPath("userData", userDataPath);
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -32,6 +38,109 @@ let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
+let suppressMainBlurOverlay = false;
+
+interface DataLocationInfo {
+  path: string;
+  isCustom: boolean;
+  defaultPath: string;
+}
+
+interface DataLocationConfig {
+  userDataPath?: string;
+}
+
+function getDataLocationConfigPath(): string {
+  return join(app.getPath("appData"), DATA_LOCATION_CONFIG_FILE);
+}
+
+function readConfiguredUserDataPath(): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(getDataLocationConfigPath(), "utf8")) as DataLocationConfig;
+    const configuredPath = parsed.userDataPath?.trim();
+    if (configuredPath && isAbsolute(configuredPath)) {
+      return configuredPath;
+    }
+  } catch {
+    // Missing or invalid config just means Ream uses its default data location.
+  }
+
+  return null;
+}
+
+function writeConfiguredUserDataPath(nextUserDataPath: string): void {
+  mkdirSync(dirname(getDataLocationConfigPath()), { recursive: true });
+  writeFileSync(getDataLocationConfigPath(), `${JSON.stringify({ userDataPath: nextUserDataPath }, null, 2)}\n`);
+}
+
+function getDataLocationInfo(): DataLocationInfo {
+  return {
+    path: app.getPath("userData"),
+    isCustom: resolve(app.getPath("userData")) !== resolve(defaultUserDataPath),
+    defaultPath: defaultUserDataPath
+  };
+}
+
+function isInsidePath(parentPath: string, childPath: string): boolean {
+  const parent = resolve(parentPath);
+  const child = resolve(childPath);
+  return child === parent || child.startsWith(`${parent}${sep}`);
+}
+
+function copyCurrentUserDataTo(nextUserDataPath: string): void {
+  const currentUserDataPath = app.getPath("userData");
+  if (resolve(currentUserDataPath) === resolve(nextUserDataPath)) {
+    return;
+  }
+
+  if (isInsidePath(currentUserDataPath, nextUserDataPath)) {
+    throw new Error("Choose a folder outside the current Ream data folder.");
+  }
+
+  mkdirSync(nextUserDataPath, { recursive: true });
+  cpSync(currentUserDataPath, nextUserDataPath, {
+    recursive: true,
+    force: false,
+    errorOnExist: false,
+    verbatimSymlinks: true
+  });
+}
+
+async function chooseDataLocation(): Promise<DataLocationInfo | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: "Choose Ream data folder",
+    buttonLabel: "Use Folder",
+    properties: ["openDirectory", "createDirectory"]
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+
+  if (result.canceled || !result.filePaths[0]) {
+    return null;
+  }
+
+  const nextUserDataPath = resolve(result.filePaths[0]);
+  copyCurrentUserDataTo(nextUserDataPath);
+  writeConfiguredUserDataPath(nextUserDataPath);
+  app.relaunch();
+  app.exit(0);
+  return { path: nextUserDataPath, isCustom: true, defaultPath: defaultUserDataPath };
+}
+
+function migrateLegacyUserData(nextUserDataPath: string) {
+  const legacyUserDataPath = join(app.getPath("appData"), LEGACY_USER_DATA_DIR);
+  if (existsSync(nextUserDataPath) || !existsSync(legacyUserDataPath)) {
+    return;
+  }
+
+  try {
+    mkdirSync(dirname(nextUserDataPath), { recursive: true });
+    cpSync(legacyUserDataPath, nextUserDataPath, { recursive: true });
+  } catch (error) {
+    console.warn("Unable to migrate legacy Ream user data.", error);
+  }
+}
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -75,7 +184,7 @@ function createMainWindow(): BrowserWindow {
     showOverlayWindow();
   });
   window.on("blur", () => {
-    if (!window.isMinimized()) {
+    if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
       showOverlayWindow();
     }
   });
@@ -123,6 +232,7 @@ function createOverlayWindow(): BrowserWindow {
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Ream Overlay",
     frame: false,
+    show: false,
     transparent: true,
     hasShadow: false,
     resizable: false,
@@ -167,14 +277,46 @@ function ensureOverlayWindow(): BrowserWindow {
   return overlayWindow;
 }
 
+function runWithSuppressedMainBlur(action: () => void) {
+  suppressMainBlurOverlay = true;
+  action();
+  setTimeout(() => {
+    suppressMainBlurOverlay = false;
+  }, 0);
+}
+
+function hideMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    return;
+  }
+
+  runWithSuppressedMainBlur(() => {
+    mainWindow?.hide();
+  });
+}
+
+function destroyOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayWindow = null;
+    overlayExpanded = false;
+    return;
+  }
+
+  overlayExpanded = false;
+  overlayWindow.destroy();
+}
+
 function showMainWindow() {
+  destroyOverlayWindow();
   const window = ensureMainWindow();
+  if (window.isMinimized()) {
+    window.restore();
+  }
   window.show();
   window.focus();
 }
 
-function resizeOverlayWindow(expanded: boolean) {
-  const window = ensureOverlayWindow();
+function resizeOverlayWindow(window: BrowserWindow, expanded: boolean) {
   if (expanded) {
     overlayAnchorBounds = window.getBounds();
     applyOverlayBounds(window, calculateExpandedOverlayBounds(overlayAnchorBounds));
@@ -199,12 +341,19 @@ function setOverlayExpanded(expanded: boolean) {
     return;
   }
 
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayExpanded = false;
+    overlayWindow = null;
+    return;
+  }
+
   overlayExpanded = expanded;
-  resizeOverlayWindow(expanded);
-  overlayWindow?.webContents.send("overlay:expanded-changed", expanded);
+  resizeOverlayWindow(overlayWindow, expanded);
+  overlayWindow.webContents.send("overlay:expanded-changed", expanded);
 }
 
 function showOverlayWindow() {
+  hideMainWindow();
   const window = ensureOverlayWindow();
   setOverlayMousePassthrough(window, false);
   window.show();
@@ -212,30 +361,17 @@ function showOverlayWindow() {
   window.focus();
 }
 
-function hideOverlayWindow() {
-  if (!overlayWindow || overlayWindow.isDestroyed()) {
-    return;
-  }
-
-  if (overlayExpanded) {
-    setOverlayExpanded(false);
-  }
-
-  setOverlayMousePassthrough(overlayWindow, true);
-  overlayWindow.blur();
-  overlayWindow.hide();
+function closeOverlayAndShowMainWindow() {
+  showMainWindow();
 }
 
 function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
-    hideOverlayWindow();
+    showMainWindow();
     return;
   }
-  setOverlayMousePassthrough(window, false);
-  window.show();
-  applyOverlayPinned(window, true);
-  window.focus();
+  showOverlayWindow();
 }
 
 function createTrayIcon() {
@@ -411,8 +547,12 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
-    hideOverlayWindow();
+    closeOverlayAndShowMainWindow();
   });
+
+  ipcMain.handle("data:get-location", () => getDataLocationInfo());
+
+  ipcMain.handle("data:choose-location", () => chooseDataLocation());
 
   ipcMain.handle("ai:improve-note", async (_event, input: ImproveNoteRequest): Promise<ImproveNoteResult> => {
     if (!aiSidecar) {

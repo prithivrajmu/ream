@@ -1,15 +1,15 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import { TimesheetDatabase } from "../shared/db";
+import { ReamDatabase } from "../shared/db";
 import type { Project, Task, TimeEntry } from "../shared/domain";
-import { importTimesheetData, readAllExportData } from "../shared/exportRepository";
+import { importReamData, readAllExportData } from "../shared/exportRepository";
 import {
   buildDailySummaries,
   buildTaskTotals,
-  createTimesheetExport,
+  createReamExport,
   entriesToCsv,
-  parseTimesheetExport,
-  serializeTimesheetExport
+  parseReamExport,
+  serializeReamExport
 } from "../shared/reporting";
 
 const taskA: Task = {
@@ -68,10 +68,10 @@ const entries: TimeEntry[] = [
   }
 ];
 
-let database: TimesheetDatabase | null = null;
+let database: ReamDatabase | null = null;
 
-function createTestDatabase(): TimesheetDatabase {
-  database = new TimesheetDatabase(`timesheet-report-test-${crypto.randomUUID()}`);
+function createTestDatabase(): ReamDatabase {
+  database = new ReamDatabase(`ream-report-test-${crypto.randomUUID()}`);
   return database;
 }
 
@@ -108,11 +108,11 @@ describe("reporting", () => {
   });
 
   it("serializes JSON exports and parses them back", () => {
-    const exportData = createTimesheetExport([taskA, taskB], projects, entries, new Date("2026-06-25T12:00:00.000Z"));
-    const serialized = serializeTimesheetExport(exportData);
+    const exportData = createReamExport([taskA, taskB], projects, entries, new Date("2026-06-25T12:00:00.000Z"));
+    const serialized = serializeReamExport(exportData);
 
-    expect(parseTimesheetExport(serialized)).toEqual(exportData);
-    expect(() => parseTimesheetExport("{}" )).toThrow("unsupported schema version");
+    expect(parseReamExport(serialized)).toEqual(exportData);
+    expect(() => parseReamExport("{}" )).toThrow("unsupported schema version");
   });
 
   it("upgrades a version 1 backup with a single project field", () => {
@@ -121,7 +121,7 @@ describe("reporting", () => {
       project: "Acme",
       projectIds: undefined
     };
-    const parsed = parseTimesheetExport(JSON.stringify({
+    const parsed = parseReamExport(JSON.stringify({
       exportedAt: "2026-06-25T12:00:00.000Z",
       schemaVersion: 1,
       tasks: [legacyTask],
@@ -133,20 +133,20 @@ describe("reporting", () => {
   });
 
   it("rejects malformed imports before restore", () => {
-    const exportData = createTimesheetExport([taskA], [projects[0]], [entries[0]], new Date("2026-06-25T12:00:00.000Z"));
+    const exportData = createReamExport([taskA], [projects[0]], [entries[0]], new Date("2026-06-25T12:00:00.000Z"));
 
-    expect(() => parseTimesheetExport("not-json")).toThrow("JSON could not be parsed");
-    expect(() => parseTimesheetExport(JSON.stringify({ ...exportData, schemaVersion: 0 }))).toThrow(
+    expect(() => parseReamExport("not-json")).toThrow("JSON could not be parsed");
+    expect(() => parseReamExport(JSON.stringify({ ...exportData, schemaVersion: 0 }))).toThrow(
       "unsupported schema version"
     );
-    expect(() => parseTimesheetExport(JSON.stringify({ ...exportData, tasks: [{ ...taskA, title: 123 }] }))).toThrow(
+    expect(() => parseReamExport(JSON.stringify({ ...exportData, tasks: [{ ...taskA, title: 123 }] }))).toThrow(
       "task 1.title must be a string"
     );
     expect(() =>
-      parseTimesheetExport(JSON.stringify({ ...exportData, timeEntries: [{ ...entries[0], taskId: "missing" }] }))
+      parseReamExport(JSON.stringify({ ...exportData, timeEntries: [{ ...entries[0], taskId: "missing" }] }))
     ).toThrow("references an unknown task");
     expect(() =>
-      parseTimesheetExport(
+      parseReamExport(
         JSON.stringify({
           ...exportData,
           timeEntries: [{ ...entries[0], startedAt: "2026-06-25T10:00:00.000Z", endedAt: "2026-06-25T09:00:00.000Z" }]
@@ -171,7 +171,7 @@ describe("reporting", () => {
     await sourceDb.delete();
 
     const targetDb = createTestDatabase();
-    await importTimesheetData(targetDb, exportData);
+    await importReamData(targetDb, exportData);
 
     await expect(targetDb.tasks.toArray()).resolves.toHaveLength(2);
     await expect(targetDb.projects.toArray()).resolves.toHaveLength(2);

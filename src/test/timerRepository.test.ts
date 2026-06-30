@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import { TimesheetDatabase } from "../shared/db";
+import { ReamDatabase } from "../shared/db";
 import { createTask, updateTask } from "../shared/taskRepository";
 import {
   activeTimerElapsedSeconds,
@@ -16,10 +16,10 @@ import {
   updateActiveTimerNote
 } from "../shared/timerRepository";
 
-let database: TimesheetDatabase | null = null;
+let database: ReamDatabase | null = null;
 
-function createTestDatabase(): TimesheetDatabase {
-  database = new TimesheetDatabase(`timesheet-timer-test-${crypto.randomUUID()}`);
+function createTestDatabase(): ReamDatabase {
+  database = new ReamDatabase(`ream-timer-test-${crypto.randomUUID()}`);
   return database;
 }
 

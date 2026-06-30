@@ -12,7 +12,7 @@ Ream stores work locally in IndexedDB. Use JSON export as the restore format and
 Suggested file name:
 
 ```text
-backups/timesheet-export-YYYY-MM-DD.json
+backups/ream-export-YYYY-MM-DD.json
 ```
 
 Keep the repository private because exports include task names, notes, timestamps, and project/client labels.

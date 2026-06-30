@@ -1,14 +1,17 @@
 import Dexie, { type Table } from "dexie";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "./domain";
 
-export class TimesheetDatabase extends Dexie {
+export const REAM_DATABASE_NAME = "ream";
+export const LEGACY_DATABASE_NAME = "timesheet-tracker";
+
+export class ReamDatabase extends Dexie {
   tasks!: Table<Task, string>;
   projects!: Table<Project, string>;
   timeEntries!: Table<TimeEntry, string>;
   activeTimers!: Table<ActiveTimer, string>;
   noteAiSuggestions!: Table<NoteAiSuggestion, string>;
 
-  constructor(name = "timesheet-tracker") {
+  constructor(name = REAM_DATABASE_NAME) {
     super(name);
 
     this.version(1).stores({
@@ -79,4 +82,55 @@ export class TimesheetDatabase extends Dexie {
   }
 }
 
-export const db = new TimesheetDatabase();
+export async function migrateLegacyDatabase(database: ReamDatabase = db, legacyName = LEGACY_DATABASE_NAME): Promise<boolean> {
+  if (database.name === legacyName || await hasAnyData(database) || !await Dexie.exists(legacyName)) {
+    return false;
+  }
+
+  const legacyDatabase = new ReamDatabase(legacyName);
+
+  try {
+    const [tasks, projects, timeEntries, activeTimers, noteAiSuggestions] = await Promise.all([
+      legacyDatabase.tasks.toArray(),
+      legacyDatabase.projects.toArray(),
+      legacyDatabase.timeEntries.toArray(),
+      legacyDatabase.activeTimers.toArray(),
+      legacyDatabase.noteAiSuggestions.toArray()
+    ]);
+
+    if (!tasks.length && !projects.length && !timeEntries.length && !activeTimers.length && !noteAiSuggestions.length) {
+      return false;
+    }
+
+    await database.transaction("rw", database.tasks, database.projects, database.timeEntries, database.activeTimers, database.noteAiSuggestions, async () => {
+      await bulkPutIfAny(database.tasks, tasks);
+      await bulkPutIfAny(database.projects, projects);
+      await bulkPutIfAny(database.timeEntries, timeEntries);
+      await bulkPutIfAny(database.activeTimers, activeTimers);
+      await bulkPutIfAny(database.noteAiSuggestions, noteAiSuggestions);
+    });
+
+    return true;
+  } finally {
+    legacyDatabase.close();
+  }
+}
+
+async function hasAnyData(database: ReamDatabase): Promise<boolean> {
+  const [taskCount, projectCount, timeEntryCount, activeTimerCount, noteAiSuggestionCount] = await Promise.all([
+    database.tasks.count(),
+    database.projects.count(),
+    database.timeEntries.count(),
+    database.activeTimers.count(),
+    database.noteAiSuggestions.count()
+  ]);
+  return taskCount + projectCount + timeEntryCount + activeTimerCount + noteAiSuggestionCount > 0;
+}
+
+async function bulkPutIfAny<T>(table: Table<T, string>, records: T[]): Promise<void> {
+  if (records.length) {
+    await table.bulkPut(records);
+  }
+}
+
+export const db = new ReamDatabase();

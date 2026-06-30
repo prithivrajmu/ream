@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus, OllamaPullResult } from "../shared/ai";
 
+export interface ReamDataLocationInfo {
+  path: string;
+  isCustom: boolean;
+  defaultPath: string;
+}
+
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
   showOverlayWindow: () => ipcRenderer.invoke("window:show-overlay"),
@@ -13,6 +19,8 @@ const desktopApi = {
   getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
   openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
   pullOllamaModel: (model: string) => ipcRenderer.invoke("ai:pull-ollama-model", model) as Promise<OllamaPullResult>,
+  getDataLocation: () => ipcRenderer.invoke("data:get-location") as Promise<ReamDataLocationInfo>,
+  chooseDataLocation: () => ipcRenderer.invoke("data:choose-location") as Promise<ReamDataLocationInfo | null>,
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, expanded: boolean) => callback(expanded);
     ipcRenderer.on("overlay:expanded-changed", listener);
@@ -23,6 +31,7 @@ const desktopApi = {
   closeOverlay: () => ipcRenderer.invoke("window:close-overlay")
 };
 
+contextBridge.exposeInMainWorld("reamDesktop", desktopApi);
 contextBridge.exposeInMainWorld("timesheetDesktop", desktopApi);
 
-export type TimesheetDesktopApi = typeof desktopApi;
+export type ReamDesktopApi = typeof desktopApi;

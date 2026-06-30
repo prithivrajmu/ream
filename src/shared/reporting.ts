@@ -14,7 +14,7 @@ export interface DaySummary {
   entryCount: number;
 }
 
-export interface TimesheetExport {
+export interface ReamExport {
   exportedAt: string;
   schemaVersion: 2;
   tasks: Task[];
@@ -64,7 +64,7 @@ export function buildDailySummaries(entries: TimeEntry[]): DaySummary[] {
   return Array.from(summaries.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
-export function createTimesheetExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date()): TimesheetExport {
+export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date()): ReamExport {
   return {
     exportedAt: exportedAt.toISOString(),
     schemaVersion: 2,
@@ -74,41 +74,41 @@ export function createTimesheetExport(tasks: Task[], projects: Project[], timeEn
   };
 }
 
-export function serializeTimesheetExport(exportData: TimesheetExport): string {
+export function serializeReamExport(exportData: ReamExport): string {
   return JSON.stringify(exportData, null, 2);
 }
 
-export function parseTimesheetExport(value: string): TimesheetExport {
+export function parseReamExport(value: string): ReamExport {
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new Error("Invalid timesheet export file: JSON could not be parsed.");
+    throw new Error("Invalid Ream export file: JSON could not be parsed.");
   }
 
   if (!isRecord(parsed)) {
-    throw new Error("Invalid timesheet export file: root object is required.");
+    throw new Error("Invalid Ream export file: root object is required.");
   }
 
   if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) {
-    throw new Error("Invalid timesheet export file: unsupported schema version.");
+    throw new Error("Invalid Ream export file: unsupported schema version.");
   }
 
   if (!isIsoDateString(parsed.exportedAt)) {
-    throw new Error("Invalid timesheet export file: exportedAt must be an ISO timestamp.");
+    throw new Error("Invalid Ream export file: exportedAt must be an ISO timestamp.");
   }
 
   if (!Array.isArray(parsed.tasks)) {
-    throw new Error("Invalid timesheet export file: tasks must be an array.");
+    throw new Error("Invalid Ream export file: tasks must be an array.");
   }
 
   if (parsed.schemaVersion === 2 && !Array.isArray(parsed.projects)) {
-    throw new Error("Invalid timesheet export file: projects must be an array.");
+    throw new Error("Invalid Ream export file: projects must be an array.");
   }
 
   if (!Array.isArray(parsed.timeEntries)) {
-    throw new Error("Invalid timesheet export file: timeEntries must be an array.");
+    throw new Error("Invalid Ream export file: timeEntries must be an array.");
   }
 
   const legacy = parsed.schemaVersion === 1 ? convertLegacyProjects(parsed.tasks) : null;
@@ -175,7 +175,7 @@ export function entriesToCsv(entries: TimeEntry[], tasks: Task[], projects: Proj
 
 function validateTask(value: unknown, index: number, projectIds: Set<string>): Task {
   if (!isRecord(value)) {
-    throw new Error(`Invalid timesheet export file: task ${index + 1} must be an object.`);
+    throw new Error(`Invalid Ream export file: task ${index + 1} must be an object.`);
   }
 
   const task: Task = {
@@ -190,11 +190,11 @@ function validateTask(value: unknown, index: number, projectIds: Set<string>): T
   };
 
   if (!task.id || !task.title.trim()) {
-    throw new Error(`Invalid timesheet export file: task ${index + 1} requires id and title.`);
+    throw new Error(`Invalid Ream export file: task ${index + 1} requires id and title.`);
   }
 
   if (task.projectIds.some((projectId) => !projectIds.has(projectId))) {
-    throw new Error(`Invalid timesheet export file: task ${index + 1} references an unknown project.`);
+    throw new Error(`Invalid Ream export file: task ${index + 1} references an unknown project.`);
   }
 
   return task;
@@ -202,7 +202,7 @@ function validateTask(value: unknown, index: number, projectIds: Set<string>): T
 
 function validateProject(value: unknown, index: number): Project {
   if (!isRecord(value)) {
-    throw new Error(`Invalid timesheet export file: project ${index + 1} must be an object.`);
+    throw new Error(`Invalid Ream export file: project ${index + 1} must be an object.`);
   }
   const project: Project = {
     id: requireString(value, "id", `project ${index + 1}`),
@@ -212,14 +212,14 @@ function validateProject(value: unknown, index: number): Project {
     updatedAt: requireIsoDate(value, "updatedAt", `project ${index + 1}`)
   };
   if (!project.id || !project.title.trim()) {
-    throw new Error(`Invalid timesheet export file: project ${index + 1} requires id and title.`);
+    throw new Error(`Invalid Ream export file: project ${index + 1} requires id and title.`);
   }
   return project;
 }
 
 function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>): TimeEntry {
   if (!isRecord(value)) {
-    throw new Error(`Invalid timesheet export file: time entry ${index + 1} must be an object.`);
+    throw new Error(`Invalid Ream export file: time entry ${index + 1} must be an object.`);
   }
 
   const entry: TimeEntry = {
@@ -234,11 +234,11 @@ function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>):
   };
 
   if (!entry.id || !taskIds.has(entry.taskId)) {
-    throw new Error(`Invalid timesheet export file: time entry ${index + 1} references an unknown task.`);
+    throw new Error(`Invalid Ream export file: time entry ${index + 1} references an unknown task.`);
   }
 
   if (new Date(entry.endedAt).getTime() < new Date(entry.startedAt).getTime()) {
-    throw new Error(`Invalid timesheet export file: time entry ${index + 1} ends before it starts.`);
+    throw new Error(`Invalid Ream export file: time entry ${index + 1} ends before it starts.`);
   }
 
   return entry;
@@ -246,21 +246,21 @@ function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>):
 
 function requireString(value: Record<string, unknown>, key: string, label: string): string {
   if (typeof value[key] !== "string") {
-    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a string.`);
+    throw new Error(`Invalid Ream export file: ${label}.${key} must be a string.`);
   }
   return value[key];
 }
 
 function requireStringArray(value: Record<string, unknown>, key: string, label: string): string[] {
   if (!Array.isArray(value[key]) || !value[key].every((item) => typeof item === "string")) {
-    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a string array.`);
+    throw new Error(`Invalid Ream export file: ${label}.${key} must be a string array.`);
   }
   return value[key];
 }
 
 function requireBoolean(value: Record<string, unknown>, key: string, label: string): boolean {
   if (typeof value[key] !== "boolean") {
-    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a boolean.`);
+    throw new Error(`Invalid Ream export file: ${label}.${key} must be a boolean.`);
   }
   return value[key];
 }
@@ -268,14 +268,14 @@ function requireBoolean(value: Record<string, unknown>, key: string, label: stri
 function requireIsoDate(value: Record<string, unknown>, key: string, label: string): string {
   const date = requireString(value, key, label);
   if (!isIsoDateString(date)) {
-    throw new Error(`Invalid timesheet export file: ${label}.${key} must be an ISO timestamp.`);
+    throw new Error(`Invalid Ream export file: ${label}.${key} must be an ISO timestamp.`);
   }
   return date;
 }
 
 function requireNonNegativeInteger(value: Record<string, unknown>, key: string, label: string): number {
   if (!Number.isInteger(value[key]) || typeof value[key] !== "number" || value[key] < 0) {
-    throw new Error(`Invalid timesheet export file: ${label}.${key} must be a non-negative integer.`);
+    throw new Error(`Invalid Ream export file: ${label}.${key} must be a non-negative integer.`);
   }
   return value[key];
 }

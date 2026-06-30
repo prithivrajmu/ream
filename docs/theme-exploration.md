@@ -1,7 +1,7 @@
 # Theme Exploration
 
 This branch explores six visual directions for Ream without changing core
-workflows. The themes are selectable from Backup & settings and persist in
+workflows. The themes are selectable from Settings and persist in
 local storage.
 
 ## Directions
