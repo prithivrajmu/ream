@@ -1,5 +1,5 @@
 import type { ActiveTimer, TimeEntry, UpdateTimeEntryInput } from "./domain";
-import type { TimesheetDatabase } from "./db";
+import type { ReamDatabase } from "./db";
 import { createId } from "./id";
 
 const ACTIVE_TIMER_ID = "active";
@@ -9,12 +9,12 @@ export interface StartTimerInput {
   note?: string;
 }
 
-export async function getActiveTimer(database: TimesheetDatabase): Promise<ActiveTimer | null> {
+export async function getActiveTimer(database: ReamDatabase): Promise<ActiveTimer | null> {
   return normalizeActiveTimer((await database.activeTimers.get(ACTIVE_TIMER_ID)) ?? null);
 }
 
 export async function startTimer(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   input: StartTimerInput,
   now = new Date()
 ): Promise<ActiveTimer> {
@@ -45,7 +45,7 @@ export async function startTimer(
 }
 
 export async function updateActiveTimerNote(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   note: string,
   now = new Date()
 ): Promise<ActiveTimer> {
@@ -64,7 +64,7 @@ export async function updateActiveTimerNote(
   return updated;
 }
 
-export async function pauseTimer(database: TimesheetDatabase, now = new Date()): Promise<ActiveTimer> {
+export async function pauseTimer(database: ReamDatabase, now = new Date()): Promise<ActiveTimer> {
   const activeTimer = await getActiveTimer(database);
   if (!activeTimer) {
     throw new Error("No timer is running.");
@@ -84,7 +84,7 @@ export async function pauseTimer(database: TimesheetDatabase, now = new Date()):
   return updated;
 }
 
-export async function resumeTimer(database: TimesheetDatabase, now = new Date()): Promise<ActiveTimer> {
+export async function resumeTimer(database: ReamDatabase, now = new Date()): Promise<ActiveTimer> {
   const activeTimer = await getActiveTimer(database);
   if (!activeTimer) {
     throw new Error("No timer is running.");
@@ -106,7 +106,7 @@ export async function resumeTimer(database: TimesheetDatabase, now = new Date())
   return updated;
 }
 
-export async function stopTimer(database: TimesheetDatabase, now = new Date()): Promise<TimeEntry> {
+export async function stopTimer(database: ReamDatabase, now = new Date()): Promise<TimeEntry> {
   const activeTimer = await getActiveTimer(database);
   if (!activeTimer) {
     throw new Error("No timer is running.");
@@ -134,7 +134,7 @@ export async function stopTimer(database: TimesheetDatabase, now = new Date()): 
 }
 
 export async function createTimeEntry(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   input: UpdateTimeEntryInput,
   now = new Date()
 ): Promise<TimeEntry> {
@@ -149,7 +149,7 @@ export async function createTimeEntry(
 }
 
 export async function updateTimeEntry(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   entryId: string,
   input: UpdateTimeEntryInput,
   now = new Date()
@@ -196,7 +196,7 @@ function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new 
   };
 }
 
-export async function deleteTimeEntry(database: TimesheetDatabase, entryId: string): Promise<void> {
+export async function deleteTimeEntry(database: ReamDatabase, entryId: string): Promise<void> {
   const entry = await database.timeEntries.get(entryId);
   if (!entry) {
     throw new Error("Time entry not found.");
@@ -206,7 +206,7 @@ export async function deleteTimeEntry(database: TimesheetDatabase, entryId: stri
 }
 
 export async function listTimeEntriesForDay(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   day = new Date()
 ): Promise<TimeEntry[]> {
   const start = new Date(day);

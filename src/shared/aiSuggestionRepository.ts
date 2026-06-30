@@ -1,6 +1,6 @@
 import type { NoteAiSuggestion, NoteAiSuggestionStatus } from "./domain";
 import type { ImprovedNoteOutput } from "./ai";
-import type { TimesheetDatabase } from "./db";
+import type { ReamDatabase } from "./db";
 import { createId } from "./id";
 
 export interface CreateNoteAiSuggestionInput {
@@ -12,7 +12,7 @@ export interface CreateNoteAiSuggestionInput {
 }
 
 export async function createNoteAiSuggestion(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   input: CreateNoteAiSuggestionInput,
   now = new Date()
 ): Promise<NoteAiSuggestion> {
@@ -35,7 +35,7 @@ export async function createNoteAiSuggestion(
 }
 
 export async function updateNoteAiSuggestionStatus(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   suggestionId: string,
   status: NoteAiSuggestionStatus,
   now = new Date()
@@ -56,6 +56,6 @@ export async function updateNoteAiSuggestionStatus(
   return updated;
 }
 
-export async function listNoteAiSuggestions(database: TimesheetDatabase): Promise<NoteAiSuggestion[]> {
+export async function listNoteAiSuggestions(database: ReamDatabase): Promise<NoteAiSuggestion[]> {
   return database.noteAiSuggestions.orderBy("createdAt").reverse().toArray();
 }

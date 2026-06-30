@@ -136,7 +136,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }, [activeTimer]);
 
   useEffect(() => {
-    return window.timesheetDesktop?.onOverlayExpandedChanged?.(setExpanded);
+    return window.reamDesktop?.onOverlayExpandedChanged?.(setExpanded);
   }, []);
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }, [activeTimer, note, noteDirty]);
 
   async function setOverlayExpanded(nextExpanded: boolean) {
-    await window.timesheetDesktop?.setOverlayExpanded?.(nextExpanded);
+    await window.reamDesktop?.setOverlayExpanded?.(nextExpanded);
     setExpanded(nextExpanded);
   }
 
@@ -226,7 +226,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       await setOverlayExpanded(false);
     }
 
-    await window.timesheetDesktop?.showMainWindow();
+    await window.reamDesktop?.showMainWindow();
   }
 
   function handleQuickTag(tag: string) {
@@ -257,14 +257,14 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setAiLoading(true);
 
     try {
-      if (!window.timesheetDesktop?.improveNoteWithAi) {
+      if (!window.reamDesktop?.improveNoteWithAi) {
         throw new Error("AI is only available in the desktop app.");
       }
 
       const projectName = activeTask.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
       const model = window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() || DEFAULT_OLLAMA_MODEL;
       const requestStartedAt = readClockMs();
-      const result = await window.timesheetDesktop.improveNoteWithAi({
+      const result = await window.reamDesktop.improveNoteWithAi({
         noteText,
         taskTitle: activeTask.title,
         projectName,
@@ -420,7 +420,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
           </button>
           <button aria-label="Close overlay" className="reference-plain-button" onClick={(event) => {
             event.stopPropagation();
-            void window.timesheetDesktop?.closeOverlay();
+            void window.reamDesktop?.closeOverlay();
           }}>
             <Icon name="close" />
           </button>

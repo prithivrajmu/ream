@@ -108,7 +108,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
     setAiBusy(true);
     setAiStatus(null);
     try {
-      const status = await window.timesheetDesktop?.getOllamaStatus?.();
+      const status = await window.reamDesktop?.getOllamaStatus?.();
       if (!status) {
         throw new Error("Ollama setup is only available in the desktop app.");
       }
@@ -122,7 +122,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
 
   async function handleOpenOllamaDownload() {
     try {
-      await window.timesheetDesktop?.openOllamaDownload?.();
+      await window.reamDesktop?.openOllamaDownload?.();
     } catch (downloadError) {
       setAiStatus(downloadError instanceof Error ? downloadError.message : "Unable to open Ollama download.");
     }
@@ -132,7 +132,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
     setAiBusy(true);
     setAiStatus(`Installing ${ollamaModel}...`);
     try {
-      const result = await window.timesheetDesktop?.pullOllamaModel?.(ollamaModel);
+      const result = await window.reamDesktop?.pullOllamaModel?.(ollamaModel);
       if (!result) {
         throw new Error("Model install is only available in the desktop app.");
       }

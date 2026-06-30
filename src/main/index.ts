@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   DEFAULT_OLLAMA_MODEL,
   FALLBACK_OLLAMA_MODEL,
@@ -20,10 +21,13 @@ import {
 } from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
-const STABLE_USER_DATA_DIR = "timesheet-tracker";
+const STABLE_USER_DATA_DIR = "ream";
+const LEGACY_USER_DATA_DIR = "timesheet-tracker";
 const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
 
-app.setPath("userData", join(app.getPath("appData"), STABLE_USER_DATA_DIR));
+const userDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
+migrateLegacyUserData(userDataPath);
+app.setPath("userData", userDataPath);
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -32,6 +36,20 @@ let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
+
+function migrateLegacyUserData(nextUserDataPath: string) {
+  const legacyUserDataPath = join(app.getPath("appData"), LEGACY_USER_DATA_DIR);
+  if (existsSync(nextUserDataPath) || !existsSync(legacyUserDataPath)) {
+    return;
+  }
+
+  try {
+    mkdirSync(dirname(nextUserDataPath), { recursive: true });
+    cpSync(legacyUserDataPath, nextUserDataPath, { recursive: true });
+  } catch (error) {
+    console.warn("Unable to migrate legacy Ream user data.", error);
+  }
+}
 
 function rendererUrl(route = "/"): string {
   if (isDev && process.env.ELECTRON_RENDERER_URL) {

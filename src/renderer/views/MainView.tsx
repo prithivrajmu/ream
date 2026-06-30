@@ -3,27 +3,28 @@ import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, 
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
-import { importTimesheetData, readAllExportData } from "../../shared/exportRepository";
+import { importReamData, readAllExportData } from "../../shared/exportRepository";
 import {
   buildDailySummaries,
-  createTimesheetExport,
+  createReamExport,
   entriesToCsv,
-  parseTimesheetExport,
-  serializeTimesheetExport
+  parseReamExport,
+  serializeReamExport
 } from "../../shared/reporting";
 import { archiveProject, createProject, listActiveProjects, updateProject } from "../../shared/projectRepository";
 import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
+import { type AppSettings } from "../appSettings";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
 import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
 interface MainViewProps {
+  appSettings: AppSettings;
   themeId: ThemeId;
-  setThemeId: (themeId: ThemeId) => void;
-  userName: string;
+  onAppSettingsChange: (settings: AppSettings) => void;
   onOpenSetup: () => void;
 }
 
@@ -38,7 +39,7 @@ interface AiNotePreview {
   output: ImprovedNoteOutput;
 }
 
-export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainViewProps) {
+export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetup }: MainViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -70,6 +71,7 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
   const [aiLoadingNoteId, setAiLoadingNoteId] = useState<string | null>(null);
   const [aiPreview, setAiPreview] = useState<AiNotePreview | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState(appSettings.userName);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -188,6 +190,22 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
   useEffect(() => {
     window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, ollamaModel.trim() || DEFAULT_OLLAMA_MODEL);
   }, [ollamaModel]);
+
+  useEffect(() => {
+    setProfileName(appSettings.userName);
+  }, [appSettings.userName]);
+
+  function updateAppSettings(patch: Partial<AppSettings>) {
+    onAppSettingsChange({ ...appSettings, ...patch });
+  }
+
+  function handleProfileNameBlur() {
+    updateAppSettings({ userName: profileName.trim() });
+  }
+
+  function handleThemeChange(nextThemeId: ThemeId) {
+    updateAppSettings({ themeId: nextThemeId });
+  }
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -426,13 +444,13 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
     setAiLoadingNoteId(entry.id);
 
     try {
-      if (!window.timesheetDesktop?.improveNoteWithAi) {
+      if (!window.reamDesktop?.improveNoteWithAi) {
         throw new Error("AI is only available in the desktop app.");
       }
 
       const projectName = task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
       const requestStartedAt = readClockMs();
-      const result = await window.timesheetDesktop.improveNoteWithAi({
+      const result = await window.reamDesktop.improveNoteWithAi({
         noteText,
         taskTitle: task.title,
         projectName,
@@ -554,9 +572,9 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
     try {
       const exportData = await readAllExportData(db);
       downloadTextFile(
-        `timesheet-export-${new Date().toISOString().slice(0, 10)}.json`,
+        `ream-export-${new Date().toISOString().slice(0, 10)}.json`,
         "application/json",
-        serializeTimesheetExport(createTimesheetExport(exportData.tasks, exportData.projects, exportData.timeEntries))
+        serializeReamExport(createReamExport(exportData.tasks, exportData.projects, exportData.timeEntries))
       );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export JSON.");
@@ -569,7 +587,7 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
     try {
       const exportData = await readAllExportData(db);
       downloadTextFile(
-        `timesheet-export-${new Date().toISOString().slice(0, 10)}.csv`,
+        `ream-export-${new Date().toISOString().slice(0, 10)}.csv`,
         "text/csv",
         entriesToCsv(exportData.timeEntries, exportData.tasks, exportData.projects)
       );
@@ -589,14 +607,14 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
 
     try {
       const text = await file.text();
-      const exportData = parseTimesheetExport(text);
+      const exportData = parseReamExport(text);
       const shouldRestore = window.confirm(
         `Import ${exportData.tasks.length} tasks and ${exportData.timeEntries.length} time entries? This replaces local data.`
       );
       if (!shouldRestore) {
         return;
       }
-      await importTimesheetData(db, exportData);
+      await importReamData(db, exportData);
       await refreshAppState();
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Unable to import JSON.");
@@ -610,7 +628,7 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
     { id: "tasks", label: "Tasks", icon: "list" },
     { id: "notes", label: "Notes", icon: "note" },
     { id: "projects", label: "Projects", icon: "briefcase" },
-    { id: "backup", label: "Backup & settings", icon: "settings" },
+    { id: "backup", label: "Settings", icon: "settings" },
     { id: "dev", label: "Dev", icon: "chart" }
   ];
 
@@ -628,7 +646,7 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
   })();
 
   const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
-  const displayName = userName.trim() || "there";
+  const displayName = appSettings.userName.trim() || "there";
   const profileInitials = getInitials(displayName);
 
   return (
@@ -639,7 +657,7 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
           {navigation.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
         </nav>
         <div className="sidebar-bottom">
-          <button className="overlay-launcher" onClick={() => window.timesheetDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
+          <button className="overlay-launcher" onClick={() => window.reamDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
           <div className="profile-row"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></div>
         </div>
       </aside>
@@ -694,7 +712,53 @@ export function MainView({ themeId, setThemeId, userName, onOpenSetup }: MainVie
           })}
         </div></section> : null}
 
-        {activeSection === "backup" ? <div className="settings-grid"><section className="dashboard-panel backup-panel"><p className="panel-kicker">Backup</p><h2>Keep a private copy</h2><p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p><div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div></section><section className="dashboard-panel ai-settings-panel"><p className="panel-kicker">Local AI</p><h2>Ollama sidecar</h2><p>Improve notes with a local Ollama model. Default: <code>{DEFAULT_OLLAMA_MODEL}</code>. Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code>.</p><label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label><button className="settings-action-button" onClick={onOpenSetup} type="button">Open setup</button></section><section className="dashboard-panel theme-panel"><p className="panel-kicker">Theme lab</p><h2>{activeTheme.label}</h2><p>{activeTheme.description}</p><div className="theme-options" role="list" aria-label="Theme exploration options">{themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => setThemeId(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}</div></section><section className="dashboard-panel"><p className="panel-kicker">Review</p><h2>Tracked time</h2><div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div></section></div> : null}
+        {activeSection === "backup" ? <div className="settings-grid">
+          <section className="dashboard-panel profile-settings-panel">
+            <p className="panel-kicker">Profile</p>
+            <div className="profile-settings-header">
+              <span className="profile-settings-avatar">{profileInitials}</span>
+              <div>
+                <h2>{displayName}</h2>
+                <p>Personal settings for Ream and the overlay.</p>
+              </div>
+            </div>
+            <div className="profile-settings-form">
+              <label className="settings-field">User name<input value={profileName} onBlur={handleProfileNameBlur} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label>
+              <label className="settings-slider-field">Overlay opacity <strong>{formatPercent(appSettings.overlayTransparency)}</strong><input aria-label="Overlay opacity" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
+              <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
+            </div>
+          </section>
+
+          <section className="dashboard-panel theme-panel">
+            <p className="panel-kicker">Theme</p>
+            <h2>{activeTheme.label}</h2>
+            <p>{activeTheme.description}</p>
+            <div className="theme-options" role="list" aria-label="Theme options">
+              {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => handleThemeChange(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
+            </div>
+          </section>
+
+          <section className="dashboard-panel backup-panel">
+            <p className="panel-kicker">Backup</p>
+            <h2>Keep a private copy</h2>
+            <p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p>
+            <div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div>
+          </section>
+
+          <section className="dashboard-panel ai-settings-panel">
+            <p className="panel-kicker">Local AI</p>
+            <h2>Ollama sidecar</h2>
+            <p>Improve notes with a local Ollama model. Default: <code>{DEFAULT_OLLAMA_MODEL}</code>. Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code>.</p>
+            <label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
+            <button className="settings-action-button" onClick={onOpenSetup} type="button">Open setup</button>
+          </section>
+
+          <section className="dashboard-panel">
+            <p className="panel-kicker">Review</p>
+            <h2>Tracked time</h2>
+            <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
+          </section>
+        </div> : null}
 
         {activeSection === "dev" ? <section className="dashboard-panel dev-ai-panel"><div className="section-title"><h2>AI note requests</h2><span>{aiSuggestionStats.total} total</span></div><div className="dev-ai-metrics"><p><span>Average response</span><strong>{formatDurationMs(aiSuggestionStats.averageDurationMs)}</strong></p><p><span>Accepted</span><strong>{aiSuggestionStats.accepted}</strong></p><p><span>Rejected</span><strong>{aiSuggestionStats.rejected}</strong></p><p><span>Copied</span><strong>{aiSuggestionStats.copied}</strong></p><p><span>Pending</span><strong>{aiSuggestionStats.pending}</strong></p></div><h3 className="dev-ai-subheading">Improved notes</h3><div className="dev-ai-list">
           {improvedAiSuggestions.length === 0 ? <p className="empty-state">AI request telemetry will appear after the first note improvement.</p> : improvedAiSuggestions.slice(0, 25).map((suggestion) => <article key={suggestion.id}><div><strong>{suggestion.model}</strong><p>{suggestion.inputText}</p><small>Created {formatEntryDateTime(suggestion.createdAt)}{suggestion.statusUpdatedAt ? ` · ${formatAiStatus(suggestion.status)} ${formatEntryDateTime(suggestion.statusUpdatedAt)}` : ""}</small></div><span>{formatDurationMs(normalizeSuggestionDuration(suggestion))}</span><b className={`dev-ai-status is-${suggestion.status}`}>{suggestion.status}</b></article>)}
@@ -777,6 +841,10 @@ function formatDurationMs(durationMs: number): string {
   }
 
   return `${(durationMs / 1000).toFixed(1)} s`;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatAiStatus(status: NoteAiSuggestion["status"]): string {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { readAppSettings, persistAppSettings, type AppSettings } from "./appSettings";
+import { APP_SETTINGS_STORAGE_KEY, readAppSettings, persistAppSettings, type AppSettings } from "./appSettings";
+import { migrateLegacyDatabase } from "../shared/db";
 import { MainView } from "./views/MainView";
 import { OverlayView } from "./views/OverlayView";
 import { SetupView } from "./views/SetupView";
@@ -16,6 +17,15 @@ export function App() {
   const [themeId, setThemeId] = useState<ThemeId>(() => readStoredTheme());
   const [appSettings, setAppSettings] = useState<AppSettings>(() => readAppSettings(window.localStorage, readStoredTheme()));
   const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
+
+  useEffect(() => {
+    migrateLegacyDatabase()
+      .catch((error: unknown) => {
+        console.warn("Unable to migrate legacy Ream database.", error);
+      })
+      .finally(() => setDataReady(true));
+  }, []);
 
   useEffect(() => {
     const isOverlay = route === "overlay";
@@ -43,7 +53,7 @@ export function App() {
     }
 
     function handleStorage(event: StorageEvent) {
-      if (!event.key || event.key === THEME_STORAGE_KEY) {
+      if (!event.key || event.key === THEME_STORAGE_KEY || event.key === APP_SETTINGS_STORAGE_KEY) {
         syncThemeFromStorage();
       }
     }
@@ -65,17 +75,25 @@ export function App() {
     };
   }, []);
 
+  function updateAppSettings(nextSettings: AppSettings) {
+    setAppSettings(nextSettings);
+    setThemeId(nextSettings.themeId);
+  }
+
+  if (!dataReady) {
+    return <main className={`setup-shell theme-${themeId}`}><section className="setup-window setup-loading"><p>Loading Ream...</p></section></main>;
+  }
+
   if (route === "overlay") {
     return <OverlayView overlayTransparency={appSettings.overlayTransparency} themeId={themeId} />;
   }
 
   if (!appSettings.setupCompletedAt || isSetupOpen) {
     return <SetupView initialSettings={{ ...appSettings, themeId }} onComplete={(nextSettings) => {
-      setAppSettings(nextSettings);
-      setThemeId(nextSettings.themeId);
+      updateAppSettings(nextSettings);
       setIsSetupOpen(false);
     }} onThemeChange={setThemeId} />;
   }
 
-  return <MainView onOpenSetup={() => setIsSetupOpen(true)} setThemeId={setThemeId} themeId={themeId} userName={appSettings.userName} />;
+  return <MainView appSettings={{ ...appSettings, themeId }} onAppSettingsChange={updateAppSettings} onOpenSetup={() => setIsSetupOpen(true)} themeId={themeId} />;
 }

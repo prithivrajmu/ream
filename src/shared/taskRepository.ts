@@ -1,9 +1,9 @@
 import type { CreateTaskInput, Task, UpdateTaskInput } from "./domain";
 import { createId } from "./id";
 import { normalizeTags, normalizeTaskTitle, validateCreateTask, validateUpdateTask } from "./taskValidation";
-import type { TimesheetDatabase } from "./db";
+import type { ReamDatabase } from "./db";
 
-export async function createTask(database: TimesheetDatabase, input: CreateTaskInput): Promise<Task> {
+export async function createTask(database: ReamDatabase, input: CreateTaskInput): Promise<Task> {
   const validationError = validateCreateTask(input);
   if (validationError) {
     throw new Error(validationError);
@@ -25,18 +25,18 @@ export async function createTask(database: TimesheetDatabase, input: CreateTaskI
   return task;
 }
 
-export async function listActiveTasks(database: TimesheetDatabase): Promise<Task[]> {
+export async function listActiveTasks(database: ReamDatabase): Promise<Task[]> {
   const tasks = await database.tasks.toArray();
   return sortTasks(tasks.filter((task) => !task.archived));
 }
 
-export async function listAllTasks(database: TimesheetDatabase): Promise<Task[]> {
+export async function listAllTasks(database: ReamDatabase): Promise<Task[]> {
   const tasks = await database.tasks.toArray();
   return sortTasks(tasks);
 }
 
 export async function updateTask(
-  database: TimesheetDatabase,
+  database: ReamDatabase,
   taskId: string,
   input: UpdateTaskInput
 ): Promise<Task> {

@@ -1,13 +1,13 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import { TimesheetDatabase } from "../shared/db";
+import { ReamDatabase } from "../shared/db";
 import { archiveProject, createProject, listActiveProjects } from "../shared/projectRepository";
 import { createTask } from "../shared/taskRepository";
 
-let database: TimesheetDatabase | null = null;
+let database: ReamDatabase | null = null;
 
-function createTestDatabase(): TimesheetDatabase {
-  database = new TimesheetDatabase(`ream-project-test-${crypto.randomUUID()}`);
+function createTestDatabase(): ReamDatabase {
+  database = new ReamDatabase(`ream-project-test-${crypto.randomUUID()}`);
   return database;
 }
 

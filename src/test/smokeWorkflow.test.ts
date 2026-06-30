@@ -1,16 +1,16 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import { TimesheetDatabase } from "../shared/db";
-import { importTimesheetData, readAllExportData } from "../shared/exportRepository";
-import { buildDailySummaries, buildTaskTotals, entriesToCsv, parseTimesheetExport, serializeTimesheetExport } from "../shared/reporting";
+import { ReamDatabase } from "../shared/db";
+import { importReamData, readAllExportData } from "../shared/exportRepository";
+import { buildDailySummaries, buildTaskTotals, entriesToCsv, parseReamExport, serializeReamExport } from "../shared/reporting";
 import { createProject } from "../shared/projectRepository";
 import { createTask } from "../shared/taskRepository";
 import { startTimer, stopTimer, updateActiveTimerNote } from "../shared/timerRepository";
 
-const databases: TimesheetDatabase[] = [];
+const databases: ReamDatabase[] = [];
 
-function createTestDatabase(): TimesheetDatabase {
-  const database = new TimesheetDatabase(`timesheet-smoke-test-${crypto.randomUUID()}`);
+function createTestDatabase(): ReamDatabase {
+  const database = new ReamDatabase(`ream-smoke-test-${crypto.randomUUID()}`);
   databases.push(database);
   return database;
 }
@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((database) => database.delete()));
 });
 
-describe("timesheet smoke workflow", () => {
+describe("Ream smoke workflow", () => {
   it("tracks work, exports it, and imports it into a clean database", async () => {
     const sourceDb = createTestDatabase();
     const project = await createProject(sourceDb, { title: "Product" });
@@ -35,7 +35,7 @@ describe("timesheet smoke workflow", () => {
     const entry = await stopTimer(sourceDb, new Date("2026-06-25T09:45:00.000Z"));
 
     const exportData = await readAllExportData(sourceDb);
-    const parsedExport = parseTimesheetExport(serializeTimesheetExport(exportData));
+    const parsedExport = parseReamExport(serializeReamExport(exportData));
     const csv = entriesToCsv(parsedExport.timeEntries, parsedExport.tasks, parsedExport.projects);
     const dailySummaries = buildDailySummaries(parsedExport.timeEntries);
     const taskTotals = buildTaskTotals(parsedExport.timeEntries, parsedExport.tasks);
@@ -46,7 +46,7 @@ describe("timesheet smoke workflow", () => {
     expect(taskTotals[0]).toMatchObject({ taskTitle: "Zoom planning call", durationSeconds: 2700 });
 
     const targetDb = createTestDatabase();
-    await importTimesheetData(targetDb, parsedExport);
+    await importReamData(targetDb, parsedExport);
 
     await expect(targetDb.tasks.toArray()).resolves.toHaveLength(1);
     await expect(targetDb.projects.toArray()).resolves.toHaveLength(1);

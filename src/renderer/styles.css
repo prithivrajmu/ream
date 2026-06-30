@@ -2093,6 +2093,14 @@ body.overlay-route {
   grid-area: theme;
 }
 
+.setup-loading {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: var(--theme-ink, #1d2026);
+  font-weight: 700;
+}
+
 .setup-list-card {
   grid-area: workspace;
 }
@@ -2139,6 +2147,96 @@ body.overlay-route {
 .settings-action-button {
   width: fit-content;
   margin-top: 16px;
+}
+
+.profile-settings-panel {
+  display: grid;
+  gap: 22px;
+}
+
+.profile-settings-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.profile-settings-header h2,
+.profile-settings-header p {
+  margin: 0;
+}
+
+.profile-settings-header p {
+  margin-top: 5px;
+  color: var(--theme-muted, #747989);
+  font-size: 13px;
+}
+
+.profile-settings-avatar {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--theme-accent, #2c3448);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.profile-settings-form,
+.settings-field,
+.settings-slider-field {
+  display: grid;
+  gap: 9px;
+}
+
+.settings-field,
+.settings-slider-field {
+  color: var(--theme-muted, #747989);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.settings-field input {
+  width: 100%;
+  height: 43px;
+  padding: 0 12px;
+  border: 1px solid var(--theme-subtle, #e3ded3);
+  border-radius: 9px;
+  outline: none;
+  color: var(--theme-ink, #1d2026);
+  background: var(--theme-panel-alt, #eef3ea);
+  font: inherit;
+}
+
+.settings-field input:focus {
+  border-color: color-mix(in srgb, var(--theme-accent, #223d33) 54%, white 46%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #223d33) 16%, transparent);
+}
+
+.settings-slider-field {
+  grid-template-columns: 1fr auto;
+}
+
+.settings-slider-field strong {
+  color: var(--theme-ink, #1d2026);
+}
+
+.settings-slider-field input {
+  grid-column: 1 / -1;
+  height: 28px;
+  padding: 0;
+  accent-color: var(--theme-accent, #223d33);
+}
+
+.settings-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--theme-muted, #747989);
+  font-size: 11px;
+  font-weight: 720;
+  text-transform: uppercase;
 }
 
 .setup-card input,

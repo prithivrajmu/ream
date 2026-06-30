@@ -23,6 +23,7 @@ const desktopApi = {
   closeOverlay: () => ipcRenderer.invoke("window:close-overlay")
 };
 
+contextBridge.exposeInMainWorld("reamDesktop", desktopApi);
 contextBridge.exposeInMainWorld("timesheetDesktop", desktopApi);
 
-export type TimesheetDesktopApi = typeof desktopApi;
+export type ReamDesktopApi = typeof desktopApi;

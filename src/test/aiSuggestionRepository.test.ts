@@ -2,12 +2,12 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import { validateImprovedNoteOutput } from "../shared/ai";
 import { createNoteAiSuggestion, updateNoteAiSuggestionStatus } from "../shared/aiSuggestionRepository";
-import { TimesheetDatabase } from "../shared/db";
+import { ReamDatabase } from "../shared/db";
 
-let database: TimesheetDatabase | null = null;
+let database: ReamDatabase | null = null;
 
-function createTestDatabase(): TimesheetDatabase {
-  database = new TimesheetDatabase(`timesheet-ai-test-${crypto.randomUUID()}`);
+function createTestDatabase(): ReamDatabase {
+  database = new ReamDatabase(`ream-ai-test-${crypto.randomUUID()}`);
   return database;
 }
 

@@ -1,8 +1,8 @@
 import type { CreateProjectInput, Project, UpdateProjectInput } from "./domain";
-import type { TimesheetDatabase } from "./db";
+import type { ReamDatabase } from "./db";
 import { createId } from "./id";
 
-export async function createProject(database: TimesheetDatabase, input: CreateProjectInput): Promise<Project> {
+export async function createProject(database: ReamDatabase, input: CreateProjectInput): Promise<Project> {
   const title = normalizeProjectTitle(input.title);
   if (!title) {
     throw new Error("Project name is required.");
@@ -19,15 +19,15 @@ export async function createProject(database: TimesheetDatabase, input: CreatePr
   return project;
 }
 
-export async function listActiveProjects(database: TimesheetDatabase): Promise<Project[]> {
+export async function listActiveProjects(database: ReamDatabase): Promise<Project[]> {
   return sortProjects((await database.projects.toArray()).filter((project) => !project.archived));
 }
 
-export async function listAllProjects(database: TimesheetDatabase): Promise<Project[]> {
+export async function listAllProjects(database: ReamDatabase): Promise<Project[]> {
   return sortProjects(await database.projects.toArray());
 }
 
-export async function updateProject(database: TimesheetDatabase, projectId: string, input: UpdateProjectInput): Promise<Project> {
+export async function updateProject(database: ReamDatabase, projectId: string, input: UpdateProjectInput): Promise<Project> {
   const existing = await database.projects.get(projectId);
   if (!existing) {
     throw new Error("Project not found.");
@@ -43,7 +43,7 @@ export async function updateProject(database: TimesheetDatabase, projectId: stri
   return updated;
 }
 
-export async function archiveProject(database: TimesheetDatabase, projectId: string): Promise<void> {
+export async function archiveProject(database: ReamDatabase, projectId: string): Promise<void> {
   await database.transaction("rw", database.projects, database.tasks, async () => {
     const project = await database.projects.get(projectId);
     if (!project) {
