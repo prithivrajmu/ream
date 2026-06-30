@@ -1348,6 +1348,23 @@ body.overlay-route {
   height: calc(100% - 88px);
 }
 
+.reference-overlay-shell.is-notes-expanded .reference-overlay-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reference-overlay-shell.is-notes-expanded .reference-task-picker {
+  flex: 0 0 auto;
+}
+
+.reference-overlay-shell.is-notes-expanded .reference-workspace {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 .reference-workspace.is-notes-expanded .reference-timer-column,
 .reference-overlay-shell.is-notes-expanded .reference-recent-notes {
   display: none;
@@ -1612,13 +1629,15 @@ body.overlay-route {
 }
 
 .reference-workspace.is-notes-expanded .reference-notes-card {
-  height: 100%;
+  height: auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .reference-workspace.is-notes-expanded .reference-notes-card textarea {
-  height: auto;
+  height: 100%;
   min-height: 0;
+  overflow: auto;
 }
 
 .reference-notes-card textarea:focus,
@@ -2029,7 +2048,7 @@ body.overlay-route {
 .dashboard-sidebar { display: flex; min-height: 100vh; flex-direction: column; padding: 66px 30px 42px; border-right: 1px solid #f0f0f4; background: linear-gradient(105deg, #fff 0%, #fdfdff 72%, #fafaff 100%); }
 .brand-lockup,.profile-row,.dashboard-nav button,.overlay-launcher,.dashboard-header,.quick-capture,.active-timer-banner,.section-title,.project-card,.dashboard-footer,.dashboard-entry-list article,.project-management-list article,.notes-list article,.backup-actions,.composer-row,.composer-actions { display: flex; align-items: center; }
 .brand-lockup { gap: 18px; padding: 0 12px; }.brand-mark { display: grid; width: 48px; height: 48px; place-items: center; overflow: hidden; border-radius: 14px; background: linear-gradient(145deg, #805ff0, #5134d0); box-shadow: 0 8px 18px rgb(91 59 219 / 22%); }.brand-mark img { width: 100%; height: 100%; object-fit: contain; }.brand-lockup strong { display: block; color: #151925; font-size: 22px; font-weight: 730; letter-spacing: -.6px; }.brand-lockup p { margin: 4px 0 0; color: #888b99; font-size: 13px; }
-.dashboard-nav { display: grid; gap: 9px; margin-top: 54px; }.dashboard-nav button,.overlay-launcher { width: 100%; gap: 22px; padding: 16px 18px; border-radius: 11px; color: #303647; background: transparent; font-size: 15px; font-weight: 550; text-align: left; }.dashboard-nav button:hover,.overlay-launcher:hover { background: #f8f6ff; color: #5b42dd; }.dashboard-nav button.is-active { color: #6848e5; background: linear-gradient(100deg, #f0edff, #f8f6ff); font-weight: 650; }.main-icon { width: 22px; height: 22px; flex: 0 0 auto; }.sidebar-bottom { margin-top: auto; }.overlay-launcher { margin-bottom: 23px; color: #606676; font-size: 14px; }.profile-row { gap: 12px; padding: 20px 10px 0; border-top: 1px solid #ececf0; }.profile-row > span { display: grid; width: 47px; height: 47px; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #2c3448, #ad735c); font-size: 13px; font-weight: 720; }.profile-row p { flex: 1; margin: 0; color: #2d3342; font-size: 14px; font-weight: 550; }.profile-row .main-icon { width: 17px; color: #69707f; }
+.dashboard-nav { display: grid; gap: 9px; margin-top: 54px; }.dashboard-nav button,.overlay-launcher { width: 100%; gap: 22px; padding: 16px 18px; border-radius: 11px; color: #303647; background: transparent; font-size: 15px; font-weight: 550; text-align: left; }.dashboard-nav button:hover,.overlay-launcher:hover { background: #f8f6ff; color: #5b42dd; }.dashboard-nav button.is-active { color: #6848e5; background: linear-gradient(100deg, #f0edff, #f8f6ff); font-weight: 650; }.main-icon { width: 22px; height: 22px; flex: 0 0 auto; }.sidebar-bottom { margin-top: auto; }.overlay-launcher { margin-bottom: 23px; color: #606676; font-size: 14px; }.profile-row { gap: 12px; padding: 20px 10px 0; border-top: 1px solid #ececf0; }.profile-row > span { display: grid; width: 47px; height: 47px; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #2c3448, #ad735c); font-size: 13px; font-weight: 720; }.profile-row p { flex: 1; margin: 0; color: inherit; font-size: 14px; font-weight: 550; }.profile-row .main-icon { width: 17px; color: #69707f; }
 .profile-row {
   appearance: none;
   width: 100%;
@@ -2437,7 +2456,7 @@ body.overlay-route {
   align-items: center;
   padding: 2px;
   border-radius: 999px;
-  background: var(--theme-subtle, #d8dbe2);
+  background: var(--theme-toggle-off, var(--theme-panel-alt, #d8dbe2));
 }
 
 .settings-toggle span::after {
@@ -2451,7 +2470,7 @@ body.overlay-route {
 }
 
 .settings-toggle input:checked + span {
-  background: var(--theme-accent, #2ec4b6);
+  background: var(--theme-toggle-on, var(--theme-accent, #2ec4b6));
 }
 
 .settings-toggle input:checked + span::after {
@@ -2483,14 +2502,19 @@ body.overlay-route {
 }
 
 .settings-ai-actions button,
-.settings-action-button {
+.settings-action-button,
+.backup-actions > button,
+.backup-actions > label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 9px;
+  line-height: 1;
 }
 
-.settings-ai-actions button {
+.settings-ai-actions button,
+.backup-actions > button,
+.backup-actions > label {
   min-height: 40px;
   padding: 0 14px;
   border: 1px solid var(--theme-subtle, #e3ded3);
@@ -2499,6 +2523,24 @@ body.overlay-route {
   background: var(--theme-panel-alt, #eef3ea);
   font-size: 12px;
   font-weight: 680;
+}
+
+.ai-settings-panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.ai-settings-panel .ai-model-field {
+  margin-top: 0;
+}
+
+.ai-settings-panel .settings-model-badges {
+  margin: 0;
+}
+
+.ai-settings-panel .settings-ai-actions {
+  margin-top: 0;
 }
 
 .settings-ai-actions .main-icon,
@@ -2542,7 +2584,7 @@ body.overlay-route {
 
 .dashboard-shell.theme-dark-studio .settings-system-grid {
   gap: 22px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
   margin-top: 28px;
   max-width: 1120px;
 }
@@ -2635,6 +2677,67 @@ body.overlay-route {
 
 .dashboard-shell.theme-dark-studio .settings-ai-actions {
   margin-top: 12px;
+}
+
+.dashboard-shell.theme-dark-studio .ai-settings-panel .settings-model-badges {
+  margin: 0;
+}
+
+.dashboard-shell.theme-dark-studio .ai-settings-panel .settings-ai-actions {
+  margin-top: 0;
+}
+
+.settings-system-grid .dashboard-panel,
+.profile-settings-panel {
+  min-width: 0;
+}
+
+.settings-panel-heading,
+.profile-settings-header,
+.profile-settings-row,
+.profile-theme-heading,
+.settings-model-badges,
+.settings-ai-actions,
+.backup-actions {
+  min-width: 0;
+}
+
+.settings-panel-heading,
+.profile-theme-heading {
+  flex-wrap: wrap;
+}
+
+.settings-toggle,
+.profile-theme-heading > span,
+.settings-model-badges span,
+.settings-ai-actions button,
+.backup-actions > button,
+.backup-actions > label,
+.settings-action-button {
+  max-width: 100%;
+}
+
+.settings-model-badges span,
+.settings-ai-actions button,
+.backup-actions > button,
+.backup-actions > label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-ai-actions button,
+.backup-actions > button,
+.backup-actions > label {
+  flex: 1 1 140px;
+}
+
+.settings-action-button {
+  white-space: normal;
+}
+
+.theme-options {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  overflow: visible;
 }
 
 .dashboard-shell.theme-dark-studio .settings-ai-actions button:first-child {
@@ -4064,11 +4167,13 @@ body.overlay-route {
 
 .settings-grid {
   min-height: 0;
-  overflow: auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  overflow: visible;
 }
 
 .settings-grid .dashboard-panel {
   justify-content: flex-start;
+  min-width: 0;
 }
 
 .project-options input {
@@ -4133,6 +4238,8 @@ body.overlay-route {
   --theme-danger: #9f433f;
   --theme-shadow: 0 8px 18px rgb(55 49 38 / 5%);
   --theme-radius: 14px;
+  --theme-toggle-off: #d8d2c7;
+  --theme-toggle-on: #223d33;
 }
 
 .dashboard-shell.theme-retro-console,
@@ -4151,6 +4258,8 @@ body.overlay-route {
   --theme-danger: #cc2b24;
   --theme-shadow: 5px 5px 0 #171531;
   --theme-radius: 5px;
+  --theme-toggle-off: #d8dced;
+  --theme-toggle-on: #e9402f;
 }
 
 .dashboard-shell.theme-indian-miniature,
@@ -4169,6 +4278,8 @@ body.overlay-route {
   --theme-danger: #9e2f24;
   --theme-shadow: 0 9px 0 rgb(180 63 47 / 17%);
   --theme-radius: 8px;
+  --theme-toggle-off: #d9e1ea;
+  --theme-toggle-on: #b43f2f;
 }
 
 .dashboard-shell.theme-manga-ink,
@@ -4187,6 +4298,8 @@ body.overlay-route {
   --theme-danger: #d52f35;
   --theme-shadow: 4px 4px 0 #111111;
   --theme-radius: 2px;
+  --theme-toggle-off: #e9e8e2;
+  --theme-toggle-on: #d52f35;
 }
 
 .dashboard-shell.theme-dark-studio,
@@ -4205,6 +4318,8 @@ body.overlay-route {
   --theme-danger: #ff6b6b;
   --theme-shadow: 0 16px 36px rgb(0 0 0 / 28%);
   --theme-radius: 11px;
+  --theme-toggle-off: #2a3440;
+  --theme-toggle-on: #2ec4b6;
 }
 
 .dashboard-shell.theme-color-blind,
@@ -4223,6 +4338,8 @@ body.overlay-route {
   --theme-danger: #cc79a7;
   --theme-shadow: 0 10px 22px rgb(16 35 50 / 10%);
   --theme-radius: 10px;
+  --theme-toggle-off: #d9dee4;
+  --theme-toggle-on: #0072b2;
 }
 
 .dashboard-shell.theme-old-money,
@@ -4311,7 +4428,6 @@ body.overlay-route {
 .dashboard-shell.theme-old-money .notes-list strong,
 .dashboard-shell.theme-old-money .active-timer-banner strong,
 .dashboard-shell.theme-old-money .totals-list strong,
-.dashboard-shell.theme-old-money .profile-row p,
 .dashboard-shell.theme-retro-console .dashboard-header h1,
 .dashboard-shell.theme-retro-console .section-title h2,
 .dashboard-shell.theme-retro-console .dashboard-panel h2,
@@ -4322,7 +4438,6 @@ body.overlay-route {
 .dashboard-shell.theme-retro-console .notes-list strong,
 .dashboard-shell.theme-retro-console .active-timer-banner strong,
 .dashboard-shell.theme-retro-console .totals-list strong,
-.dashboard-shell.theme-retro-console .profile-row p,
 .dashboard-shell.theme-indian-miniature .dashboard-header h1,
 .dashboard-shell.theme-indian-miniature .section-title h2,
 .dashboard-shell.theme-indian-miniature .dashboard-panel h2,
@@ -4333,7 +4448,6 @@ body.overlay-route {
 .dashboard-shell.theme-indian-miniature .notes-list strong,
 .dashboard-shell.theme-indian-miniature .active-timer-banner strong,
 .dashboard-shell.theme-indian-miniature .totals-list strong,
-.dashboard-shell.theme-indian-miniature .profile-row p,
 .dashboard-shell.theme-manga-ink .dashboard-header h1,
 .dashboard-shell.theme-manga-ink .section-title h2,
 .dashboard-shell.theme-manga-ink .dashboard-panel h2,
@@ -4344,7 +4458,6 @@ body.overlay-route {
 .dashboard-shell.theme-manga-ink .notes-list strong,
 .dashboard-shell.theme-manga-ink .active-timer-banner strong,
 .dashboard-shell.theme-manga-ink .totals-list strong,
-.dashboard-shell.theme-manga-ink .profile-row p,
 .dashboard-shell.theme-dark-studio .dashboard-header h1,
 .dashboard-shell.theme-dark-studio .section-title h2,
 .dashboard-shell.theme-dark-studio .dashboard-panel h2,
@@ -4355,7 +4468,6 @@ body.overlay-route {
 .dashboard-shell.theme-dark-studio .notes-list strong,
 .dashboard-shell.theme-dark-studio .active-timer-banner strong,
 .dashboard-shell.theme-dark-studio .totals-list strong,
-.dashboard-shell.theme-dark-studio .profile-row p,
 .dashboard-shell.theme-color-blind .dashboard-header h1,
 .dashboard-shell.theme-color-blind .section-title h2,
 .dashboard-shell.theme-color-blind .dashboard-panel h2,
@@ -4365,8 +4477,7 @@ body.overlay-route {
 .dashboard-shell.theme-color-blind .project-management-list strong,
 .dashboard-shell.theme-color-blind .notes-list strong,
 .dashboard-shell.theme-color-blind .active-timer-banner strong,
-.dashboard-shell.theme-color-blind .totals-list strong,
-.dashboard-shell.theme-color-blind .profile-row p {
+.dashboard-shell.theme-color-blind .totals-list strong {
   color: var(--theme-ink);
 }
 
@@ -4718,24 +4829,49 @@ body.overlay-route {
   background: var(--theme-panel-alt);
 }
 
-.dashboard-shell.theme-old-money .backup-actions > .new-project-button,
-.dashboard-shell.theme-retro-console .backup-actions > .new-project-button,
-.dashboard-shell.theme-indian-miniature .backup-actions > .new-project-button,
-.dashboard-shell.theme-manga-ink .backup-actions > .new-project-button,
-.dashboard-shell.theme-dark-studio .backup-actions > .new-project-button,
-.dashboard-shell.theme-color-blind .backup-actions > .new-project-button {
+.dashboard-shell.theme-old-money .settings-action-button,
+.dashboard-shell.theme-old-money .settings-ai-actions button,
+.dashboard-shell.theme-old-money .backup-actions > button,
+.dashboard-shell.theme-old-money .backup-actions > label,
+.dashboard-shell.theme-retro-console .settings-action-button,
+.dashboard-shell.theme-retro-console .settings-ai-actions button,
+.dashboard-shell.theme-retro-console .backup-actions > button,
+.dashboard-shell.theme-retro-console .backup-actions > label,
+.dashboard-shell.theme-indian-miniature .settings-action-button,
+.dashboard-shell.theme-indian-miniature .settings-ai-actions button,
+.dashboard-shell.theme-indian-miniature .backup-actions > button,
+.dashboard-shell.theme-indian-miniature .backup-actions > label,
+.dashboard-shell.theme-manga-ink .settings-action-button,
+.dashboard-shell.theme-manga-ink .settings-ai-actions button,
+.dashboard-shell.theme-manga-ink .backup-actions > button,
+.dashboard-shell.theme-manga-ink .backup-actions > label,
+.dashboard-shell.theme-dark-studio .settings-action-button,
+.dashboard-shell.theme-dark-studio .settings-ai-actions button,
+.dashboard-shell.theme-dark-studio .backup-actions > button,
+.dashboard-shell.theme-dark-studio .backup-actions > label,
+.dashboard-shell.theme-color-blind .settings-action-button,
+.dashboard-shell.theme-color-blind .settings-ai-actions button,
+.dashboard-shell.theme-color-blind .backup-actions > button,
+.dashboard-shell.theme-color-blind .backup-actions > label {
+  border-color: var(--theme-accent);
   color: #fff;
   background: var(--theme-accent);
   box-shadow: var(--theme-shadow);
 }
 
 .dashboard-shell.theme-retro-console .settings-grid .dashboard-panel,
-.dashboard-shell.theme-retro-console .backup-actions > .new-project-button {
+.dashboard-shell.theme-retro-console .settings-action-button,
+.dashboard-shell.theme-retro-console .settings-ai-actions button,
+.dashboard-shell.theme-retro-console .backup-actions > button,
+.dashboard-shell.theme-retro-console .backup-actions > label {
   border: 2px solid #171531;
 }
 
 .dashboard-shell.theme-manga-ink .settings-grid .dashboard-panel,
-.dashboard-shell.theme-manga-ink .backup-actions > .new-project-button {
+.dashboard-shell.theme-manga-ink .settings-action-button,
+.dashboard-shell.theme-manga-ink .settings-ai-actions button,
+.dashboard-shell.theme-manga-ink .backup-actions > button,
+.dashboard-shell.theme-manga-ink .backup-actions > label {
   border: 2px solid #111;
 }
 
@@ -4756,12 +4892,11 @@ body.overlay-route {
 
 .theme-options {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: 10px;
   min-height: 0;
   margin-top: 20px;
-  overflow: auto;
-  padding-right: 5px;
+  overflow: visible;
   align-content: start;
 }
 
@@ -4815,12 +4950,6 @@ body.overlay-route {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-@media (min-width: 1580px) {
-  .theme-options {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 760px) {
