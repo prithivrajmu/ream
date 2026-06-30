@@ -38,6 +38,7 @@ let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
+let suppressMainBlurOverlay = false;
 
 interface DataLocationInfo {
   path: string;
@@ -183,7 +184,7 @@ function createMainWindow(): BrowserWindow {
     showOverlayWindow();
   });
   window.on("blur", () => {
-    if (!window.isMinimized()) {
+    if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
       showOverlayWindow();
     }
   });
@@ -231,6 +232,7 @@ function createOverlayWindow(): BrowserWindow {
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Ream Overlay",
     frame: false,
+    show: false,
     transparent: true,
     hasShadow: false,
     resizable: false,
@@ -275,14 +277,46 @@ function ensureOverlayWindow(): BrowserWindow {
   return overlayWindow;
 }
 
+function runWithSuppressedMainBlur(action: () => void) {
+  suppressMainBlurOverlay = true;
+  action();
+  setTimeout(() => {
+    suppressMainBlurOverlay = false;
+  }, 0);
+}
+
+function hideMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    return;
+  }
+
+  runWithSuppressedMainBlur(() => {
+    mainWindow?.hide();
+  });
+}
+
+function destroyOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayWindow = null;
+    overlayExpanded = false;
+    return;
+  }
+
+  overlayExpanded = false;
+  overlayWindow.destroy();
+}
+
 function showMainWindow() {
+  destroyOverlayWindow();
   const window = ensureMainWindow();
+  if (window.isMinimized()) {
+    window.restore();
+  }
   window.show();
   window.focus();
 }
 
-function resizeOverlayWindow(expanded: boolean) {
-  const window = ensureOverlayWindow();
+function resizeOverlayWindow(window: BrowserWindow, expanded: boolean) {
   if (expanded) {
     overlayAnchorBounds = window.getBounds();
     applyOverlayBounds(window, calculateExpandedOverlayBounds(overlayAnchorBounds));
@@ -307,12 +341,19 @@ function setOverlayExpanded(expanded: boolean) {
     return;
   }
 
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayExpanded = false;
+    overlayWindow = null;
+    return;
+  }
+
   overlayExpanded = expanded;
-  resizeOverlayWindow(expanded);
-  overlayWindow?.webContents.send("overlay:expanded-changed", expanded);
+  resizeOverlayWindow(overlayWindow, expanded);
+  overlayWindow.webContents.send("overlay:expanded-changed", expanded);
 }
 
 function showOverlayWindow() {
+  hideMainWindow();
   const window = ensureOverlayWindow();
   setOverlayMousePassthrough(window, false);
   window.show();
@@ -320,35 +361,17 @@ function showOverlayWindow() {
   window.focus();
 }
 
-function hideOverlayWindow() {
-  if (!overlayWindow || overlayWindow.isDestroyed()) {
-    return;
-  }
-
-  if (overlayExpanded) {
-    setOverlayExpanded(false);
-  }
-
-  setOverlayMousePassthrough(overlayWindow, true);
-  overlayWindow.blur();
-  overlayWindow.hide();
-}
-
 function closeOverlayAndShowMainWindow() {
-  hideOverlayWindow();
   showMainWindow();
 }
 
 function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
-    hideOverlayWindow();
+    showMainWindow();
     return;
   }
-  setOverlayMousePassthrough(window, false);
-  window.show();
-  applyOverlayPinned(window, true);
-  window.focus();
+  showOverlayWindow();
 }
 
 function createTrayIcon() {
