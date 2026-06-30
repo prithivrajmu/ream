@@ -21,11 +21,12 @@ import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendere
 import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
+type ActiveSection = "home" | "entries" | "tasks" | "notes" | "projects" | "backup" | "dev" | "profile";
+
 interface MainViewProps {
   appSettings: AppSettings;
   themeId: ThemeId;
   onAppSettingsChange: (settings: AppSettings) => void;
-  onOpenSetup: () => void;
 }
 
 interface ReamDataLocationInfo {
@@ -45,7 +46,7 @@ interface AiNotePreview {
   output: ImprovedNoteOutput;
 }
 
-export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetup }: MainViewProps) {
+export function MainView({ appSettings, themeId, onAppSettingsChange }: MainViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -68,7 +69,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
   const [entryNote, setEntryNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<"home" | "entries" | "tasks" | "notes" | "projects" | "backup" | "dev">("home");
+  const [activeSection, setActiveSection] = useState<ActiveSection>("home");
   const [isTaskComposerOpen, setIsTaskComposerOpen] = useState(false);
   const [isProjectComposerOpen, setIsProjectComposerOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
@@ -77,9 +78,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
   const [aiLoadingNoteId, setAiLoadingNoteId] = useState<string | null>(null);
   const [aiPreview, setAiPreview] = useState<AiNotePreview | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [profileName, setProfileName] = useState(appSettings.userName);
   const [dataLocation, setDataLocation] = useState<ReamDataLocationInfo | null>(null);
   const [dataLocationBusy, setDataLocationBusy] = useState(false);
+  const [settingsAiStatus, setSettingsAiStatus] = useState<string | null>(null);
+  const [settingsAiBusy, setSettingsAiBusy] = useState(false);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -200,10 +202,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
   }, [ollamaModel]);
 
   useEffect(() => {
-    setProfileName(appSettings.userName);
-  }, [appSettings.userName]);
-
-  useEffect(() => {
     window.reamDesktop?.getDataLocation?.()
       .then(setDataLocation)
       .catch(() => undefined);
@@ -211,14 +209,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
 
   function updateAppSettings(patch: Partial<AppSettings>) {
     onAppSettingsChange({ ...appSettings, ...patch });
-  }
-
-  function handleProfileNameBlur() {
-    updateAppSettings({ userName: profileName.trim() });
-  }
-
-  function handleThemeChange(nextThemeId: ThemeId) {
-    updateAppSettings({ themeId: nextThemeId });
   }
 
   async function handleChooseDataLocation() {
@@ -233,6 +223,51 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
       setError(locationError instanceof Error ? locationError.message : "Unable to change data folder.");
     } finally {
       setDataLocationBusy(false);
+    }
+  }
+
+  async function handleCheckOllamaStatus() {
+    setSettingsAiBusy(true);
+    setSettingsAiStatus(null);
+    try {
+      const status = await window.reamDesktop?.getOllamaStatus?.();
+      if (!status) {
+        throw new Error("Ollama status is only available in the desktop app.");
+      }
+      setSettingsAiStatus(status.ollama.ok ? `Ollama is running. Active model: ${status.model}.` : "Ollama is not running yet.");
+    } catch (statusError) {
+      setSettingsAiStatus(statusError instanceof Error ? statusError.message : "Unable to check Ollama.");
+    } finally {
+      setSettingsAiBusy(false);
+    }
+  }
+
+  async function handleOpenOllamaDownload() {
+    try {
+      const openDownload = window.reamDesktop?.openOllamaDownload;
+      if (!openDownload) {
+        throw new Error("Ollama download is only available in the desktop app.");
+      }
+      await openDownload();
+      setSettingsAiStatus("Opened the Ollama download page.");
+    } catch (downloadError) {
+      setSettingsAiStatus(downloadError instanceof Error ? downloadError.message : "Unable to open Ollama download.");
+    }
+  }
+
+  async function handlePullOllamaModel() {
+    setSettingsAiBusy(true);
+    setSettingsAiStatus(`Installing ${ollamaModel.trim() || DEFAULT_OLLAMA_MODEL}...`);
+    try {
+      const result = await window.reamDesktop?.pullOllamaModel?.(ollamaModel.trim() || DEFAULT_OLLAMA_MODEL);
+      if (!result) {
+        throw new Error("Model install is only available in the desktop app.");
+      }
+      setSettingsAiStatus(result.output || `${result.model} is installed.`);
+    } catch (pullError) {
+      setSettingsAiStatus(pullError instanceof Error ? pullError.message : "Unable to install Ollama model.");
+    } finally {
+      setSettingsAiBusy(false);
     }
   }
 
@@ -651,7 +686,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
   }
 
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
-  const navigation: Array<{ id: typeof activeSection; label: string; icon: MainIconName }> = [
+  const navigation: Array<{ id: Exclude<ActiveSection, "profile">; label: string; icon: MainIconName }> = [
     { id: "home", label: "Home", icon: "home" },
     { id: "entries", label: "Entries", icon: "clock" },
     { id: "tasks", label: "Tasks", icon: "list" },
@@ -674,9 +709,17 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
     return null;
   })();
 
-  const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
   const displayName = appSettings.userName.trim() || "there";
   const profileInitials = getInitials(displayName);
+  const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
+  const sectionTitle = activeSection === "profile"
+    ? "Profile"
+    : navigation.find((item) => item.id === activeSection)?.label;
+  const sectionSubtitle = activeSection === "home"
+    ? "Stay focused. Make steady progress."
+    : activeSection === "profile"
+      ? "Tune how Ream feels on this device."
+      : "Everything stays local to this device.";
 
   return (
     <main className={`dashboard-shell theme-${themeId}`}>
@@ -687,13 +730,13 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
         </nav>
         <div className="sidebar-bottom">
           <button className="overlay-launcher" onClick={() => window.reamDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
-          <div className="profile-row"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></div>
+          <button aria-label="Open profile settings" className={`profile-row ${activeSection === "profile" ? "is-active" : ""}`} onClick={() => setActiveSection("profile")} type="button"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></button>
         </div>
       </aside>
 
       <section className="dashboard-page">
         <header className="dashboard-header">
-          <div><h1>{activeSection === "home" ? `${greeting}, ${displayName}.` : navigation.find((item) => item.id === activeSection)?.label}</h1><p>{activeSection === "home" ? "Stay focused. Make steady progress." : "Everything stays local to this device."}</p></div>
+          <div><h1>{activeSection === "home" ? `${greeting}, ${displayName}.` : sectionTitle}</h1><p>{sectionSubtitle}</p></div>
           {headerAction}
         </header>
 
@@ -741,63 +784,77 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
           })}
         </div></section> : null}
 
-        {activeSection === "backup" ? <div className="settings-grid">
-          <section className="dashboard-panel profile-settings-panel">
-            <p className="panel-kicker">User profile personalization</p>
-            <div className="profile-settings-header">
-              <span className="profile-settings-avatar">{profileInitials}</span>
-              <div>
-                <h2>{displayName}</h2>
-                <p>Name, overlay transparency, and theme selection.</p>
-              </div>
-            </div>
-            <div className="profile-settings-form">
-              <div className="profile-settings-row">
-                <label className="settings-field">User name<input value={profileName} onBlur={handleProfileNameBlur} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label>
-                <button className="settings-action-button" onClick={handleProfileNameBlur} type="button">Save profile</button>
-              </div>
-              <div className="profile-personalization-section">
-                <label className="settings-slider-field">Overlay transparency <strong>{formatPercent(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
-                <div className="settings-slider-scale"><span>More transparent</span><span>More solid</span></div>
-              </div>
-              <div className="profile-personalization-section">
-                <div className="profile-theme-heading"><div><strong>Theme</strong><p>{activeTheme.description}</p></div><span>{activeTheme.label}</span></div>
-                <div className="theme-options profile-theme-options" role="list" aria-label="Profile theme options">
-                  {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => handleThemeChange(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
-                </div>
-              </div>
-            </div>
-          </section>
-
+        {activeSection === "backup" ? <div className="settings-grid settings-system-grid">
           <section className="dashboard-panel data-location-panel">
-            <p className="panel-kicker">Data</p>
+            <PanelKicker icon="briefcase" label="Data" />
             <h2>Storage folder</h2>
             <div className="data-location-current">
               <span>{dataLocation?.isCustom ? "Custom" : "Default"}</span>
               <code>{dataLocation?.path ?? "Loading..."}</code>
             </div>
-            <button className="settings-action-button" disabled={dataLocationBusy || !window.reamDesktop?.chooseDataLocation} onClick={() => void handleChooseDataLocation()} type="button">{dataLocationBusy ? "Opening..." : "Choose folder"}</button>
+            <button className="settings-action-button" disabled={dataLocationBusy || !window.reamDesktop?.chooseDataLocation} onClick={() => void handleChooseDataLocation()} type="button"><MainIcon name="briefcase" />Change folder</button>
           </section>
 
           <section className="dashboard-panel backup-panel">
-            <p className="panel-kicker">Backup</p>
+            <PanelKicker icon="shield" label="Backup" />
             <h2>Keep a private copy</h2>
             <p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p>
-            <div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}>Export JSON</button><button onClick={handleExportCsv}>Export CSV</button><label>Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div>
+            <div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}><MainIcon name="plus" />Export JSON</button><button onClick={handleExportCsv}><MainIcon name="list" />Export CSV</button><label><MainIcon name="timer" />Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div>
           </section>
 
           <section className="dashboard-panel ai-settings-panel">
-            <p className="panel-kicker">Local AI</p>
+            <div className="settings-panel-heading">
+              <PanelKicker icon="settings" label="Local AI" />
+              <label className="settings-toggle">Enable AI note improvement<input checked={appSettings.aiSetupPreference === "enabled" } onChange={(event) => updateAppSettings({ aiSetupPreference: event.target.checked ? "enabled" : "skipped" })} type="checkbox" /><span /></label>
+            </div>
             <h2>Ollama sidecar</h2>
-            <p>Improve notes with a local Ollama model. Default: <code>{DEFAULT_OLLAMA_MODEL}</code>. Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code>.</p>
+            <p>Improve notes with a local Ollama model.</p>
+            <div className="settings-model-badges"><span>Default: <code>{DEFAULT_OLLAMA_MODEL}</code></span><span>Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code></span></div>
             <label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
-            <button className="settings-action-button" onClick={onOpenSetup} type="button">Open setup</button>
+            <div className="settings-ai-actions"><button disabled={settingsAiBusy} onClick={() => void handleCheckOllamaStatus()} type="button"><MainIcon name="chart" />Check</button><button onClick={() => void handleOpenOllamaDownload()} type="button"><MainIcon name="timer" />Install Ollama</button><button disabled={settingsAiBusy} onClick={() => void handlePullOllamaModel()} type="button"><MainIcon name="overlay" />Pull model</button></div>
+            {settingsAiStatus ? <p className="settings-ai-status">{settingsAiStatus}</p> : null}
           </section>
 
-          <section className="dashboard-panel">
-            <p className="panel-kicker">Review</p>
+          <section className="dashboard-panel review-settings-panel">
+            <PanelKicker icon="clock" label="Review" />
             <h2>Tracked time</h2>
             <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
+            <div className="settings-review-bar"><span /></div>
+          </section>
+        </div> : null}
+
+        {activeSection === "profile" ? <div className="settings-grid">
+          <section className="dashboard-panel profile-settings-panel">
+            <div className="profile-settings-header">
+              <span className="profile-settings-avatar">{profileInitials}</span>
+              <div>
+                <PanelKicker icon="settings" label="Profile" />
+                <h2>{displayName}</h2>
+                <p>Your name is used for greetings and the sidebar identity.</p>
+              </div>
+            </div>
+
+            <div className="profile-settings-form">
+              <div className="profile-settings-row">
+                <label className="settings-field">Display name<input value={appSettings.userName} onChange={(event) => updateAppSettings({ userName: event.target.value })} placeholder="Prithiv Raj" /></label>
+                <button className="settings-action-button" onClick={() => updateAppSettings({ userName: appSettings.userName.trim() })} type="button"><MainIcon name="pen" />Save</button>
+              </div>
+
+              <section className="profile-personalization-section">
+                <div className="profile-theme-heading">
+                  <div><strong>Theme</strong><p>Pick the visual language for the main window and overlay.</p></div>
+                  <span>{activeTheme.label}</span>
+                </div>
+                <div className="theme-options profile-theme-options">
+                  {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => updateAppSettings({ themeId: theme.id })} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
+                </div>
+              </section>
+
+              <section className="profile-personalization-section">
+                <label className="settings-slider-field">Overlay transparency <strong>{formatTransparency(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
+                <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
+              </section>
+            </div>
           </section>
         </div> : null}
 
@@ -816,6 +873,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
 }
 
 type MainIconName = "chevron" | "clock" | "home" | "list" | "more" | "note" | "overlay" | "pen" | "play" | "plus" | "settings" | "timer" | "briefcase" | "chart" | "phone" | "shield" | "document";
+
+function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
+  return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;
+}
 
 function projectIcon(index: number): MainIconName {
   return ["briefcase", "chart", "phone", "shield", "document"][index % 5] as MainIconName;
@@ -864,6 +925,10 @@ function getInitials(name: string): string {
   return initials || "R";
 }
 
+function formatTransparency(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
 function readClockMs(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
@@ -882,10 +947,6 @@ function formatDurationMs(durationMs: number): string {
   }
 
   return `${(durationMs / 1000).toFixed(1)} s`;
-}
-
-function formatPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
 }
 
 function formatAiStatus(status: NoteAiSuggestion["status"]): string {

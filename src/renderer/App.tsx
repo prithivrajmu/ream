@@ -95,5 +95,5 @@ export function App() {
     }} onThemeChange={setThemeId} />;
   }
 
-  return <MainView appSettings={{ ...appSettings, themeId }} onAppSettingsChange={updateAppSettings} onOpenSetup={() => setIsSetupOpen(true)} themeId={themeId} />;
+  return <MainView appSettings={{ ...appSettings, themeId }} onAppSettingsChange={updateAppSettings} themeId={themeId} />;
 }
