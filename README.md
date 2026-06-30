@@ -139,6 +139,10 @@ data model simple and local. If the app later needs stronger backup guarantees,
 move storage to SQLite in the Electron main process while preserving the same
 repository interface.
 
+Ream can also point Electron's user data directory at a user-selected folder
+from Settings. When changed, Ream copies the current local data to the selected
+folder and relaunches against that location.
+
 Recommended backup files:
 
 - `ream-export.json`

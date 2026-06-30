@@ -2239,6 +2239,40 @@ body.overlay-route {
   text-transform: uppercase;
 }
 
+.data-location-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.data-location-current {
+  display: grid;
+  gap: 8px;
+}
+
+.data-location-current span {
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid var(--theme-subtle, #e3ded3);
+  border-radius: 999px;
+  color: var(--theme-accent, #223d33);
+  background: var(--theme-panel-alt, #eef3ea);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.data-location-current code {
+  overflow-wrap: anywhere;
+  padding: 10px 11px;
+  border: 1px solid var(--theme-subtle, #e3ded3);
+  border-radius: 8px;
+  color: var(--theme-ink, #1d2026);
+  background: var(--theme-panel-alt, #eef3ea);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .setup-card input,
 .setup-card select {
   width: 100%;

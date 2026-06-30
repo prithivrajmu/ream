@@ -28,6 +28,12 @@ interface MainViewProps {
   onOpenSetup: () => void;
 }
 
+interface ReamDataLocationInfo {
+  path: string;
+  isCustom: boolean;
+  defaultPath: string;
+}
+
 interface AiNotePreview {
   entryId: string;
   taskId: string;
@@ -72,6 +78,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
   const [aiPreview, setAiPreview] = useState<AiNotePreview | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [profileName, setProfileName] = useState(appSettings.userName);
+  const [dataLocation, setDataLocation] = useState<ReamDataLocationInfo | null>(null);
+  const [dataLocationBusy, setDataLocationBusy] = useState(false);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -195,6 +203,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
     setProfileName(appSettings.userName);
   }, [appSettings.userName]);
 
+  useEffect(() => {
+    window.reamDesktop?.getDataLocation?.()
+      .then(setDataLocation)
+      .catch(() => undefined);
+  }, []);
+
   function updateAppSettings(patch: Partial<AppSettings>) {
     onAppSettingsChange({ ...appSettings, ...patch });
   }
@@ -205,6 +219,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
 
   function handleThemeChange(nextThemeId: ThemeId) {
     updateAppSettings({ themeId: nextThemeId });
+  }
+
+  async function handleChooseDataLocation() {
+    setError(null);
+    setDataLocationBusy(true);
+    try {
+      const nextLocation = await window.reamDesktop?.chooseDataLocation?.();
+      if (nextLocation) {
+        setDataLocation(nextLocation);
+      }
+    } catch (locationError) {
+      setError(locationError instanceof Error ? locationError.message : "Unable to change data folder.");
+    } finally {
+      setDataLocationBusy(false);
+    }
   }
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
@@ -727,6 +756,16 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
               <label className="settings-slider-field">Overlay opacity <strong>{formatPercent(appSettings.overlayTransparency)}</strong><input aria-label="Overlay opacity" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
               <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
             </div>
+          </section>
+
+          <section className="dashboard-panel data-location-panel">
+            <p className="panel-kicker">Data</p>
+            <h2>Storage folder</h2>
+            <div className="data-location-current">
+              <span>{dataLocation?.isCustom ? "Custom" : "Default"}</span>
+              <code>{dataLocation?.path ?? "Loading..."}</code>
+            </div>
+            <button className="settings-action-button" disabled={dataLocationBusy || !window.reamDesktop?.chooseDataLocation} onClick={() => void handleChooseDataLocation()} type="button">{dataLocationBusy ? "Opening..." : "Choose folder"}</button>
           </section>
 
           <section className="dashboard-panel theme-panel">

@@ -1,7 +1,7 @@
-import { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
   DEFAULT_OLLAMA_MODEL,
   FALLBACK_OLLAMA_MODEL,
@@ -23,9 +23,11 @@ import {
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const STABLE_USER_DATA_DIR = "ream";
 const LEGACY_USER_DATA_DIR = "timesheet-tracker";
+const DATA_LOCATION_CONFIG_FILE = "ream-data-location.json";
 const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
 
-const userDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
+const defaultUserDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
+const userDataPath = readConfiguredUserDataPath() ?? defaultUserDataPath;
 migrateLegacyUserData(userDataPath);
 app.setPath("userData", userDataPath);
 
@@ -36,6 +38,94 @@ let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayExpanded = false;
+
+interface DataLocationInfo {
+  path: string;
+  isCustom: boolean;
+  defaultPath: string;
+}
+
+interface DataLocationConfig {
+  userDataPath?: string;
+}
+
+function getDataLocationConfigPath(): string {
+  return join(app.getPath("appData"), DATA_LOCATION_CONFIG_FILE);
+}
+
+function readConfiguredUserDataPath(): string | null {
+  try {
+    const parsed = JSON.parse(readFileSync(getDataLocationConfigPath(), "utf8")) as DataLocationConfig;
+    const configuredPath = parsed.userDataPath?.trim();
+    if (configuredPath && isAbsolute(configuredPath)) {
+      return configuredPath;
+    }
+  } catch {
+    // Missing or invalid config just means Ream uses its default data location.
+  }
+
+  return null;
+}
+
+function writeConfiguredUserDataPath(nextUserDataPath: string): void {
+  mkdirSync(dirname(getDataLocationConfigPath()), { recursive: true });
+  writeFileSync(getDataLocationConfigPath(), `${JSON.stringify({ userDataPath: nextUserDataPath }, null, 2)}\n`);
+}
+
+function getDataLocationInfo(): DataLocationInfo {
+  return {
+    path: app.getPath("userData"),
+    isCustom: resolve(app.getPath("userData")) !== resolve(defaultUserDataPath),
+    defaultPath: defaultUserDataPath
+  };
+}
+
+function isInsidePath(parentPath: string, childPath: string): boolean {
+  const parent = resolve(parentPath);
+  const child = resolve(childPath);
+  return child === parent || child.startsWith(`${parent}${sep}`);
+}
+
+function copyCurrentUserDataTo(nextUserDataPath: string): void {
+  const currentUserDataPath = app.getPath("userData");
+  if (resolve(currentUserDataPath) === resolve(nextUserDataPath)) {
+    return;
+  }
+
+  if (isInsidePath(currentUserDataPath, nextUserDataPath)) {
+    throw new Error("Choose a folder outside the current Ream data folder.");
+  }
+
+  mkdirSync(nextUserDataPath, { recursive: true });
+  cpSync(currentUserDataPath, nextUserDataPath, {
+    recursive: true,
+    force: false,
+    errorOnExist: false,
+    verbatimSymlinks: true
+  });
+}
+
+async function chooseDataLocation(): Promise<DataLocationInfo | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: "Choose Ream data folder",
+    buttonLabel: "Use Folder",
+    properties: ["openDirectory", "createDirectory"]
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+
+  if (result.canceled || !result.filePaths[0]) {
+    return null;
+  }
+
+  const nextUserDataPath = resolve(result.filePaths[0]);
+  copyCurrentUserDataTo(nextUserDataPath);
+  writeConfiguredUserDataPath(nextUserDataPath);
+  app.relaunch();
+  app.exit(0);
+  return { path: nextUserDataPath, isCustom: true, defaultPath: defaultUserDataPath };
+}
 
 function migrateLegacyUserData(nextUserDataPath: string) {
   const legacyUserDataPath = join(app.getPath("appData"), LEGACY_USER_DATA_DIR);
@@ -431,6 +521,10 @@ app.whenReady().then(() => {
   ipcMain.handle("window:close-overlay", () => {
     hideOverlayWindow();
   });
+
+  ipcMain.handle("data:get-location", () => getDataLocationInfo());
+
+  ipcMain.handle("data:choose-location", () => chooseDataLocation());
 
   ipcMain.handle("ai:improve-note", async (_event, input: ImproveNoteRequest): Promise<ImproveNoteResult> => {
     if (!aiSidecar) {
