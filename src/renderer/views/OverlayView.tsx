@@ -18,7 +18,7 @@ import {
 import { formatEntryDateTime } from "../rendererUtils";
 import type { ThemeId } from "../themeOptions";
 
-type IconName = "chevron" | "clock" | "close" | "list" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
+type IconName = "chevron" | "clock" | "close" | "list" | "maximize" | "minimize" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
 
 interface OverlayViewProps {
   themeId: ThemeId;
@@ -44,6 +44,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const [noteDirty, setNoteDirty] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -138,6 +139,12 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   useEffect(() => {
     return window.reamDesktop?.onOverlayExpandedChanged?.(setExpanded);
   }, []);
+
+  useEffect(() => {
+    if (!expanded) {
+      setNotesExpanded(false);
+    }
+  }, [expanded]);
 
   useEffect(() => {
     if (aiPreview && activeTimer?.id !== aiPreview.activeTimerId) {
@@ -384,7 +391,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }
 
   return (
-    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""}`} style={{ "--overlay-opacity": overlayTransparency } as CSSProperties} aria-label="Ream overlay">
+    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""} ${notesExpanded ? "is-notes-expanded" : ""}`} style={{ "--overlay-opacity": overlayTransparency } as CSSProperties} aria-label="Ream overlay">
       <header className="reference-overlay-bar">
         <div className="reference-overlay-identity">
           <span className="reference-app-icon"><Icon name="clock" /></span>
@@ -453,7 +460,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
             </div>
           </div>
 
-          <div className="reference-workspace">
+          <div className={`reference-workspace ${notesExpanded ? "is-notes-expanded" : ""}`}>
             <section className="reference-timer-column">
               <div className="reference-timer-card">
                 <div>
@@ -497,7 +504,19 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
             <section className="reference-notes-card">
               <div className="reference-notes-heading">
                 <span><Icon name="note" />Task Notes</span>
-                {renderImproveNoteButton()}
+                <div className="reference-notes-actions">
+                  {renderImproveNoteButton()}
+                  <button
+                    aria-label={notesExpanded ? "Restore notes layout" : "Expand notes"}
+                    aria-pressed={notesExpanded}
+                    className="reference-note-expand-button"
+                    onClick={() => setNotesExpanded((current) => !current)}
+                    title={notesExpanded ? "Restore notes layout" : "Expand notes"}
+                    type="button"
+                  >
+                    <Icon name={notesExpanded ? "minimize" : "maximize"} />
+                  </button>
+                </div>
               </div>
               <textarea
                 aria-label="Task notes"
@@ -561,6 +580,8 @@ function Icon({ name }: { name: IconName }) {
     clock: <><circle cx="12" cy="13" r="7" /><path d="M12 9v4l2.5 1.5M9 2h6M12 2v4M5 5 3 7M19 5l2 2" /></>,
     close: <><path d="m7 7 10 10M17 7 7 17" /></>,
     list: <><path d="M9 6h10M9 12h10M9 18h10" /><circle cx="4" cy="6" r=".8" fill="currentColor" /><circle cx="4" cy="12" r=".8" fill="currentColor" /><circle cx="4" cy="18" r=".8" fill="currentColor" /></>,
+    maximize: <><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5" /><path d="M3 3l6 6M21 3l-6 6M3 21l6-6M21 21l-6-6" /></>,
+    minimize: <><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" /></>,
     note: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6" /></>,
     pause: <><path d="M9 6v12M15 6v12" /></>,
     play: <path d="m9 6 8 6-8 6z" fill="currentColor" stroke="none" />,

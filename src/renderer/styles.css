@@ -1343,6 +1343,16 @@ body.overlay-route {
   margin-top: 20px;
 }
 
+.reference-workspace.is-notes-expanded {
+  grid-template-columns: minmax(0, 1fr);
+  height: calc(100% - 88px);
+}
+
+.reference-workspace.is-notes-expanded .reference-timer-column,
+.reference-overlay-shell.is-notes-expanded .reference-recent-notes {
+  display: none;
+}
+
 .reference-timer-column,
 .reference-notes-card {
   min-height: 319px;
@@ -1512,6 +1522,7 @@ body.overlay-route {
 .reference-notes-heading {
   justify-content: space-between;
   color: #353a44;
+  gap: 12px;
 }
 
 .reference-notes-heading span {
@@ -1532,8 +1543,16 @@ body.overlay-route {
   font-size: 10px;
 }
 
+.reference-notes-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .reference-ai-button,
-.reference-ai-actions button {
+.reference-ai-actions button,
+.reference-note-expand-button {
   display: inline-flex;
   min-height: 34px;
   align-items: center;
@@ -1546,6 +1565,16 @@ body.overlay-route {
   box-shadow: 0 4px 10px rgb(85 99 242 / 8%);
   font-size: 12px;
   font-weight: 650;
+}
+
+.reference-note-expand-button {
+  width: 36px;
+  padding: 0;
+}
+
+.reference-note-expand-button .reference-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .reference-ai-button.is-muted {
@@ -1580,6 +1609,16 @@ body.overlay-route {
   font-size: 14px;
   line-height: 1.45;
   resize: none;
+}
+
+.reference-workspace.is-notes-expanded .reference-notes-card {
+  height: 100%;
+  min-height: 0;
+}
+
+.reference-workspace.is-notes-expanded .reference-notes-card textarea {
+  height: auto;
+  min-height: 0;
 }
 
 .reference-notes-card textarea:focus,
@@ -2151,6 +2190,7 @@ body.overlay-route {
 
 .profile-settings-panel {
   display: grid;
+  grid-column: 1 / -1;
   gap: 22px;
 }
 
@@ -2189,6 +2229,64 @@ body.overlay-route {
 .settings-slider-field {
   display: grid;
   gap: 9px;
+}
+
+.profile-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.profile-settings-row .settings-action-button {
+  min-height: 43px;
+  margin-top: 0;
+}
+
+.profile-personalization-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--theme-subtle, #e3ded3);
+}
+
+.profile-theme-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.profile-theme-heading strong,
+.profile-theme-heading p {
+  margin: 0;
+}
+
+.profile-theme-heading strong {
+  color: var(--theme-ink, #1d2026);
+  font-size: 13px;
+}
+
+.profile-theme-heading p {
+  margin-top: 5px;
+  color: var(--theme-muted, #747989);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.profile-theme-heading > span {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--theme-subtle, #e3ded3);
+  border-radius: 999px;
+  color: var(--theme-accent, #223d33);
+  background: var(--theme-panel-alt, #eef3ea);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.profile-theme-options {
+  margin-top: 4px;
 }
 
 .settings-field,
@@ -2271,6 +2369,18 @@ body.overlay-route {
   background: var(--theme-panel-alt, #eef3ea);
   font-size: 12px;
   line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+  .profile-settings-row,
+  .profile-theme-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .profile-settings-row .settings-action-button {
+    width: 100%;
+  }
 }
 
 .setup-card input,

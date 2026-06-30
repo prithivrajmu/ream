@@ -334,6 +334,11 @@ function hideOverlayWindow() {
   overlayWindow.hide();
 }
 
+function closeOverlayAndShowMainWindow() {
+  hideOverlayWindow();
+  showMainWindow();
+}
+
 function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
@@ -519,7 +524,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
-    hideOverlayWindow();
+    closeOverlayAndShowMainWindow();
   });
 
   ipcMain.handle("data:get-location", () => getDataLocationInfo());

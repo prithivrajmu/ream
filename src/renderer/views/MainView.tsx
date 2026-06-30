@@ -743,18 +743,29 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
 
         {activeSection === "backup" ? <div className="settings-grid">
           <section className="dashboard-panel profile-settings-panel">
-            <p className="panel-kicker">Profile</p>
+            <p className="panel-kicker">User profile personalization</p>
             <div className="profile-settings-header">
               <span className="profile-settings-avatar">{profileInitials}</span>
               <div>
                 <h2>{displayName}</h2>
-                <p>Personal settings for Ream and the overlay.</p>
+                <p>Name, overlay transparency, and theme selection.</p>
               </div>
             </div>
             <div className="profile-settings-form">
-              <label className="settings-field">User name<input value={profileName} onBlur={handleProfileNameBlur} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label>
-              <label className="settings-slider-field">Overlay opacity <strong>{formatPercent(appSettings.overlayTransparency)}</strong><input aria-label="Overlay opacity" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
-              <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
+              <div className="profile-settings-row">
+                <label className="settings-field">User name<input value={profileName} onBlur={handleProfileNameBlur} onChange={(event) => setProfileName(event.target.value)} placeholder="Your name" /></label>
+                <button className="settings-action-button" onClick={handleProfileNameBlur} type="button">Save profile</button>
+              </div>
+              <div className="profile-personalization-section">
+                <label className="settings-slider-field">Overlay transparency <strong>{formatPercent(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
+                <div className="settings-slider-scale"><span>More transparent</span><span>More solid</span></div>
+              </div>
+              <div className="profile-personalization-section">
+                <div className="profile-theme-heading"><div><strong>Theme</strong><p>{activeTheme.description}</p></div><span>{activeTheme.label}</span></div>
+                <div className="theme-options profile-theme-options" role="list" aria-label="Profile theme options">
+                  {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => handleThemeChange(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -766,15 +777,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange, onOpenSetu
               <code>{dataLocation?.path ?? "Loading..."}</code>
             </div>
             <button className="settings-action-button" disabled={dataLocationBusy || !window.reamDesktop?.chooseDataLocation} onClick={() => void handleChooseDataLocation()} type="button">{dataLocationBusy ? "Opening..." : "Choose folder"}</button>
-          </section>
-
-          <section className="dashboard-panel theme-panel">
-            <p className="panel-kicker">Theme</p>
-            <h2>{activeTheme.label}</h2>
-            <p>{activeTheme.description}</p>
-            <div className="theme-options" role="list" aria-label="Theme options">
-              {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => handleThemeChange(theme.id)} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
-            </div>
           </section>
 
           <section className="dashboard-panel backup-panel">
