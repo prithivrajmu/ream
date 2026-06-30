@@ -34,8 +34,9 @@ Audit date: 2026-06-26
 ## Release risks
 
 - The app identifier changed from `com.prithiv.timesheettracker` to
-  `com.prithiv.ream`. Treat this as a new installed application for distribution
-  and do not expect automatic migration of OS-level preferences.
+  `com.prithiv.ream`. Ream now copies the legacy `timesheet-tracker` user data
+  folder and migrates the legacy IndexedDB database into the `ream` database on
+  first launch.
 - User work remains in local IndexedDB. In-app JSON export is the supported
   backup and restore path; releases should not modify or delete local app data.
 - Linux packages have no code-signing configuration. Checksums are required for

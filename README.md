@@ -71,7 +71,7 @@ run inside a desktop shell instead of relying only on a browser tab.
 
 Use two app windows:
 
-- Main window: full timesheet app for tasks, reports, settings, export/import,
+- Main window: full Ream workspace for tasks, reports, settings, export/import,
   and editing historical entries.
 - Overlay window: small always-on-top utility window for current task, elapsed
   time, start/stop, pause/resume if added later, task switching, and quick notes.
@@ -141,8 +141,8 @@ repository interface.
 
 Recommended backup files:
 
-- `timesheet-export.json`
-- `timesheet-export.csv`
+- `ream-export.json`
+- `ream-export.csv`
 
 ### GitHub Backup Strategy
 
