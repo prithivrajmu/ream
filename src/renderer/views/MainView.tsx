@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
@@ -21,7 +21,8 @@ import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendere
 import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
-type ActiveSection = "home" | "entries" | "tasks" | "notes" | "projects" | "backup" | "dev" | "profile";
+type ActiveSection = "home" | "insights" | "timesheet" | "entries" | "tasks" | "notes" | "projects" | "backup" | "dev" | "profile";
+type TimeViewMode = "day" | "week" | "month";
 
 interface MainViewProps {
   appSettings: AppSettings;
@@ -44,6 +45,82 @@ interface AiNotePreview {
   model: string;
   rawNote: string;
   output: ImprovedNoteOutput;
+}
+
+interface DateRange {
+  start: Date;
+  end: Date;
+  label: string;
+}
+
+interface InsightBucket {
+  key: string;
+  label: string;
+  durations: number[];
+  totalSeconds: number;
+}
+
+interface InsightSummaryRow {
+  id: string;
+  title: string;
+  meta: string;
+  durationSeconds: number;
+  percent: number;
+  icon: MainIconName;
+}
+
+interface TimeInsights {
+  range: DateRange;
+  previousTotalSeconds: number;
+  totalSeconds: number;
+  dailyAverageSeconds: number;
+  focusRatio: number;
+  buckets: InsightBucket[];
+  taskRows: InsightSummaryRow[];
+  projectRows: InsightSummaryRow[];
+  sessionRows: Array<{
+    id: string;
+    date: string;
+    task: string;
+    taskTone: number;
+    project: string;
+    durationSeconds: number;
+    note: string;
+  }>;
+  heatmap: Array<{ label: string; periods: number[] }>;
+  bestDay: { label: string; durationSeconds: number } | null;
+  longestEntry: TimeEntry | null;
+  topTask: InsightSummaryRow | null;
+}
+
+interface TimesheetDay {
+  date: Date;
+  label: string;
+  shortDate: string;
+}
+
+interface TimesheetCell {
+  durationSeconds: number;
+  entryCount: number;
+}
+
+interface TimesheetRow {
+  taskId: string;
+  title: string;
+  projects: string[];
+  tags: string[];
+  status: "In progress" | "Archived";
+  cells: TimesheetCell[];
+  totalSeconds: number;
+}
+
+interface WeeklyTimesheet {
+  range: DateRange;
+  days: TimesheetDay[];
+  rows: TimesheetRow[];
+  dayTotals: number[];
+  totalSeconds: number;
+  commentCount: number;
 }
 
 export function MainView({ appSettings, themeId, onAppSettingsChange }: MainViewProps) {
@@ -82,6 +159,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [dataLocationBusy, setDataLocationBusy] = useState(false);
   const [settingsAiStatus, setSettingsAiStatus] = useState<string | null>(null);
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
+  const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -98,6 +176,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
+  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode), [allEntries, allProjects, allTasks, timeViewMode]);
+  const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects), [allEntries, allProjects, allTasks]);
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
@@ -612,7 +692,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return null;
     }
 
-    return <div className="ai-note-preview"><section><h3>Raw note</h3><p>{preview.rawNote}</p></section><section><h3>AI suggestion</h3><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
+    return <div className="ai-note-preview"><section className="ai-note-preview-panel"><h3>Raw note</h3><div className="ai-note-preview-body"><p>{preview.rawNote}</p></div></section><section className="ai-note-preview-panel is-suggestion"><h3>AI suggestion</h3><div className="ai-note-preview-body"><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small></div><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
   }
 
   async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
@@ -693,6 +773,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
   const navigation: Array<{ id: Exclude<ActiveSection, "profile">; label: string; icon: MainIconName }> = [
     { id: "home", label: "Home", icon: "home" },
+    { id: "insights", label: "Insights", icon: "chart" },
+    { id: "timesheet", label: "Timesheet", icon: "calendar" },
     { id: "entries", label: "Entries", icon: "clock" },
     { id: "tasks", label: "Tasks", icon: "list" },
     { id: "notes", label: "Notes", icon: "note" },
@@ -711,6 +793,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     if (activeSection === "projects") {
       return <button className="new-project-button" onClick={() => setIsProjectComposerOpen(true)}><MainIcon name="plus" />New Project</button>;
     }
+    if (activeSection === "insights") {
+      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{timeInsights.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button></div>;
+    }
+    if (activeSection === "timesheet") {
+      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{weeklyTimesheet.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button><button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button></div>;
+    }
     return null;
   })();
 
@@ -719,12 +807,20 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
   const sectionTitle = activeSection === "profile"
     ? "Profile"
-    : navigation.find((item) => item.id === activeSection)?.label;
+    : activeSection === "insights"
+      ? "Time View"
+      : activeSection === "timesheet"
+        ? "Weekly Timesheet"
+        : navigation.find((item) => item.id === activeSection)?.label;
   const sectionSubtitle = activeSection === "home"
     ? "Stay focused. Make steady progress."
-    : activeSection === "profile"
-      ? "Tune how Ream feels on this device."
-      : "Everything stays local to this device.";
+    : activeSection === "insights"
+      ? "See where you have spent your time across days, weeks, and months."
+      : activeSection === "timesheet"
+        ? "Track your time across tasks for the week."
+        : activeSection === "profile"
+          ? "Tune how Ream feels on this device."
+          : "Everything stays local to this device.";
 
   return (
     <main className={`dashboard-shell theme-${themeId}`}>
@@ -762,6 +858,93 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <footer className="dashboard-footer"><MainIcon name="note" />Notes live with your tasks.</footer>
         </> : null}
 
+        {activeSection === "insights" ? <section className="time-view-section">
+          <div className="time-mode-tabs" role="tablist" aria-label="Time view range">
+            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => setTimeViewMode(mode)} type="button">{capitalize(mode)}</button>)}
+          </div>
+
+          <section className="time-reflection-panel">
+            <div className="time-reflection-copy"><span><MainIcon name="sparkle" /></span><div><h2>{timeViewMode === "week" ? "Weekly reflection" : `${capitalize(timeViewMode)} reflection`}</h2><p>{buildReflectionCopy(timeInsights)}</p></div></div>
+            <div className="time-metrics">
+              <MetricPill icon="clock" label="Total time" value={formatCompactDuration(timeInsights.totalSeconds)} delta={formatPercentDelta(timeInsights.totalSeconds, timeInsights.previousTotalSeconds)} />
+              <MetricPill icon="trend" label="Daily average" value={formatCompactDuration(timeInsights.dailyAverageSeconds)} delta={formatPercentDelta(timeInsights.dailyAverageSeconds, timeInsights.previousTotalSeconds / Math.max(1, timeInsights.buckets.length))} />
+              <MetricPill icon="target" label="Focus ratio" value={`${timeInsights.focusRatio}%`} delta={timeInsights.focusRatio ? "tracked focus" : "no focus yet"} />
+            </div>
+          </section>
+
+          <div className="time-insight-grid">
+            <section className="time-card time-chart-card">
+              <SectionNumber title="Time across tasks" number="1." />
+              <div className="time-legend">{timeInsights.taskRows.slice(0, 6).map((row, index) => <span key={row.id}><i className={`time-tone-${index}`} />{row.title}</span>)}</div>
+              <div className="stacked-chart" aria-label="Time across tasks chart">
+                {timeInsights.buckets.map((bucket) => <div className="stacked-column" key={bucket.key}><span>{bucket.totalSeconds ? formatCompactDuration(bucket.totalSeconds) : ""}</span><div>{bucket.durations.map((durationSeconds, index) => <i className={`time-tone-bg-${index}`} key={`${bucket.key}-${index}`} style={cssVars({ "--segment-height": `${bucket.totalSeconds ? Math.max(7, durationSeconds / bucket.totalSeconds * 100) : 0}%` })} />)}</div><small>{bucket.label}</small></div>)}
+              </div>
+            </section>
+
+            <section className="time-card time-list-card">
+              <SectionNumber title={`Tasks this ${timeViewMode}`} number="2." />
+              <InsightRanking rows={timeInsights.taskRows} totalSeconds={timeInsights.totalSeconds} />
+            </section>
+
+            <section className="time-card time-list-card">
+              <SectionNumber title={`Projects this ${timeViewMode}`} number="3." />
+              <InsightRanking rows={timeInsights.projectRows} totalSeconds={timeInsights.totalSeconds} />
+            </section>
+
+            <section className="time-card time-session-card">
+              <div className="time-card-heading-row"><SectionNumber title="Session log" number="4." /><div className="time-session-tools"><label><MainIcon name="search" /><input placeholder="Search sessions..." readOnly /></label><button type="button"><MainIcon name="filter" />Filter</button><button aria-label="More session actions" type="button"><MainIcon name="more" /></button></div></div>
+              <div className="time-session-table">
+                <div className="time-session-head"><span>Date</span><span>Task</span><span>Project</span><span>Duration</span><span>Notes</span></div>
+                {timeInsights.sessionRows.length === 0 ? <p className="empty-state">Tracked sessions will appear here.</p> : timeInsights.sessionRows.map((row) => <div className="time-session-row" key={row.id}><span>{row.date}</span><span><i className={`time-tone-bg-${row.taskTone}`}><MainIcon name={summaryIcon(row.taskTone)} /></i>{row.task}</span><span>{row.project}</span><strong>{formatCompactDuration(row.durationSeconds)}</strong><p>{row.note || "No note"}</p></div>)}
+              </div>
+              <footer>{timeInsights.sessionRows.length} sessions</footer>
+            </section>
+
+            <section className="time-card time-highlights-card">
+              <SectionNumber title="Highlights" number="5." />
+              <div className="time-highlights">
+                <HighlightItem icon="sparkle" label="Best day" value={timeInsights.bestDay?.label ?? "No time yet"} detail={timeInsights.bestDay ? `${formatCompactDuration(timeInsights.bestDay.durationSeconds)} total time` : "Start tracking to build history"} />
+                <HighlightItem icon="clock" label="Longest focus block" value={timeInsights.longestEntry ? formatCompactDuration(timeInsights.longestEntry.durationSeconds) : "No block yet"} detail={timeInsights.longestEntry ? `${formatShortDate(timeInsights.longestEntry.startedAt)} · ${taskById.get(timeInsights.longestEntry.taskId)?.title ?? "Archived task"}` : "Completed entries will appear here"} />
+                <HighlightItem icon="trophy" label="Top task" value={timeInsights.topTask?.title ?? "No task yet"} detail={timeInsights.topTask ? `${formatCompactDuration(timeInsights.topTask.durationSeconds)} · ${timeInsights.topTask.percent}% of total time` : "Track a task to see the leader"} />
+              </div>
+            </section>
+
+            <section className="time-card time-heatmap-card">
+              <div className="time-card-heading-row"><SectionNumber title="Time heatmap" number="6." /><div className="heatmap-scale"><span>Less</span><i /><i /><i /><i /><i /><span>More</span></div></div>
+              <div className="heatmap-grid" style={cssVars({ "--heatmap-columns": String(timeInsights.buckets.length || 1) })}>
+                <span />
+                {timeInsights.buckets.map((bucket) => <strong key={bucket.key}>{bucket.label}</strong>)}
+                {timeInsights.heatmap.map((row) => <div className="heatmap-row" key={row.label} style={cssVars({ "--heatmap-columns": String(timeInsights.buckets.length || 1) })}><b>{row.label}</b>{row.periods.map((durationSeconds, index) => <i key={`${row.label}-${index}`} style={cssVars({ "--heat": String(normalizeHeat(durationSeconds, timeInsights.heatmap)) })} />)}</div>)}
+              </div>
+            </section>
+          </div>
+        </section> : null}
+
+        {activeSection === "timesheet" ? <section className="timesheet-section">
+          <div className="timesheet-frame">
+            <div className="timesheet-grid" style={cssVars({ "--timesheet-day-count": String(weeklyTimesheet.days.length) })}>
+              <div className="timesheet-task-header"><strong>Task</strong><span>and projects</span></div>
+              {weeklyTimesheet.days.map((day) => <div className="timesheet-day-header" key={day.shortDate}><strong>{day.label}</strong><span>{day.shortDate}</span></div>)}
+              <div className="timesheet-total-header">Task total</div>
+
+              <div className="timesheet-task-cell is-attendance"><span>Attendance Hours <MainIcon name="info" /></span></div>
+              {weeklyTimesheet.days.map((day) => <div className="timesheet-time-cell is-muted" key={`attendance-${day.shortDate}`}>0h 00m</div>)}
+              <div className="timesheet-total-cell is-muted">-</div>
+
+              {weeklyTimesheet.rows.length === 0 ? <div className="timesheet-empty">Track time on a task this week to build your timesheet.</div> : weeklyTimesheet.rows.map((row) => <Fragment key={row.taskId}>
+                <div className="timesheet-task-cell" key={`${row.taskId}-task`}><div><strong>{row.title}</strong><span className="timesheet-chip-row">{[...row.projects, ...row.tags].slice(0, 4).map((tag) => <i key={tag}>{tag}</i>)}</span></div><b className={row.status === "Archived" ? "is-archived" : ""}>{row.status}</b></div>
+                {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="comment" />{cell.entryCount}</small> : null}</div>)}
+                <div className="timesheet-total-cell" key={`${row.taskId}-total`}>{formatTimesheetDuration(row.totalSeconds)}</div>
+              </Fragment>)}
+
+              <div className="timesheet-task-cell timesheet-footer-label"><span>Total hours / day <MainIcon name="info" /></span></div>
+              {weeklyTimesheet.dayTotals.map((totalSeconds, index) => <div className="timesheet-time-cell timesheet-footer-total" key={`day-total-${weeklyTimesheet.days[index].shortDate}`}>{formatTimesheetDuration(totalSeconds)}</div>)}
+              <div className="timesheet-total-cell timesheet-footer-grand">{formatTimesheetDuration(weeklyTimesheet.totalSeconds)}</div>
+            </div>
+          </div>
+          <footer className="timesheet-comments"><MainIcon name="comment" />Comments ({weeklyTimesheet.commentCount}) across this week</footer>
+        </section> : null}
+
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
           {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
@@ -769,14 +952,14 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           })}
         </div></section> : null}
 
-        {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><button className="text-action" onClick={() => setIsTaskComposerOpen(true)}>Create task</button></div><div className="project-management-list">
+        {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><span>{tasks.length} active</span></div><div className="project-management-list">
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
           {tasks.map((task) => <article key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
           {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
           {archivedTasks.map((task) => <article className="is-archived" key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
         </div></section> : null}
 
-        {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><button className="text-action" onClick={() => setIsProjectComposerOpen(true)}>Create project</button></div><div className="project-management-list">
+        {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">
           {projects.length === 0 && archivedProjects.length === 0 ? <p className="empty-state">Create projects to organize related tasks.</p> : projects.map((project) => <article key={project.id}><div><strong>{project.title}</strong><p>{tasks.filter((task) => task.projectIds.includes(project.id)).length} active tasks</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleArchiveProject(project.id)}>Archive</button></article>)}
           {archivedProjects.length ? <div className="archived-list-heading">Archived projects</div> : null}
           {archivedProjects.map((project) => <article className="is-archived" key={project.id}><div><strong>{project.title}</strong><p>Archived project</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleUnarchiveProject(project.id)}>Unarchive</button></article>)}
@@ -896,9 +1079,14 @@ function projectIcon(index: number): MainIconName {
 
 function MainIcon({ name }: { name: MainIconName }) {
   const paths: Record<MainIconName, ReactNode> = {
+    calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
     chevron: <path d="m8 10 4 4 4-4" />,
     clock: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></>,
+    comment: <><path d="M5 6h14v9H9l-4 4z" /><path d="M8 10h8" /></>,
+    filter: <path d="M5 5h14l-5.5 6v5l-3 2v-7z" />,
+    globe: <><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4a12 12 0 0 1 0 16M12 4a12 12 0 0 0 0 16" /></>,
     home: <><path d="m4 11 8-7 8 7v9H4z" /><path d="M9 20v-6h6v6" /></>,
+    info: <><circle cx="12" cy="12" r="8" /><path d="M12 11v5M12 8h.01" /></>,
     list: <><path d="M9 6h10M9 12h10M9 18h10" /><circle cx="4" cy="6" r=".8" fill="currentColor" /><circle cx="4" cy="12" r=".8" fill="currentColor" /><circle cx="4" cy="18" r=".8" fill="currentColor" /></>,
     more: <><circle cx="12" cy="5" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="19" r="1.2" fill="currentColor" /></>,
     note: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 12h6M9 16h6" /></>,
@@ -906,10 +1094,18 @@ function MainIcon({ name }: { name: MainIconName }) {
     pen: <><path d="m5 19 3.5-.8L19 7.7 16.3 5 5.8 15.5zM14.8 6.5l2.7 2.7" /></>,
     play: <path d="m9 6 8 6-8 6z" fill="currentColor" stroke="none" />,
     plus: <path d="M12 5v14M5 12h14" />,
+    search: <><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19 12a7.5 7.5 0 0 0-.1-1l2-1.5-2-3.5-2.3.9a7 7 0 0 0-1.7-1L14.5 3h-5L9 5.9a7 7 0 0 0-1.7 1L5 6 3 9.5 5 11a7.5 7.5 0 0 0 0 2l-2 1.5L5 18l2.3-.9a7 7 0 0 0 1.7 1l.5 2.9h5l.4-2.9a7 7 0 0 0 1.7-1l2.3.9 2-3.5-2-1.5c.1-.3.1-.7.1-1Z" /></>,
+    sparkle: <path d="M12 3l1.6 5 5 1.6-5 1.6-1.6 5-1.6-5-5-1.6 5-1.6zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z" />,
+    target: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><path d="M15 9l4-4M16 5h3v3" /></>,
     timer: <><rect x="4" y="4" width="16" height="16" rx="5" /><path d="M12 8v4l2.5 2.5M9 2h6" /></>,
+    trend: <path d="M4 16l5-5 4 4 7-8M15 7h5v5" />,
+    trophy: <><path d="M8 5h8v4a4 4 0 0 1-8 0z" /><path d="M8 7H5a3 3 0 0 0 3 4M16 7h3a3 3 0 0 1-3 4M12 13v4M9 21h6M10 17h4" /></>,
+    users: <><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.5" /><path d="M3 20a6 6 0 0 1 12 0M14 17.5a5 5 0 0 1 7 2.5" /></>,
     briefcase: <><rect x="3" y="7" width="18" height="12" rx="2" /><path d="M8 7V5h8v2M3 12h18M10 12v2h4v-2" /></>,
+    book: <><path d="M5 4h10a4 4 0 0 1 4 4v12H8a3 3 0 0 0-3-3z" /><path d="M5 4v13" /></>,
     chart: <><path d="M5 20V11h4v9M10 20V5h4v15M15 20v-8h4v8M3 20h18" /></>,
+    code: <><path d="m9 8-4 4 4 4M15 8l4 4-4 4" /><path d="m13 6-2 12" /></>,
     phone: <path d="M7.5 4.5 5.3 6.7c-1 1 1.1 6.2 4.5 9.6 3.4 3.4 8.6 5.5 9.6 4.5l2.2-2.2-3.2-3.2-2.1 1.3c-1.1-.5-2.2-1.3-3.2-2.3s-1.8-2.1-2.3-3.2l1.3-2.1z" />,
     shield: <path d="M12 3 19 6v5c0 4.5-2.8 7.5-7 10-4.2-2.5-7-5.5-7-10V6z" />,
     document: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 13h6M9 17h6" /></>
