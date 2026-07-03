@@ -3394,13 +3394,14 @@ body.overlay-route {
   }
 
   .profile-settings-form,
-  .profile-settings-form > .profile-personalization-section:first-of-type,
-  .profile-settings-form > .profile-personalization-section:last-of-type {
+  .profile-theme-section,
+  .profile-overlay-section,
+  .profile-review-section {
     grid-column: auto;
     grid-row: auto;
   }
 
-  .profile-settings-form > .profile-personalization-section:first-of-type {
+  .profile-theme-section {
     padding-top: 18px;
     border-top: 1px solid var(--theme-subtle, #e3ded3);
   }
@@ -4848,15 +4849,24 @@ body.overlay-route {
   min-height: 0;
 }
 
-.profile-settings-form > .profile-personalization-section:first-of-type {
+.profile-theme-section {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   padding-top: 0;
   border-top: 0;
 }
 
-.profile-settings-form > .profile-personalization-section:last-of-type {
+.profile-overlay-section,
+.profile-review-section {
   grid-column: 1;
+}
+
+.profile-review-section {
+  gap: 12px;
+}
+
+.profile-review-section .settings-panel-kicker {
+  margin-bottom: 0;
 }
 
 .profile-theme-options {

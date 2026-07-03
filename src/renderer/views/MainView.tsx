@@ -1021,12 +1021,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
             <p aria-live="polite" className="settings-ai-status">{settingsAiStatus ?? " "}</p>
           </section>
 
-          <section className="dashboard-panel review-settings-panel">
-            <PanelKicker icon="clock" label="Review" />
-            <h2>Tracked time</h2>
-            <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
-            <div className="settings-review-bar"><span /></div>
-          </section>
         </div> : null}
 
         {activeSection === "profile" ? <div className="settings-grid">
@@ -1046,7 +1040,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
                 <button className="settings-action-button" onClick={() => updateAppSettings({ userName: appSettings.userName.trim() })} type="button"><MainIcon name="pen" />Save</button>
               </div>
 
-              <section className="profile-personalization-section">
+              <section className="profile-personalization-section profile-theme-section">
                 <div className="profile-theme-heading">
                   <div><strong>Theme</strong><p>Pick the visual language for the main window and overlay.</p></div>
                   <span>{activeTheme.label}</span>
@@ -1056,7 +1050,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
                 </div>
               </section>
 
-              <section className="profile-personalization-section">
+              <section className="profile-personalization-section profile-overlay-section">
                 <div className="overlay-mode-setting">
                   <div><strong>Resting overlay</strong><p>Choose what the timer collapses to after starting.</p></div>
                   <div className="overlay-mode-options">
@@ -1066,6 +1060,13 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
                 </div>
                 <label className="settings-slider-field">Overlay transparency <strong>{formatTransparency(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
                 <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
+              </section>
+
+              <section className="profile-personalization-section review-settings-panel profile-review-section">
+                <PanelKicker icon="clock" label="Review" />
+                <h2>Tracked time</h2>
+                <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
+                <div className="settings-review-bar"><span /></div>
               </section>
             </div>
           </section>
