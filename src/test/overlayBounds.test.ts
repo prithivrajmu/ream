@@ -11,7 +11,7 @@ describe("overlay bounds", () => {
     expect(getTopRightOverlayBounds({ x: 0, y: 0, width: 1440, height: 900 })).toEqual({
       width: OVERLAY_COMPACT_SIZE.width,
       height: OVERLAY_COMPACT_SIZE.height,
-      x: 440,
+      x: Math.floor((1440 - OVERLAY_COMPACT_SIZE.width) / 2),
       y: 34
     });
   });
@@ -39,7 +39,7 @@ describe("overlay bounds", () => {
     ).toEqual({
       width: OVERLAY_EXPANDED_SIZE.width,
       height: 832,
-      x: 846,
+      x: 1440 - OVERLAY_EXPANDED_SIZE.width - 34,
       y: 34
     });
   });
@@ -51,9 +51,9 @@ describe("overlay bounds", () => {
         { x: 1440, y: 24, width: 900, height: 700 }
       )
     ).toEqual({
-      width: 560,
+      width: OVERLAY_EXPANDED_SIZE.width,
       height: 632,
-      x: 1746,
+      x: 1440 + 900 - OVERLAY_EXPANDED_SIZE.width - 34,
       y: 58
     });
   });

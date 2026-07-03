@@ -207,6 +207,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    return window.reamDesktop?.onOpenSettingsRequested?.(() => setActiveSection("profile"));
+  }, []);
+
   function updateAppSettings(patch: Partial<AppSettings>) {
     onAppSettingsChange({ ...appSettings, ...patch });
   }
@@ -371,6 +375,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       const nextActiveTimer = await startTimer(db, { taskId, note: "" });
       setActiveTimer(nextActiveTimer);
       setElapsed(0);
+      await window.reamDesktop?.showOverlayWindow?.({ hideMain: false });
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Unable to start timer.");
     }
@@ -734,7 +739,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         </div>
       </aside>
 
-      <section className="dashboard-page">
+      <section className={`dashboard-page ${activeSection === "profile" ? "is-profile-section" : ""}`}>
         <header className="dashboard-header">
           <div><h1>{activeSection === "home" ? `${greeting}, ${displayName}.` : sectionTitle}</h1><p>{sectionSubtitle}</p></div>
           {headerAction}
@@ -851,6 +856,13 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               </section>
 
               <section className="profile-personalization-section">
+                <div className="overlay-mode-setting">
+                  <div><strong>Resting overlay</strong><p>Choose what the timer collapses to after starting.</p></div>
+                  <div className="overlay-mode-options">
+                    <button aria-pressed={appSettings.preferredOverlayMode === "mini"} className={appSettings.preferredOverlayMode === "mini" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "mini" })} type="button">Mini</button>
+                    <button aria-pressed={appSettings.preferredOverlayMode === "tiny"} className={appSettings.preferredOverlayMode === "tiny" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "tiny" })} type="button">Tiny</button>
+                  </div>
+                </div>
                 <label className="settings-slider-field">Overlay transparency <strong>{formatTransparency(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
                 <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
               </section>
