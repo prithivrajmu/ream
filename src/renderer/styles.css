@@ -2973,7 +2973,8 @@ body.overlay-route {
 }
 
 .ai-settings-panel .settings-ai-actions {
-  margin-top: 0;
+  margin-top: 4px;
+  padding-bottom: 8px;
 }
 
 .settings-ai-actions .main-icon,
