@@ -8,6 +8,10 @@ Theme support is not complete unless the new element changes correctly when the
 selected theme changes. Avoid hard-coded `#fff`, `#111`, or one-off colors for
 new surfaces unless the element is intentionally neutral.
 
+If you are adding a task, project, or session surface, keep the identity stable:
+use the existing task icon and tone patterns so the same item keeps the same
+visual language across insights, timesheet, notes, and task cards.
+
 ## Use The Theme Tokens
 
 The dashboard theme classes expose shared tokens through CSS variables:
@@ -49,6 +53,10 @@ Use this as the default mapping when styling new UI:
 - Secondary emphasis: `var(--theme-accent-2)`
 - Destructive action: `var(--theme-danger)`
 
+Prefer the existing grid layouts for new dashboard panels instead of introducing
+fixed-width columns. The current settings and profile surfaces use named panel
+regions that collapse cleanly on smaller screens.
+
 ## New Controls
 
 When adding inputs, selects, textareas, or button groups:
@@ -83,6 +91,8 @@ Before shipping a new UI surface, check:
 5. Does the focus state use the theme accent?
 6. Is any new overlay or dialog using the same surface language as the rest of
    the app?
+7. Do task or session identities remain stable between list, chart, and detail
+   views?
 
 ## Current Example Patterns
 
@@ -90,4 +100,3 @@ Before shipping a new UI surface, check:
 - The local AI model field and entry editor now follow the same token rules.
 - If you add another settings block, match those patterns instead of creating a
   new visual system.
-

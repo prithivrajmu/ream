@@ -41,9 +41,7 @@ Audit date: 2026-06-26
   backup and restore path; releases should not modify or delete local app data.
 - Linux packages have no code-signing configuration. Checksums are required for
   integrity verification.
-- The project checkout has no Git remote. The configured release homepage was
-  inferred from the local Git author identity; confirm it is the final public
-  repository URL before publishing.
+- The checkout is connected to `origin` at `git@github.com:prithivrajmu/ream.git`, and the configured release homepage already matches the public repository URL.
 - A DMG cannot be produced on this Linux host because Electron Builder invokes
   Apple’s `sips` tool. The configured `dist:mac` command must run on macOS to
   emit DMGs and to sign/notarize the x64 and arm64 artifacts.
