@@ -2,6 +2,25 @@
 
 The app is packaged with `electron-builder`. Local development can produce unsigned builds; public distribution should use Apple Developer ID signing and notarization.
 
+## Homebrew install
+
+Community testing releases are distributed through a Homebrew tap:
+
+```bash
+brew tap prithivrajmu/ream
+brew install ream
+```
+
+The generated formula lives at `packaging/homebrew/Formula/ream.rb` in this app
+repo and is published to the dedicated tap repository
+`prithivrajmu/homebrew-ream`. Release automation refreshes its version,
+artifact URLs, and SHA-256 checksums from the signed macOS ZIP files uploaded to
+GitHub Releases.
+
+Plain `brew install ream` without `brew tap prithivrajmu/ream` is a future
+upstream distribution path. That requires submitting Ream to the public
+Homebrew package index after the project has stable public releases.
+
 ## Local unsigned build
 
 ```bash
@@ -55,6 +74,22 @@ For a notarized release, also confirm the notarization ticket is stapled:
 ```bash
 xcrun stapler validate release/mac*/Ream.app
 ```
+
+Generate the formula and confirm it installs locally:
+
+```bash
+npm run release:homebrew
+brew install ./packaging/homebrew/Formula/ream.rb
+```
+
+## Release checklist
+
+- Build on macOS from a version tag such as `v0.1.0`.
+- Sign and notarize the app with Developer ID credentials.
+- Upload DMG and ZIP artifacts to GitHub Releases.
+- Publish SHA-256 checksums with the release.
+- Regenerate and publish the Homebrew formula.
+- Configure `HOMEBREW_TAP_TOKEN` with push access to `prithivrajmu/homebrew-ream`.
 
 ## Notes
 

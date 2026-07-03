@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type MouseEvent, type ReactNode, type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
@@ -17,6 +17,7 @@ import {
 } from "../../shared/timerRepository";
 import { formatEntryDateTime } from "../rendererUtils";
 import type { ThemeId } from "../themeOptions";
+import type { OverlayMode } from "../../shared/overlayBounds";
 
 type IconName = "chevron" | "clock" | "close" | "list" | "maximize" | "minimize" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
 
@@ -33,6 +34,61 @@ interface OverlayAiPreview {
   output: ImprovedNoteOutput;
 }
 
+type TimerState = "idle" | "running" | "paused" | "stopped";
+
+interface OverlayInteractionState {
+  mode: OverlayMode;
+  isHovered: boolean;
+  isDragging: boolean;
+  confirmation: null | "stop";
+  contextMenuOpen: boolean;
+  lastControlInteractionAt: number;
+}
+
+type OverlayInteractionAction =
+  | { type: "set-mode"; mode: OverlayMode }
+  | { type: "hover"; hovered: boolean }
+  | { type: "dragging"; dragging: boolean }
+  | { type: "confirm"; confirmation: null | "stop" }
+  | { type: "context-menu"; open: boolean }
+  | { type: "control-interaction"; now: number };
+
+const AUTO_COLLAPSE_DELAY_MS = 6000;
+const STOP_CONFIRMATION_THRESHOLD_SECONDS = 10;
+const TINY_VIEWPORT_FALLBACK_MAX_WIDTH = 500;
+
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function overlayInteractionReducer(state: OverlayInteractionState, action: OverlayInteractionAction): OverlayInteractionState {
+  if (action.type === "set-mode") {
+    return { ...state, mode: action.mode };
+  }
+
+  if (action.type === "hover") {
+    return { ...state, isHovered: action.hovered };
+  }
+
+  if (action.type === "dragging") {
+    return { ...state, isDragging: action.dragging };
+  }
+
+  if (action.type === "confirm") {
+    return { ...state, confirmation: action.confirmation };
+  }
+
+  if (action.type === "context-menu") {
+    return { ...state, contextMenuOpen: action.open };
+  }
+
+  return { ...state, lastControlInteractionAt: action.now };
+}
+
 export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -43,12 +99,23 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const [note, setNote] = useState("");
   const [noteDirty, setNoteDirty] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [expanded, setExpanded] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState<OverlayAiPreview | null>(null);
+  const [overlayViewportWidth, setOverlayViewportWidth] = useState(() => window.innerWidth);
+  const [interactionState, dispatchInteraction] = useReducer(overlayInteractionReducer, {
+    mode: "default",
+    isHovered: false,
+    isDragging: false,
+    confirmation: null,
+    contextMenuOpen: false,
+    lastControlInteractionAt: 0
+  });
+  const autoCollapseTimeoutRef = useRef<number | null>(null);
+  const previousTimerIdRef = useRef<string | null>(null);
+  const interactionStateRef = useRef(interactionState);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
@@ -70,6 +137,10 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   );
   const displayTask = activeTask ?? selectedTask;
   const isPaused = Boolean(activeTimer?.pausedAt);
+  const timerState: TimerState = activeTimer ? (isPaused ? "paused" : "running") : "idle";
+  const expanded = interactionState.mode === "expanded";
+  const shouldRenderTinyOverlay = !expanded && (interactionState.mode === "tiny" || overlayViewportWidth <= TINY_VIEWPORT_FALLBACK_MAX_WIDTH);
+  const visualOverlayMode = shouldRenderTinyOverlay ? "tiny" : interactionState.mode;
   const filteredTasks = useMemo(() => {
     const query = taskSearch.trim().toLocaleLowerCase();
     if (!query) {
@@ -77,6 +148,20 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     }
     return tasks.filter((task) => `${task.title} ${task.tags.join(" ")}`.toLocaleLowerCase().includes(query));
   }, [taskSearch, tasks]);
+
+  useEffect(() => {
+    interactionStateRef.current = interactionState;
+  }, [interactionState]);
+
+  useEffect(() => {
+    function syncOverlayViewportWidth() {
+      setOverlayViewportWidth(window.innerWidth);
+    }
+
+    syncOverlayViewportWidth();
+    window.addEventListener("resize", syncOverlayViewportWidth);
+    return () => window.removeEventListener("resize", syncOverlayViewportWidth);
+  }, []);
 
   const refreshOverlayState = useCallback(async (syncNote = false) => {
     const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextAiSuggestions] = await Promise.all([
@@ -137,7 +222,29 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }, [activeTimer]);
 
   useEffect(() => {
-    return window.reamDesktop?.onOverlayExpandedChanged?.(setExpanded);
+    const unsubscribeMode = window.reamDesktop?.onOverlayModeChanged?.((mode) => {
+      dispatchInteraction({ type: "set-mode", mode });
+      if (mode === "default") {
+        scheduleAutoCollapse();
+      }
+    });
+    const unsubscribeExpanded = window.reamDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
+      dispatchInteraction({ type: "set-mode", mode: nextExpanded ? "expanded" : "default" });
+    });
+
+    window.reamDesktop?.getOverlayMode?.()
+      .then((mode) => {
+        dispatchInteraction({ type: "set-mode", mode });
+        if (mode === "default") {
+          scheduleAutoCollapse();
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      unsubscribeMode?.();
+      unsubscribeExpanded?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -171,12 +278,109 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     return () => window.clearTimeout(timeoutId);
   }, [activeTimer, note, noteDirty]);
 
+  useEffect(() => {
+    return window.reamDesktop?.onOverlayContextCommand?.((command) => {
+      dispatchInteraction({ type: "context-menu", open: false });
+
+      if (command === "mini") {
+        void setOverlayMode("default");
+        return;
+      }
+
+      if (command === "default") {
+        void setOverlayMode("default");
+        return;
+      }
+
+      if (command === "pause-resume") {
+        void handlePauseResume();
+        return;
+      }
+
+      if (command === "stop") {
+        void handleStopRequest();
+        return;
+      }
+
+      if (command === "settings") {
+        void handleOpenSettingsWindow();
+      }
+    });
+  });
+
+  useEffect(() => {
+    const activeTimerId = activeTimer?.id ?? null;
+    if (activeTimerId && previousTimerIdRef.current !== activeTimerId) {
+      void setOverlayMode("default");
+      scheduleAutoCollapse();
+    }
+    previousTimerIdRef.current = activeTimerId;
+  });
+
+  useEffect(() => {
+    return () => {
+      if (autoCollapseTimeoutRef.current) {
+        window.clearTimeout(autoCollapseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  async function setOverlayMode(mode: OverlayMode) {
+    if (mode !== "tiny") {
+      await window.reamDesktop?.setOverlayMode?.(mode);
+      dispatchInteraction({ type: "set-mode", mode });
+      if (mode === "default") {
+        scheduleAutoCollapse();
+      }
+      return;
+    }
+
+    dispatchInteraction({ type: "set-mode", mode });
+    await waitForNextPaint();
+    await window.reamDesktop?.setOverlayMode?.(mode);
+  }
+
   async function setOverlayExpanded(nextExpanded: boolean) {
-    await window.reamDesktop?.setOverlayExpanded?.(nextExpanded);
-    setExpanded(nextExpanded);
+    if (nextExpanded && autoCollapseTimeoutRef.current) {
+      window.clearTimeout(autoCollapseTimeoutRef.current);
+      autoCollapseTimeoutRef.current = null;
+    }
+    await setOverlayMode(nextExpanded ? "expanded" : "default");
+  }
+
+  function markControlInteraction() {
+    dispatchInteraction({ type: "control-interaction", now: Date.now() });
+  }
+
+  function scheduleAutoCollapse() {
+    if (autoCollapseTimeoutRef.current) {
+      window.clearTimeout(autoCollapseTimeoutRef.current);
+    }
+
+    autoCollapseTimeoutRef.current = window.setTimeout(() => {
+      const currentInteractionState = interactionStateRef.current;
+      if (currentInteractionState.mode !== "default") {
+        autoCollapseTimeoutRef.current = null;
+        return;
+      }
+
+      const overlayTextInputHasFocus = isTextInputTarget(document.activeElement);
+      if (currentInteractionState.isHovered || currentInteractionState.isDragging || overlayTextInputHasFocus) {
+        scheduleAutoCollapse();
+        return;
+      }
+
+      if (currentInteractionState.confirmation) {
+        autoCollapseTimeoutRef.current = null;
+        return;
+      }
+
+      void setOverlayMode("tiny");
+    }, AUTO_COLLAPSE_DELAY_MS);
   }
 
   async function handleOverlayStart() {
+    markControlInteraction();
     setError(null);
 
     try {
@@ -184,12 +388,19 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setActiveTimer(nextActiveTimer);
       setAiPreview(null);
       setElapsed(0);
+      if (expanded) {
+        await setOverlayExpanded(true);
+        return;
+      }
+      await setOverlayMode("default");
+      scheduleAutoCollapse();
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Unable to start timer.");
     }
   }
 
   async function handlePauseResume() {
+    markControlInteraction();
     if (!activeTimer) {
       return;
     }
@@ -205,6 +416,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }
 
   async function handleOverlayStop(): Promise<boolean> {
+    markControlInteraction();
     setError(null);
 
     try {
@@ -214,12 +426,35 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setNote("");
       setNoteDirty(false);
       setAiPreview(null);
+      dispatchInteraction({ type: "confirm", confirmation: null });
       await refreshOverlayState();
       return true;
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
       return false;
     }
+  }
+
+  async function handleStopRequest() {
+    markControlInteraction();
+    if (!activeTimer) {
+      return;
+    }
+
+    if (elapsed < STOP_CONFIRMATION_THRESHOLD_SECONDS) {
+      await handleOverlayStop();
+      return;
+    }
+
+    if (interactionState.mode === "mini" || interactionState.mode === "tiny") {
+      await setOverlayMode("default");
+    }
+    dispatchInteraction({ type: "confirm", confirmation: "stop" });
+  }
+
+  function handleCancelStop() {
+    markControlInteraction();
+    dispatchInteraction({ type: "confirm", confirmation: null });
   }
 
   async function handleCompleteEntry() {
@@ -236,6 +471,100 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     await window.reamDesktop?.showMainWindow();
   }
 
+  async function handleOpenSettingsWindow() {
+    if (expanded) {
+      await setOverlayExpanded(false);
+    }
+
+    await window.reamDesktop?.showSettingsWindow?.();
+  }
+
+  function stopEvent(event: MouseEvent<HTMLElement>) {
+    event.stopPropagation();
+  }
+
+  function isControlTarget(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(target.closest("button,input,select,textarea,a,[data-overlay-control='true']"));
+  }
+
+  function handlePointerDown(event: MouseEvent<HTMLElement>) {
+    if (!isControlTarget(event.target)) {
+      dispatchInteraction({ type: "dragging", dragging: true });
+    }
+  }
+
+  function handlePointerUp() {
+    dispatchInteraction({ type: "dragging", dragging: false });
+  }
+
+  function handleOverlayMouseEnter() {
+    dispatchInteraction({ type: "hover", hovered: true });
+    if (interactionStateRef.current.mode === "tiny") {
+      void setOverlayMode("default");
+    }
+  }
+
+  function handleTinyClick(event: MouseEvent<HTMLElement>) {
+    if (!isControlTarget(event.target)) {
+      void setOverlayMode("default");
+    }
+  }
+
+  function handleOverlayMouseMove() {
+    if (interactionStateRef.current.mode === "tiny") {
+      void setOverlayMode("default");
+    }
+  }
+
+  function handleMiniClick(event: MouseEvent<HTMLElement>) {
+    if (!isControlTarget(event.target)) {
+      void setOverlayMode("default");
+    }
+  }
+
+  function handleTinyContextMenu(event: MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    markControlInteraction();
+    dispatchInteraction({ type: "context-menu", open: true });
+    void window.reamDesktop?.showOverlayContextMenu?.({ timerState });
+  }
+
+  function handleOverlayKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      if (interactionState.confirmation) {
+        event.preventDefault();
+        handleCancelStop();
+        return;
+      }
+
+      if (interactionState.mode === "default") {
+        event.preventDefault();
+        void setOverlayMode("tiny");
+        return;
+      }
+
+      if (interactionState.mode === "mini") {
+        event.preventDefault();
+        void setOverlayMode("tiny");
+      }
+      return;
+    }
+
+    if (event.key === " " && activeTimer && !isTextInputTarget(event.target)) {
+      event.preventDefault();
+      void handlePauseResume();
+    }
+  }
+
+  function isTextInputTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return Boolean(target.closest("input,textarea,select,[contenteditable='true']"));
+  }
+
   function handleQuickTag(tag: string) {
     setNoteDirty(true);
     setAiPreview(null);
@@ -246,6 +575,161 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setNote(nextNote);
     setNoteDirty(true);
     setAiPreview(null);
+  }
+
+  function renderStopConfirmation() {
+    if (interactionState.confirmation !== "stop") {
+      return null;
+    }
+
+    return (
+      <div className="reference-stop-confirmation" data-overlay-control="true" role="alertdialog" aria-label="End timer session">
+        <span>End?</span>
+        <button autoFocus onClick={handleCancelStop} type="button">No</button>
+        <button className="danger" onClick={() => void handleOverlayStop()} type="button">End</button>
+      </div>
+    );
+  }
+
+  function renderDefaultOverlayBar() {
+    return (
+      <header className="reference-overlay-bar">
+        <div className="reference-overlay-identity">
+          <span className="reference-app-icon"><Icon name="clock" /></span>
+          <p>{displayTask?.title ?? "Select a task"}</p>
+          <span className={`reference-status ${isPaused ? "paused" : ""}`}>
+            <i />{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}
+          </span>
+        </div>
+
+        <button
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
+          className="reference-expand-button"
+          onClick={(event) => {
+            stopEvent(event);
+            markControlInteraction();
+            void setOverlayExpanded(!expanded);
+          }}
+          type="button"
+        >
+          <Icon name="chevron" />
+        </button>
+
+        <div className="reference-overlay-actions" data-overlay-control="true">
+          <strong>{formatDuration(elapsed)}</strong>
+          {renderStopConfirmation() ?? (activeTimer ? (
+            <>
+              <button aria-label={isPaused ? "Resume timer" : "Pause timer"} className="reference-icon-button pause" onClick={(event) => {
+                stopEvent(event);
+                void handlePauseResume();
+              }} type="button">
+                <Icon name={isPaused ? "play" : "pause"} />
+              </button>
+              <button aria-label="Stop timer" className="reference-icon-button stop" onClick={(event) => {
+                stopEvent(event);
+                void handleStopRequest();
+              }} type="button">
+                <Icon name="stop" />
+              </button>
+            </>
+          ) : (
+            <button aria-label="Start timer" className="reference-start-button" disabled={!selectedTaskId} onClick={(event) => {
+              stopEvent(event);
+              void handleOverlayStart();
+            }} type="button">Start</button>
+          ))}
+          {interactionState.confirmation ? null : (
+            <>
+              <button aria-label="Open settings" className="reference-plain-button" onClick={(event) => {
+                stopEvent(event);
+                markControlInteraction();
+                void handleOpenSettingsWindow();
+              }} type="button">
+                <Icon name="settings" />
+              </button>
+              <button aria-label="Close overlay and show main window" className="reference-plain-button" onClick={(event) => {
+                stopEvent(event);
+                markControlInteraction();
+                void handleOpenMainWindow();
+              }} type="button">
+                <Icon name="close" />
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+    );
+  }
+
+  function renderMiniOverlay() {
+    const showStop = Boolean(activeTimer) && (interactionState.isHovered || isPaused);
+
+    return (
+      <div
+        aria-label="Mini overlay"
+        className={`transition-overlay-pill transition-overlay-pill-compact reference-overlay-mini ${showStop ? "has-stop" : ""} ${isPaused ? "is-paused" : ""}`}
+        onClick={handleMiniClick}
+        title={displayTask ? `${displayTask.title} - ${activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}` : "Start tracking"}
+      >
+        <span className={`transition-status-dot ${isPaused ? "is-paused" : ""}`} />
+        <span className="transition-task-name">{displayTask?.title ?? "Start tracking"}</span>
+        <span className="transition-divider" />
+        <strong className="transition-timer">{formatDuration(elapsed)}</strong>
+        {activeTimer ? (
+          <button className="transition-control transition-pause" aria-label={isPaused ? "Resume timer" : "Pause timer"} onClick={(event) => {
+            stopEvent(event);
+            void handlePauseResume();
+          }} type="button">
+            <Icon name={isPaused ? "play" : "pause"} />
+          </button>
+        ) : (
+          <button className="transition-control transition-pause" aria-label="Start timer" disabled={!selectedTaskId} onClick={(event) => {
+            stopEvent(event);
+            void handleOverlayStart();
+          }} type="button">
+            <Icon name="play" />
+          </button>
+        )}
+        {showStop ? (
+          <button className="transition-control transition-stop" aria-label="Stop timer" onClick={(event) => {
+            stopEvent(event);
+            void handleStopRequest();
+          }} type="button">
+            <Icon name="stop" />
+          </button>
+        ) : null}
+        <button className="transition-control transition-chevron" aria-label="Show default overlay" onClick={(event) => {
+          stopEvent(event);
+          markControlInteraction();
+          void setOverlayMode("default");
+        }} type="button">
+          <Icon name="chevron" />
+        </button>
+      </div>
+    );
+  }
+
+  function renderTinyOverlay() {
+    return (
+      <div
+        aria-label="Tiny overlay"
+        className="transition-overlay-pill transition-overlay-pill-tiny reference-overlay-tiny"
+        onClick={handleTinyClick}
+        onContextMenu={handleTinyContextMenu}
+        title={displayTask ? `${displayTask.title} - ${activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}` : "Start tracking"}
+      >
+        <span className={`transition-status-dot ${isPaused ? "is-paused" : ""}`} />
+        <strong className="transition-timer">{formatDuration(elapsed)}</strong>
+        <button className="transition-control transition-chevron" aria-label="Show default overlay" onClick={(event) => {
+          stopEvent(event);
+          markControlInteraction();
+          void setOverlayMode("default");
+        }} type="button">
+          <Icon name="chevron" />
+        </button>
+      </div>
+    );
   }
 
   async function handleImproveOverlayNote() {
@@ -261,6 +745,9 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     }
 
     setError(null);
+    if (expanded && !notesExpanded) {
+      setNotesExpanded(true);
+    }
     setAiLoading(true);
 
     try {
@@ -314,7 +801,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setError(null);
     try {
       const updated = await updateActiveTimerNote(db, preview.output.clean_note);
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setActiveTimer(updated);
       setNote(updated.note);
       setNoteDirty(false);
@@ -327,7 +815,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   async function handleRejectAiSuggestion(preview: OverlayAiPreview) {
     setError(null);
     try {
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setAiPreview(null);
     } catch (rejectError) {
       setError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
@@ -338,7 +827,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setError(null);
     try {
       await navigator.clipboard.writeText(preview.output.clean_note);
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
     }
@@ -356,7 +846,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
 
     const noteText = note.trim();
     const savedSuggestion = aiSuggestionByNoteId.get(activeTimer.id);
-    if (savedSuggestion && savedSuggestion.inputText === noteText) {
+    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === noteText)) {
       return <button className="reference-ai-button is-muted" onClick={() => void handleOpenSavedAiSuggestion({
         suggestionId: savedSuggestion.id,
         activeTimerId: activeTimer.id,
@@ -391,48 +881,25 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }
 
   return (
-    <main className={`overlay-shell reference-overlay-shell theme-${themeId} ${expanded ? "is-expanded" : ""} ${notesExpanded ? "is-notes-expanded" : ""}`} style={{ "--overlay-opacity": overlayTransparency } as CSSProperties} aria-label="Ream overlay">
-      <header className="reference-overlay-bar">
-        <div className="reference-overlay-identity">
-          <span className="reference-app-icon"><Icon name="clock" /></span>
-          <p>{displayTask?.title ?? "Select a task"}</p>
-          <span className={`reference-status ${isPaused ? "paused" : ""}`}>
-            <i />{activeTimer ? (isPaused ? "Paused" : "Tracking") : "Ready"}
-          </span>
-        </div>
-
-        <button
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
-          className="reference-expand-button"
-          onClick={() => void setOverlayExpanded(!expanded)}
-        >
-          <Icon name="chevron" />
-        </button>
-
-        <div className="reference-overlay-actions">
-          <strong>{formatDuration(elapsed)}</strong>
-          {activeTimer ? (
-            <button aria-label={isPaused ? "Resume timer" : "Pause timer"} className="reference-icon-button pause" onClick={handlePauseResume}>
-              <Icon name={isPaused ? "play" : "pause"} />
-            </button>
-          ) : (
-            <button aria-label="Start timer" className="reference-start-button" disabled={!selectedTaskId} onClick={handleOverlayStart}>Start</button>
-          )}
-          <button aria-label="Stop timer" className="reference-icon-button stop" disabled={!activeTimer} onClick={handleOverlayStop}>
-            <Icon name="stop" />
-          </button>
-          <button aria-label="Open main window" className="reference-plain-button" onClick={() => void handleOpenMainWindow()}>
-            <Icon name="settings" />
-          </button>
-          <button aria-label="Close overlay" className="reference-plain-button" onClick={(event) => {
-            event.stopPropagation();
-            void window.reamDesktop?.closeOverlay();
-          }}>
-            <Icon name="close" />
-          </button>
-        </div>
-      </header>
+    <main
+      className={`overlay-shell reference-overlay-shell theme-${themeId} mode-${visualOverlayMode} ${expanded ? "is-expanded" : ""} ${notesExpanded ? "is-notes-expanded" : ""}`}
+      style={{ "--overlay-opacity": overlayTransparency } as CSSProperties}
+      aria-label="Ream overlay"
+      onKeyDown={handleOverlayKeyDown}
+      onMouseDown={handlePointerDown}
+      onMouseEnter={handleOverlayMouseEnter}
+      onMouseMove={handleOverlayMouseMove}
+      onMouseLeave={() => {
+        dispatchInteraction({ type: "hover", hovered: false });
+        dispatchInteraction({ type: "dragging", dragging: false });
+        if (interactionStateRef.current.mode === "default") {
+          scheduleAutoCollapse();
+        }
+      }}
+      onMouseUp={handlePointerUp}
+      tabIndex={0}
+    >
+      {shouldRenderTinyOverlay ? renderTinyOverlay() : interactionState.mode === "mini" ? renderMiniOverlay() : renderDefaultOverlayBar()}
 
       {expanded ? (
         <section className="reference-overlay-panel">
@@ -492,7 +959,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               </div>
 
               <div className="reference-tags">
-                <p>Task Tags</p>
+                <p>Project Tags</p>
                 <div>
                   {(displayTask?.tags ?? []).slice(0, 4).map((tag) => (
                     <button key={tag} onClick={() => handleQuickTag(tag)}><Icon name="tag" />{tag}</button>
@@ -526,20 +993,24 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               />
               {aiPreview ? (
                 <div className="reference-ai-preview">
-                  <section>
+                  <section className="reference-ai-preview-panel">
                     <h3>Raw note</h3>
-                    <p>{aiPreview.rawNote}</p>
+                    <div className="reference-ai-preview-body">
+                      <p>{aiPreview.rawNote}</p>
+                    </div>
                   </section>
-                  <section>
+                  <section className="reference-ai-preview-panel is-suggestion">
                     <h3>AI suggestion</h3>
-                    <p>{aiPreview.output.clean_note}</p>
-                    <dl>
-                      <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
-                      <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
-                      <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
-                      <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
-                    </dl>
-                    <small>Model: {aiPreview.model}</small>
+                    <div className="reference-ai-preview-body">
+                      <p>{aiPreview.output.clean_note}</p>
+                      <dl>
+                        <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
+                        <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
+                        <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
+                        <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
+                      </dl>
+                      <small>Model: {aiPreview.model}</small>
+                    </div>
                     <div className="reference-ai-actions">
                       <button onClick={() => void handleAcceptAiSuggestion(aiPreview)}>Accept</button>
                       <button onClick={() => void handleCopyAiSuggestion(aiPreview)}>Copy suggestion</button>

@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
-import { execFile } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
@@ -8,15 +7,16 @@ import {
   type ImproveNoteRequest,
   type ImproveNoteResult,
   type OllamaHealthStatus,
-  type OllamaPullResult,
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
+  getOverlaySize,
   getTopRightOverlayBounds as getTopRightOverlayBoundsForWorkArea,
   type OverlayBounds,
-  OVERLAY_COMPACT_SIZE,
+  type OverlayMode,
+  OVERLAY_DEFAULT_SIZE,
   OVERLAY_EXPANDED_SIZE
 } from "../shared/overlayBounds";
 
@@ -24,7 +24,9 @@ const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
 const STABLE_USER_DATA_DIR = "ream";
 const LEGACY_USER_DATA_DIR = "timesheet-tracker";
 const DATA_LOCATION_CONFIG_FILE = "ream-data-location.json";
+const OVERLAY_STATE_CONFIG_FILE = "ream-overlay-state.json";
 const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
+const OLLAMA_LIBRARY_URL = "https://ollama.com/library";
 
 const defaultUserDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
 const userDataPath = readConfiguredUserDataPath() ?? defaultUserDataPath;
@@ -37,8 +39,10 @@ let tray: Tray | null = null;
 let aiSidecar: AiSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
-let overlayExpanded = false;
+let overlayMode: OverlayMode = "default";
 let suppressMainBlurOverlay = false;
+let suppressMainMinimizeOverlay = false;
+let restoreMainFullScreenAfterOverlay = false;
 
 interface DataLocationInfo {
   path: string;
@@ -48,6 +52,19 @@ interface DataLocationInfo {
 
 interface DataLocationConfig {
   userDataPath?: string;
+}
+
+interface PersistedOverlayState {
+  position?: {
+    x: number;
+    y: number;
+  };
+}
+
+type OverlayContextCommand = "mini" | "default" | "pause-resume" | "stop" | "settings";
+
+interface OverlayContextMenuInput {
+  timerState?: "idle" | "running" | "paused" | "stopped";
 }
 
 function getDataLocationConfigPath(): string {
@@ -71,6 +88,38 @@ function readConfiguredUserDataPath(): string | null {
 function writeConfiguredUserDataPath(nextUserDataPath: string): void {
   mkdirSync(dirname(getDataLocationConfigPath()), { recursive: true });
   writeFileSync(getDataLocationConfigPath(), `${JSON.stringify({ userDataPath: nextUserDataPath }, null, 2)}\n`);
+}
+
+function getOverlayStateConfigPath(): string {
+  return join(app.getPath("userData"), OVERLAY_STATE_CONFIG_FILE);
+}
+
+function readOverlayState(): PersistedOverlayState {
+  try {
+    const parsed = JSON.parse(readFileSync(getOverlayStateConfigPath(), "utf8")) as PersistedOverlayState;
+    const position = parsed.position;
+    if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) {
+      return { position: { x: Math.round(position.x), y: Math.round(position.y) } };
+    }
+  } catch {
+    // Missing or invalid overlay state just means Ream uses the default position.
+  }
+
+  return {};
+}
+
+function writeOverlayState(nextState: PersistedOverlayState): void {
+  mkdirSync(dirname(getOverlayStateConfigPath()), { recursive: true });
+  writeFileSync(getOverlayStateConfigPath(), `${JSON.stringify(nextState, null, 2)}\n`);
+}
+
+function persistOverlayPosition(window: BrowserWindow): void {
+  if (window.isDestroyed()) {
+    return;
+  }
+
+  const { x, y } = window.getBounds();
+  writeOverlayState({ position: { x, y } });
 }
 
 function getDataLocationInfo(): DataLocationInfo {
@@ -181,14 +230,15 @@ function createMainWindow(): BrowserWindow {
   // The main workspace is the only window shown at launch. The compact timer
   // appears whenever the user leaves it, either by minimizing or switching apps.
   window.on("minimize", () => {
-    showOverlayWindow();
+    if (!suppressMainMinimizeOverlay) {
+      void showOverlayWindow({ hideMain: false });
+    }
   });
   window.on("blur", () => {
     if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
-      showOverlayWindow();
+      void showOverlayWindow();
     }
   });
-
   return window;
 }
 
@@ -204,7 +254,17 @@ function applyOverlayPinned(window: BrowserWindow, pinned = true) {
 }
 
 function getTopRightOverlayBounds(): OverlayBounds {
-  return getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea);
+  const bounds = getTopRightOverlayBoundsForWorkArea(screen.getPrimaryDisplay().workArea);
+  const savedPosition = readOverlayState().position;
+  if (!savedPosition) {
+    return bounds;
+  }
+
+  return clampOverlayBoundsToWorkArea({
+    ...bounds,
+    x: savedPosition.x,
+    y: savedPosition.y
+  });
 }
 
 function calculateExpandedOverlayBounds(anchor: OverlayBounds): OverlayBounds {
@@ -220,15 +280,27 @@ function applyOverlayBounds(window: BrowserWindow, bounds: OverlayBounds) {
   applyOverlayPinned(window, true);
 }
 
+function clampOverlayBoundsToWorkArea(bounds: OverlayBounds): OverlayBounds {
+  const workArea = screen.getDisplayMatching(bounds).workArea;
+  const maxX = Math.max(workArea.x, workArea.x + workArea.width - bounds.width);
+  const maxY = Math.max(workArea.y, workArea.y + workArea.height - bounds.height);
+
+  return {
+    ...bounds,
+    x: Math.max(workArea.x, Math.min(bounds.x, maxX)),
+    y: Math.max(workArea.y, Math.min(bounds.y, maxY))
+  };
+}
+
 function createOverlayWindow(): BrowserWindow {
   const initialBounds = getTopRightOverlayBounds();
   overlayAnchorBounds = initialBounds;
-  overlayExpanded = false;
+  overlayMode = "default";
   const window = new BrowserWindow({
     ...initialBounds,
-    minWidth: initialBounds.width,
-    minHeight: initialBounds.height,
-    maxWidth: OVERLAY_EXPANDED_SIZE.width,
+    minWidth: 1,
+    minHeight: 1,
+    maxWidth: Math.max(OVERLAY_DEFAULT_SIZE.width, OVERLAY_EXPANDED_SIZE.width),
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Ream Overlay",
     frame: false,
@@ -248,9 +320,15 @@ function createOverlayWindow(): BrowserWindow {
   });
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  window.setBackgroundColor("#00000000");
   applyOverlayPinned(window, true);
   setOverlayMousePassthrough(window, false);
   window.loadURL(rendererUrl("/overlay"));
+
+  window.webContents.on("did-finish-load", () => {
+    window.webContents.send("overlay:mode-changed", overlayMode);
+    window.webContents.send("overlay:expanded-changed", overlayMode === "expanded");
+  });
 
   window.on("show", () => applyOverlayPinned(window, true));
   window.on("focus", () => applyOverlayPinned(window, true));
@@ -259,6 +337,9 @@ function createOverlayWindow(): BrowserWindow {
   window.on("closed", () => {
     overlayWindow = null;
   });
+
+  window.on("moved", () => persistOverlayPosition(window));
+  window.on("resized", () => persistOverlayPosition(window));
 
   return window;
 }
@@ -285,6 +366,19 @@ function runWithSuppressedMainBlur(action: () => void) {
   }, 0);
 }
 
+async function runWithSuppressedMainWindowOverlayEvents(action: () => Promise<void>) {
+  suppressMainBlurOverlay = true;
+  suppressMainMinimizeOverlay = true;
+  try {
+    await action();
+  } finally {
+    setTimeout(() => {
+      suppressMainBlurOverlay = false;
+      suppressMainMinimizeOverlay = false;
+    }, 0);
+  }
+}
+
 function hideMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
     return;
@@ -295,29 +389,90 @@ function hideMainWindow() {
   });
 }
 
-function destroyOverlayWindow() {
-  if (!overlayWindow || overlayWindow.isDestroyed()) {
-    overlayWindow = null;
-    overlayExpanded = false;
+function leaveMainFullScreen(window: BrowserWindow): Promise<void> {
+  const isSimpleFullScreen = process.platform === "darwin" && window.isSimpleFullScreen();
+  if (!window.isFullScreen() && !isSimpleFullScreen) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolveLeave) => {
+    let didResolve = false;
+    const finish = () => {
+      if (didResolve) {
+        return;
+      }
+      didResolve = true;
+      clearTimeout(timeout);
+      window.off("leave-full-screen", finish);
+      resolveLeave();
+    };
+    const timeout = setTimeout(finish, 900);
+
+    window.once("leave-full-screen", finish);
+    if (window.isFullScreen()) {
+      window.setFullScreen(false);
+    }
+    if (isSimpleFullScreen) {
+      window.setSimpleFullScreen(false);
+    }
+  });
+}
+
+async function minimizeMainWindowToDrawer() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
     return;
   }
 
-  overlayExpanded = false;
+  const window = mainWindow;
+  await runWithSuppressedMainWindowOverlayEvents(async () => {
+    restoreMainFullScreenAfterOverlay = window.isFullScreen() || (process.platform === "darwin" && window.isSimpleFullScreen());
+    await leaveMainFullScreen(window);
+    if (window.isDestroyed() || !window.isVisible() || window.isMinimized()) {
+      return;
+    }
+    window.minimize();
+  });
+}
+
+function destroyOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayWindow = null;
+    overlayMode = "default";
+    return;
+  }
+
+  overlayMode = "default";
   overlayWindow.destroy();
 }
 
 function showMainWindow() {
   destroyOverlayWindow();
   const window = ensureMainWindow();
+  const shouldRestoreFullScreen = restoreMainFullScreenAfterOverlay;
+  restoreMainFullScreenAfterOverlay = false;
   if (window.isMinimized()) {
     window.restore();
   }
+  if (window.isFullScreen()) {
+    window.setFullScreen(false);
+  }
+  if (process.platform === "darwin" && window.isSimpleFullScreen()) {
+    window.setSimpleFullScreen(false);
+  }
   window.show();
   window.focus();
+  if (shouldRestoreFullScreen) {
+    window.setFullScreen(true);
+  }
 }
 
-function resizeOverlayWindow(window: BrowserWindow, expanded: boolean) {
-  if (expanded) {
+function showSettingsWindow() {
+  showMainWindow();
+  mainWindow?.webContents.send("main:open-settings");
+}
+
+function resizeOverlayWindow(window: BrowserWindow, mode: OverlayMode) {
+  if (mode === "expanded") {
     overlayAnchorBounds = window.getBounds();
     applyOverlayBounds(window, calculateExpandedOverlayBounds(overlayAnchorBounds));
     setOverlayMousePassthrough(window, false);
@@ -326,52 +481,62 @@ function resizeOverlayWindow(window: BrowserWindow, expanded: boolean) {
     return;
   }
 
-  const anchor = overlayAnchorBounds ?? window.getBounds();
-  applyOverlayBounds(window, {
+  const anchor = window.getBounds();
+  const size = getOverlaySize(mode);
+  applyOverlayBounds(window, clampOverlayBoundsToWorkArea({
     x: anchor.x,
     y: anchor.y,
-    width: OVERLAY_COMPACT_SIZE.width,
-    height: OVERLAY_COMPACT_SIZE.height
-  });
+    width: size.width,
+    height: size.height
+  }));
   setOverlayMousePassthrough(window, false);
 }
 
-function setOverlayExpanded(expanded: boolean) {
-  if (overlayExpanded === expanded) {
-    return;
-  }
-
+function setOverlayMode(mode: OverlayMode) {
   if (!overlayWindow || overlayWindow.isDestroyed()) {
-    overlayExpanded = false;
+    overlayMode = "default";
     overlayWindow = null;
     return;
   }
 
-  overlayExpanded = expanded;
-  resizeOverlayWindow(overlayWindow, expanded);
-  overlayWindow.webContents.send("overlay:expanded-changed", expanded);
+  overlayMode = mode;
+  resizeOverlayWindow(overlayWindow, mode);
+  overlayWindow.webContents.send("overlay:mode-changed", mode);
+  overlayWindow.webContents.send("overlay:expanded-changed", mode === "expanded");
 }
 
-function showOverlayWindow() {
-  hideMainWindow();
+function setOverlayExpanded(expanded: boolean) {
+  setOverlayMode(expanded ? "expanded" : "default");
+}
+
+async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
+  if (options.hideMain ?? true) {
+    await minimizeMainWindowToDrawer();
+  }
   const window = ensureOverlayWindow();
+  setOverlayMode("default");
   setOverlayMousePassthrough(window, false);
+  window.setBackgroundColor("#00000000");
   window.show();
   applyOverlayPinned(window, true);
   window.focus();
 }
 
-function closeOverlayAndShowMainWindow() {
-  showMainWindow();
+function hideOverlayWindow() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+
+  overlayWindow.hide();
 }
 
-function toggleOverlayWindow() {
+async function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
     showMainWindow();
     return;
   }
-  showOverlayWindow();
+  await showOverlayWindow();
 }
 
 function createTrayIcon() {
@@ -399,8 +564,7 @@ function buildAppMenu() {
       label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
-        { label: "Toggle Overlay", accelerator: "CommandOrControl+Shift+T", click: toggleOverlayWindow },
-        { label: "Show Overlay", click: showOverlayWindow },
+        { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
         { type: "separator" },
         { role: "quit" }
       ]
@@ -427,17 +591,40 @@ function setupTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Show Main Window", click: showMainWindow },
-      { label: "Toggle Overlay", click: toggleOverlayWindow },
-      { label: "Show Overlay", click: showOverlayWindow },
+      { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
       { type: "separator" },
       { label: "Quit", click: () => app.quit() }
     ])
   );
-  tray.on("click", toggleOverlayWindow);
+  tray.on("click", () => { void toggleOverlayWindow(); });
 }
 
 function registerShortcuts() {
-  globalShortcut.register("CommandOrControl+Shift+T", toggleOverlayWindow);
+  globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
+}
+
+function sendOverlayContextCommand(command: OverlayContextCommand) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    return;
+  }
+
+  overlayWindow.webContents.send("overlay:context-command", command);
+}
+
+function showOverlayContextMenu(input: OverlayContextMenuInput) {
+  const isPaused = input.timerState === "paused";
+  const hasTimer = input.timerState === "running" || input.timerState === "paused";
+  const menu = Menu.buildFromTemplate([
+    { label: "Expand to mini", click: () => sendOverlayContextCommand("mini") },
+    { label: "Expand to default", click: () => sendOverlayContextCommand("default") },
+    { type: "separator" },
+    { label: isPaused ? "Resume" : "Pause", enabled: hasTimer, click: () => sendOverlayContextCommand("pause-resume") },
+    { label: "End session", enabled: hasTimer, click: () => sendOverlayContextCommand("stop") },
+    { type: "separator" },
+    { label: "Settings", click: () => sendOverlayContextCommand("settings") }
+  ]);
+
+  menu.popup({ window: overlayWindow ?? undefined });
 }
 
 async function readOllamaStatus(): Promise<OllamaHealthStatus> {
@@ -455,23 +642,6 @@ async function readOllamaStatus(): Promise<OllamaHealthStatus> {
   return normalizeOllamaHealthStatus(payload);
 }
 
-async function pullOllamaModel(model: string): Promise<OllamaPullResult> {
-  const normalizedModel = normalizeOllamaModelName(model);
-  return new Promise((resolve, reject) => {
-    execFile("ollama", ["pull", normalizedModel], { timeout: 600_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        const message = error.message.includes("ENOENT")
-          ? "Ollama CLI is not installed or is not on PATH."
-          : stderr.trim() || error.message;
-        reject(new Error(message));
-        return;
-      }
-
-      resolve({ model: normalizedModel, output: [stdout, stderr].map((value) => value.trim()).filter(Boolean).join("\n") });
-    });
-  });
-}
-
 function normalizeOllamaModelName(value: string): string {
   const model = value.trim();
   if (!model) {
@@ -483,6 +653,28 @@ function normalizeOllamaModelName(value: string): string {
   }
 
   return model;
+}
+
+function getOllamaLibraryUrl(model: string): string {
+  try {
+    const normalizedModel = normalizeOllamaModelName(model);
+    const baseModel = normalizedModel.split(":")[0]?.trim();
+    return baseModel ? `${OLLAMA_LIBRARY_URL}/${encodeURIComponent(baseModel)}` : OLLAMA_LIBRARY_URL;
+  } catch {
+    return OLLAMA_LIBRARY_URL;
+  }
+}
+
+function bringExternalBrowserToFront(url: string) {
+  if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+    overlayWindow.hide();
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    hideMainWindow();
+  }
+
+  void shell.openExternal(url);
 }
 
 function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
@@ -519,18 +711,32 @@ app.whenReady().then(() => {
     showMainWindow();
   });
 
+  ipcMain.handle("window:show-settings", () => {
+    showSettingsWindow();
+  });
+
   ipcMain.handle("window:set-overlay-pinned", (_event, pinned: boolean) => {
     const window = ensureOverlayWindow();
     applyOverlayPinned(window, pinned);
     return window.isAlwaysOnTop();
   });
 
-  ipcMain.handle("window:show-overlay", () => {
-    showOverlayWindow();
+  ipcMain.handle("window:show-overlay", async (_event, options?: { hideMain?: boolean }) => {
+    await showOverlayWindow(options);
   });
 
   ipcMain.handle("window:set-overlay-expanded", (_event, expanded: boolean) => {
     setOverlayExpanded(expanded);
+  });
+
+  ipcMain.handle("window:get-overlay-mode", () => overlayMode);
+
+  ipcMain.handle("window:set-overlay-mode", (_event, mode: OverlayMode) => {
+    setOverlayMode(mode);
+  });
+
+  ipcMain.handle("window:show-overlay-context-menu", (_event, input: OverlayContextMenuInput) => {
+    showOverlayContextMenu(input);
   });
 
   ipcMain.handle("window:set-overlay-interactive", (_event, interactive: boolean) => {
@@ -538,8 +744,8 @@ app.whenReady().then(() => {
     setOverlayMousePassthrough(window, !interactive);
   });
 
-  ipcMain.handle("window:toggle-overlay", () => {
-    toggleOverlayWindow();
+  ipcMain.handle("window:toggle-overlay", async () => {
+    await toggleOverlayWindow();
   });
 
   ipcMain.handle("window:minimize-overlay", () => {
@@ -547,7 +753,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("window:close-overlay", () => {
-    closeOverlayAndShowMainWindow();
+    hideOverlayWindow();
   });
 
   ipcMain.handle("data:get-location", () => getDataLocationInfo());
@@ -583,10 +789,12 @@ app.whenReady().then(() => {
   ipcMain.handle("ai:ollama-status", () => readOllamaStatus());
 
   ipcMain.handle("ai:open-ollama-download", async () => {
-    await shell.openExternal(OLLAMA_DOWNLOAD_URL);
+    bringExternalBrowserToFront(OLLAMA_DOWNLOAD_URL);
   });
 
-  ipcMain.handle("ai:pull-ollama-model", (_event, model: string) => pullOllamaModel(model));
+  ipcMain.handle("ai:open-ollama-library", async (_event, model: string) => {
+    bringExternalBrowserToFront(getOllamaLibraryUrl(model));
+  });
 
   app.on("activate", () => {
     ensureMainWindow();

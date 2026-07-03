@@ -20,7 +20,7 @@ Ream uses a local HTTP sidecar for AI note improvement. The renderer never talks
 
 - The raw note is preserved. The AI suggestion is stored separately.
 - A user must explicitly accept the suggestion before any note replacement happens.
-- The UI shows request duration and the final outcome in the Dev section.
+- The UI shows request duration and the final outcome in the AI Stats section.
 
 ## Endpoints
 

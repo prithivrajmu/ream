@@ -5,9 +5,30 @@ export type OverlayBounds = {
   height: number;
 };
 
-export const OVERLAY_COMPACT_SIZE = { width: 560, height: 86 };
-export const OVERLAY_EXPANDED_SIZE = { width: 560, height: 875 };
+export type OverlayMode = "default" | "mini" | "tiny" | "expanded";
+
+export const OVERLAY_DEFAULT_SIZE = { width: 700, height: 200 };
+export const OVERLAY_COMPACT_SIZE = OVERLAY_DEFAULT_SIZE;
+export const OVERLAY_MINI_SIZE = { width: 430, height: 66 };
+export const OVERLAY_TINY_SIZE = { width: 196, height: 58 };
+export const OVERLAY_EXPANDED_SIZE = { width: 700, height: 900 };
 export const OVERLAY_SCREEN_MARGIN = 34;
+
+export function getOverlaySize(mode: OverlayMode): Pick<OverlayBounds, "width" | "height"> {
+  if (mode === "expanded") {
+    return OVERLAY_EXPANDED_SIZE;
+  }
+
+  if (mode === "mini") {
+    return OVERLAY_MINI_SIZE;
+  }
+
+  if (mode === "tiny") {
+    return OVERLAY_TINY_SIZE;
+  }
+
+  return OVERLAY_DEFAULT_SIZE;
+}
 
 type WorkArea = Pick<OverlayBounds, "x" | "y" | "width" | "height">;
 

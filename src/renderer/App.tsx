@@ -85,7 +85,10 @@ export function App() {
   }
 
   if (route === "overlay") {
-    return <OverlayView overlayTransparency={appSettings.overlayTransparency} themeId={themeId} />;
+    return <OverlayView
+      overlayTransparency={appSettings.overlayTransparency}
+      themeId={themeId}
+    />;
   }
 
   if (!appSettings.setupCompletedAt || isSetupOpen) {

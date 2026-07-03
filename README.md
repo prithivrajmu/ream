@@ -1,55 +1,84 @@
 # Ream
 
-A local-first task time tracker for tracking tasks, notes, time entries, and projects.
+Ream is a local-first desktop workspace for tracking tasks, notes, time entries, projects, and review history. It ships with a full main window, a compact overlay, and optional local AI note cleanup.
 
-## Goal
+## Install
 
-Build a clean personal tracker that lets you:
+### macOS with Homebrew
 
-- Start and stop timers for tasks.
-- Add notes against each task or time entry.
-- Review daily and weekly totals.
-- Edit entries when time is logged manually or corrected later.
-- Save all data locally by default.
-- Optionally back up or sync the project data through a private GitHub repo.
-- Use a small always-on-top overlay window while in Zoom, browser, code editor,
-  or any other app.
+Ream is distributed through a Homebrew tap:
+
+```bash
+brew tap prithivrajmu/ream
+brew install ream
+```
+
+This installs the macOS app bundle and exposes a `ream` launcher command.
+
+### Linux with APT
+
+Add the Ream APT source once, then install the Debian package:
+
+```bash
+curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
+sudo apt install ream
+```
+
+### Run from source with Node.js
+
+Use this path if you want to review the code, test unreleased changes, or contribute:
+
+```bash
+git clone https://github.com/prithivrajmu/ream.git
+cd ream
+npm install
+npm run dev
+```
+
+## What Ships Today
+
+- Track work against named tasks with projects and tags.
+- Start, stop, and correct timers from the main workspace.
+- Capture notes while the timer is running or after the session ends.
+- Review activity through insights, a weekly timesheet, recent entries, and task history.
+- Keep data local by default, with JSON and CSV export for backups or reporting.
+- Move the data folder to a custom location from Settings.
+- Improve notes through a local Ollama sidecar when you want AI assistance.
+- Use a compact always-on-top overlay while staying in Zoom, a browser, or your editor.
 
 ## Distribution
 
-Ream produces desktop artifacts with Electron Builder.
+Ream produces desktop artifacts with Electron Builder and release metadata for Homebrew and APT.
 
 ```bash
 npm run dist:linux
 npm run dist:mac:unsigned
+npm run release:checksums
+npm run release:homebrew
+npm run release:apt
 ```
 
-Linux outputs AppImage, Debian, and tarball artifacts in `release/`. macOS
-distribution should be built, signed, and notarized on a macOS machine; see
-[macOS packaging](docs/macos-packaging.md) and [Linux packaging](docs/linux-packaging.md).
+Linux outputs AppImage, Debian, and tarball artifacts in `release/`. macOS distribution should be built, signed, and notarized on a macOS machine; see [macOS packaging](docs/macos-packaging.md) and [Linux packaging](docs/linux-packaging.md).
+Plain `brew install ream` and plain `sudo apt install ream` without adding a Ream package source first require acceptance into upstream package indexes.
 
-## Product Scope
+## Product Surface
 
-### Core Workflows
+### Main Window
 
-1. Create a task with a name, optional project/client, tags, and notes.
-2. Start a timer on a task.
-3. Stop the timer and save the resulting time entry.
-4. Add notes during or after the work session.
-5. Manually add or edit a time entry.
-6. Browse entries by day, week, task, project, or tag.
-7. Export data as JSON and CSV.
-8. Open a compact overlay to start/stop tasks and capture notes without
-   switching back to the full app.
+- Today view with quick capture, active timer, and task cards.
+- Insights with charts, highlights, and session history.
+- Weekly timesheet for per-task and per-day review.
+- Recent entries and note history with inline editing.
+- Tasks and projects management, plus archive and restore flows.
+- Backup and restore tools for JSON and CSV exports.
+- Profile and theme controls for the main UI and overlay.
 
-### Initial Screens
+### Overlay
 
-- Today: active timer, quick task picker, today's entries, notes.
-- Tasks: searchable task list with project/tag filters.
-- Reports: daily and weekly totals with CSV export.
-- Settings: local backup/export and optional GitHub sync setup notes.
-- Overlay: compact always-on-top timer, task switcher, note input, and quick
-  open button for the full app.
+- Compact always-on-top timer.
+- Quick note entry and task switching.
+- Direct access back to the main workspace.
+- A small overlay launch button in the main app for quick access.
 
 ## Architecture
 
@@ -163,8 +192,11 @@ fully functional.
 ## Documentation
 
 - [Task roadmap](TASKS.md)
-- [AI sidecar guide](docs/ai-sidecar.md)
 - [Private backup guide](BACKUP.md)
+- [AI sidecar guide](docs/ai-sidecar.md)
+- [Theme implementation guide](docs/theme-implementation-guide.md)
+- [Linux packaging](docs/linux-packaging.md)
+- [macOS packaging](docs/macos-packaging.md)
 
 ## Open Decisions
 

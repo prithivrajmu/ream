@@ -4,12 +4,14 @@ import { DEFAULT_THEME_ID, isThemeId, type ThemeId } from "./themeOptions";
 export const APP_SETTINGS_STORAGE_KEY = "ream.appSettings.v1";
 
 export type AiSetupPreference = "skipped" | "enabled";
+export type PreferredOverlayMode = "mini" | "tiny";
 
 export interface AppSettings {
   userName: string;
   setupCompletedAt: string | null;
   themeId: ThemeId;
   overlayTransparency: number;
+  preferredOverlayMode: PreferredOverlayMode;
   aiSetupPreference: AiSetupPreference;
   ollamaModel: string;
 }
@@ -22,6 +24,7 @@ export function createDefaultAppSettings(themeId: ThemeId = DEFAULT_THEME_ID): A
     setupCompletedAt: null,
     themeId,
     overlayTransparency: DEFAULT_OVERLAY_TRANSPARENCY,
+    preferredOverlayMode: "mini",
     aiSetupPreference: "skipped",
     ollamaModel: DEFAULT_OLLAMA_MODEL
   };
@@ -66,6 +69,7 @@ function normalizeAppSettings(candidate: Partial<AppSettings>, defaults: AppSett
     setupCompletedAt: typeof candidate.setupCompletedAt === "string" ? candidate.setupCompletedAt : null,
     themeId,
     overlayTransparency,
+    preferredOverlayMode: candidate.preferredOverlayMode === "tiny" ? "tiny" : "mini",
     aiSetupPreference: candidate.aiSetupPreference === "enabled" ? "enabled" : "skipped",
     ollamaModel: typeof candidate.ollamaModel === "string" && candidate.ollamaModel.trim()
       ? candidate.ollamaModel.trim()

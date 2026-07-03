@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus, OllamaPullResult } from "../shared/ai";
+import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus } from "../shared/ai";
+import type { OverlayMode } from "../shared/overlayBounds";
 
 export interface ReamDataLocationInfo {
   path: string;
@@ -7,18 +8,32 @@ export interface ReamDataLocationInfo {
   defaultPath: string;
 }
 
+export type OverlayContextCommand = "mini" | "default" | "pause-resume" | "stop" | "settings";
+
+export interface OverlayContextMenuInput {
+  timerState: "idle" | "running" | "paused" | "stopped";
+}
+
+export interface ShowOverlayWindowInput {
+  hideMain?: boolean;
+}
+
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
-  showOverlayWindow: () => ipcRenderer.invoke("window:show-overlay"),
+  showSettingsWindow: () => ipcRenderer.invoke("window:show-settings"),
+  showOverlayWindow: (input?: ShowOverlayWindowInput) => ipcRenderer.invoke("window:show-overlay", input),
   toggleOverlayWindow: () => ipcRenderer.invoke("window:toggle-overlay"),
   setOverlayPinned: (pinned: boolean) => ipcRenderer.invoke("window:set-overlay-pinned", pinned) as Promise<boolean>,
   setOverlayExpanded: (expanded: boolean) => ipcRenderer.invoke("window:set-overlay-expanded", expanded),
+  getOverlayMode: () => ipcRenderer.invoke("window:get-overlay-mode") as Promise<OverlayMode>,
+  setOverlayMode: (mode: OverlayMode) => ipcRenderer.invoke("window:set-overlay-mode", mode),
+  showOverlayContextMenu: (input: OverlayContextMenuInput) => ipcRenderer.invoke("window:show-overlay-context-menu", input),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
   getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
   openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
-  pullOllamaModel: (model: string) => ipcRenderer.invoke("ai:pull-ollama-model", model) as Promise<OllamaPullResult>,
+  openOllamaLibrary: (model: string) => ipcRenderer.invoke("ai:open-ollama-library", model) as Promise<void>,
   getDataLocation: () => ipcRenderer.invoke("data:get-location") as Promise<ReamDataLocationInfo>,
   chooseDataLocation: () => ipcRenderer.invoke("data:choose-location") as Promise<ReamDataLocationInfo | null>,
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {
@@ -26,6 +41,27 @@ const desktopApi = {
     ipcRenderer.on("overlay:expanded-changed", listener);
     return () => {
       ipcRenderer.off("overlay:expanded-changed", listener);
+    };
+  },
+  onOverlayModeChanged: (callback: (mode: OverlayMode) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, mode: OverlayMode) => callback(mode);
+    ipcRenderer.on("overlay:mode-changed", listener);
+    return () => {
+      ipcRenderer.off("overlay:mode-changed", listener);
+    };
+  },
+  onOverlayContextCommand: (callback: (command: OverlayContextCommand) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, command: OverlayContextCommand) => callback(command);
+    ipcRenderer.on("overlay:context-command", listener);
+    return () => {
+      ipcRenderer.off("overlay:context-command", listener);
+    };
+  },
+  onOpenSettingsRequested: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("main:open-settings", listener);
+    return () => {
+      ipcRenderer.off("main:open-settings", listener);
     };
   },
   closeOverlay: () => ipcRenderer.invoke("window:close-overlay")
