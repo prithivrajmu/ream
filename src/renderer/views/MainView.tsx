@@ -67,6 +67,7 @@ interface InsightSummaryRow {
   durationSeconds: number;
   percent: number;
   icon: MainIconName;
+  tone: number;
 }
 
 interface TimeInsights {
@@ -82,6 +83,7 @@ interface TimeInsights {
     id: string;
     date: string;
     task: string;
+    taskIcon: MainIconName;
     taskTone: number;
     project: string;
     durationSeconds: number;
@@ -107,9 +109,10 @@ interface TimesheetCell {
 interface TimesheetRow {
   taskId: string;
   title: string;
+  icon: MainIconName;
+  tone: number;
   projects: string[];
   tags: string[];
-  status: "In progress" | "Archived";
   cells: TimesheetCell[];
   totalSeconds: number;
 }
@@ -121,6 +124,11 @@ interface WeeklyTimesheet {
   dayTotals: number[];
   totalSeconds: number;
   notesCount: number;
+}
+
+interface TaskVisualIdentity {
+  icon: MainIconName;
+  tone: number;
 }
 
 export function MainView({ appSettings, themeId, onAppSettingsChange }: MainViewProps) {
@@ -789,17 +797,28 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }
 
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
-  const navigation: Array<{ id: Exclude<ActiveSection, "profile">; label: string; icon: MainIconName }> = [
-    { id: "home", label: "Home", icon: "home" },
-    { id: "insights", label: "Insights", icon: "chart" },
-    { id: "timesheet", label: "Timesheet", icon: "calendar" },
-    { id: "entries", label: "Entries", icon: "clock" },
-    { id: "tasks", label: "Tasks", icon: "list" },
-    { id: "notes", label: "Notes", icon: "note" },
-    { id: "projects", label: "Projects", icon: "briefcase" },
-    { id: "backup", label: "Settings", icon: "settings" },
-    { id: "dev", label: "AI Stats", icon: "chart" }
+  const navigationGroups: Array<{ label: string; items: Array<{ id: Exclude<ActiveSection, "profile">; label: string; icon: MainIconName }> }> = [
+    {
+      label: "Workspace",
+      items: [
+        { id: "home", label: "Home", icon: "home" },
+        { id: "entries", label: "Entries", icon: "clock" },
+        { id: "tasks", label: "Tasks", icon: "list" },
+        { id: "notes", label: "Notes", icon: "note" },
+        { id: "projects", label: "Projects", icon: "briefcase" }
+      ]
+    },
+    {
+      label: "Utilities",
+      items: [
+        { id: "insights", label: "Insights", icon: "chart" },
+        { id: "timesheet", label: "Timesheet", icon: "calendar" },
+        { id: "backup", label: "Settings", icon: "settings" },
+        { id: "dev", label: "AI Stats", icon: "chart" }
+      ]
+    }
   ];
+  const navigation = navigationGroups.flatMap((group) => group.items);
 
   const headerAction = (() => {
     if (activeSection === "home" || activeSection === "tasks") {
@@ -843,12 +862,16 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   return (
     <main className={`dashboard-shell theme-${themeId}`}>
       <aside className="dashboard-sidebar">
-        <div className="brand-lockup"><span className="brand-mark"><img alt="Ream" src={reamIcon} /></span><div><strong>Ream</strong><p>Time on what matters.</p></div></div>
+        <div className="brand-lockup"><span className="brand-mark"><img alt="Ream" src={reamIcon} /></span><div><strong>Ream</strong><p>Time on what matters.</p></div><button aria-label="Show overlay" className="brand-overlay-button" onClick={() => window.reamDesktop?.showOverlayWindow?.()} type="button"><MainIcon name="overlay" /><span>Show overlay</span></button></div>
         <nav className="dashboard-nav" aria-label="Main navigation">
-          {navigation.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
+          {navigationGroups.map((group) => <details className="nav-group" key={group.label} open>
+            <summary><span>{group.label}</span><MainIcon name="chevron" /></summary>
+            <div className="nav-group-items">
+              {group.items.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
+            </div>
+          </details>)}
         </nav>
         <div className="sidebar-bottom">
-          <button className="overlay-launcher" onClick={() => window.reamDesktop?.showOverlayWindow?.()}><MainIcon name="overlay" />Show overlay</button>
           <button aria-label="Open profile settings" className={`profile-row ${activeSection === "profile" ? "is-active" : ""}`} onClick={() => setActiveSection("profile")} type="button"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></button>
         </div>
       </aside>
@@ -867,8 +890,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <section className="projects-section"><div className="section-title"><h2>Your Tasks</h2><span>{tasks.length} active</span></div><div className="project-cards" aria-live="polite">
             {loading ? <p className="empty-state">Loading your tasks...</p> : null}
             {!loading && tasks.length === 0 ? <p className="empty-state">Create your first task to start tracking time.</p> : null}
-            {tasks.map((task, index) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
-              <span className={`project-icon tone-${index % 5}`}><MainIcon name={projectIcon(index)} /></span><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
+            {tasks.map((task) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
+              <TaskIdentityIcon className="project-icon task-identity-icon" task={task} /><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
               {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer)} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
               <button className="archive-task-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button>
             </article>; })}
@@ -893,9 +916,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <div className="time-insight-grid">
             <section className="time-card time-chart-card">
               <SectionNumber title="Time across tasks" number="1." />
-              <div className="time-legend">{timeInsights.taskRows.slice(0, 6).map((row, index) => <span key={row.id}><i className={`time-tone-${index}`} />{row.title}</span>)}</div>
+              <div className="time-legend">{timeInsights.taskRows.slice(0, 6).map((row) => <span key={row.id}><i className={`time-tone-${row.tone}`} />{row.title}</span>)}</div>
               <div className="stacked-chart" aria-label="Time across tasks chart">
-                {timeInsights.buckets.map((bucket) => <div className="stacked-column" key={bucket.key}><span>{bucket.totalSeconds ? formatCompactDuration(bucket.totalSeconds) : ""}</span><div>{bucket.durations.map((durationSeconds, index) => <i className={`time-tone-bg-${index}`} key={`${bucket.key}-${index}`} style={cssVars({ "--segment-height": `${bucket.totalSeconds ? Math.max(7, durationSeconds / bucket.totalSeconds * 100) : 0}%` })} />)}</div><small>{bucket.label}</small></div>)}
+                {timeInsights.buckets.map((bucket) => <div className="stacked-column" key={bucket.key}><span>{bucket.totalSeconds ? formatCompactDuration(bucket.totalSeconds) : ""}</span><div>{renderStackedTaskSegments(bucket, timeInsights.taskRows)}</div><small>{bucket.label}</small></div>)}
               </div>
             </section>
 
@@ -913,7 +936,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               <div className="time-card-heading-row"><SectionNumber title="Session log" number="4." /><div className="time-session-tools"><label><MainIcon name="search" /><input placeholder="Search sessions..." readOnly /></label><button type="button"><MainIcon name="filter" />Filter</button><button aria-label="More session actions" type="button"><MainIcon name="more" /></button></div></div>
               <div className="time-session-table">
                 <div className="time-session-head"><span>Date</span><span>Task</span><span>Project</span><span>Duration</span><span>Notes</span></div>
-                {timeInsights.sessionRows.length === 0 ? <p className="empty-state">Tracked sessions will appear here.</p> : timeInsights.sessionRows.map((row) => <div className="time-session-row" key={row.id}><span>{row.date}</span><span><i className={`time-tone-bg-${row.taskTone}`}><MainIcon name={summaryIcon(row.taskTone)} /></i>{row.task}</span><span>{row.project}</span><strong>{formatCompactDuration(row.durationSeconds)}</strong><p>{row.note || "No note"}</p></div>)}
+                {timeInsights.sessionRows.length === 0 ? <p className="empty-state">Tracked sessions will appear here.</p> : timeInsights.sessionRows.map((row) => <div className="time-session-row" key={row.id}><span>{row.date}</span><span><i className={`time-tone-bg-${row.taskTone}`}><MainIcon name={row.taskIcon} /></i>{row.task}</span><span>{row.project}</span><strong>{formatCompactDuration(row.durationSeconds)}</strong><p>{row.note || "No note"}</p></div>)}
               </div>
               <footer>{timeInsights.sessionRows.length} sessions</footer>
             </section>
@@ -945,15 +968,14 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               {weeklyTimesheet.days.map((day) => <div className="timesheet-day-header" key={day.shortDate}><strong>{day.label}</strong><span>{day.shortDate}</span></div>)}
               <div className="timesheet-total-header">Task total</div>
 
-              <div className="timesheet-task-cell is-attendance"><span>Attendance Hours <MainIcon name="info" /></span></div>
-              {weeklyTimesheet.days.map((day) => <div className="timesheet-time-cell is-muted" key={`attendance-${day.shortDate}`}>0h 00m</div>)}
-              <div className="timesheet-total-cell is-muted">-</div>
-
-              {weeklyTimesheet.rows.length === 0 ? <div className="timesheet-empty">Track time on a task this week to build your timesheet.</div> : weeklyTimesheet.rows.map((row) => <Fragment key={row.taskId}>
-                <div className="timesheet-task-cell" key={`${row.taskId}-task`}><div><strong>{row.title}</strong><span className="timesheet-chip-row">{[...row.projects, ...row.tags].slice(0, 4).map((tag) => <i key={tag}>{tag}</i>)}</span></div><b className={row.status === "Archived" ? "is-archived" : ""}>{row.status}</b></div>
-                {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="clock" />{cell.entryCount}</small> : null}</div>)}
-                <div className="timesheet-total-cell" key={`${row.taskId}-total`}>{formatTimesheetDuration(row.totalSeconds)}</div>
-              </Fragment>)}
+              {weeklyTimesheet.rows.length === 0 ? <div className="timesheet-empty">Track time on a task this week to build your timesheet.</div> : weeklyTimesheet.rows.map((row) => {
+                const chips = [...row.projects, ...row.tags].slice(0, 4);
+                return <Fragment key={row.taskId}>
+                  <div className="timesheet-task-cell" key={`${row.taskId}-task`}><TaskIdentityIcon className="timesheet-task-icon" identity={{ icon: row.icon, tone: row.tone }} title={row.title} /><div><strong>{row.title}</strong>{chips.length ? <span className="timesheet-chip-row">{chips.map((tag) => <i key={tag}>{tag}</i>)}</span> : null}</div></div>
+                  {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="clock" />{cell.entryCount}</small> : null}</div>)}
+                  <div className="timesheet-total-cell" key={`${row.taskId}-total`}>{formatTimesheetDuration(row.totalSeconds)}</div>
+                </Fragment>;
+              })}
 
               <div className="timesheet-task-cell timesheet-footer-label"><span>Total hours / day <MainIcon name="info" /></span></div>
               {weeklyTimesheet.dayTotals.map((totalSeconds, index) => <div className="timesheet-time-cell timesheet-footer-total" key={`day-total-${weeklyTimesheet.days[index].shortDate}`}>{formatTimesheetDuration(totalSeconds)}</div>)}
@@ -972,9 +994,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><span>{tasks.length} active</span></div><div className="project-management-list">
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
-          {tasks.map((task) => <article key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
+          {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
           {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
-          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
+          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">
@@ -986,7 +1008,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
           {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
             const improveButton = renderImproveNoteButton(entry);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div><button className="note-edit-button" onClick={() => handleEditEntry(entry)} type="button"><MainIcon name="pen" />Edit</button></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
           })}
         </div></section> : null}
 
@@ -1023,8 +1045,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         </div> : null}
 
-        {activeSection === "profile" ? <div className="settings-grid">
-          <section className="dashboard-panel profile-settings-panel">
+        {activeSection === "profile" ? <div className="settings-grid profile-grid">
+          <section className="dashboard-panel profile-settings-panel profile-identity-panel">
             <div className="profile-settings-header">
               <span className="profile-settings-avatar">{profileInitials}</span>
               <div>
@@ -1034,41 +1056,39 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               </div>
             </div>
 
-            <div className="profile-settings-form">
-              <div className="profile-settings-row">
-                <label className="settings-field">Display name<input value={appSettings.userName} onChange={(event) => updateAppSettings({ userName: event.target.value })} placeholder="Prithiv Raj" /></label>
-                <button className="settings-action-button" onClick={() => updateAppSettings({ userName: appSettings.userName.trim() })} type="button"><MainIcon name="pen" />Save</button>
-              </div>
-
-              <section className="profile-personalization-section profile-theme-section">
-                <div className="profile-theme-heading">
-                  <div><strong>Theme</strong><p>Pick the visual language for the main window and overlay.</p></div>
-                  <span>{activeTheme.label}</span>
-                </div>
-                <div className="theme-options profile-theme-options">
-                  {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => updateAppSettings({ themeId: theme.id })} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
-                </div>
-              </section>
-
-              <section className="profile-personalization-section profile-overlay-section">
-                <div className="overlay-mode-setting">
-                  <div><strong>Resting overlay</strong><p>Choose what the timer collapses to after starting.</p></div>
-                  <div className="overlay-mode-options">
-                    <button aria-pressed={appSettings.preferredOverlayMode === "mini"} className={appSettings.preferredOverlayMode === "mini" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "mini" })} type="button">Mini</button>
-                    <button aria-pressed={appSettings.preferredOverlayMode === "tiny"} className={appSettings.preferredOverlayMode === "tiny" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "tiny" })} type="button">Tiny</button>
-                  </div>
-                </div>
-                <label className="settings-slider-field">Overlay transparency <strong>{formatTransparency(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
-                <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
-              </section>
-
-              <section className="profile-personalization-section review-settings-panel profile-review-section">
-                <PanelKicker icon="clock" label="Review" />
-                <h2>Tracked time</h2>
-                <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
-                <div className="settings-review-bar"><span /></div>
-              </section>
+            <div className="profile-settings-row">
+              <label className="settings-field">Display name<input value={appSettings.userName} onChange={(event) => updateAppSettings({ userName: event.target.value })} placeholder="Prithiv Raj" /></label>
+              <button className="settings-action-button" onClick={() => updateAppSettings({ userName: appSettings.userName.trim() })} type="button"><MainIcon name="pen" />Save</button>
             </div>
+          </section>
+
+          <section className="dashboard-panel profile-settings-panel profile-theme-panel">
+            <div className="profile-theme-heading">
+              <div><strong>Theme</strong><p>Pick the visual language for the main window and overlay.</p></div>
+              <span>{activeTheme.label}</span>
+            </div>
+            <div className="theme-options profile-theme-options">
+              {themeOptions.map((theme) => <button aria-pressed={theme.id === themeId} className={theme.id === themeId ? "is-active" : ""} key={theme.id} onClick={() => updateAppSettings({ themeId: theme.id })} type="button"><span className="theme-swatch-row">{theme.swatches.map((swatch) => <i key={swatch} style={{ background: swatch }} />)}</span><strong>{theme.label}</strong><small>{theme.description}</small></button>)}
+            </div>
+          </section>
+
+          <section className="dashboard-panel profile-settings-panel profile-overlay-panel">
+            <div className="overlay-mode-setting">
+              <div><strong>Resting overlay</strong><p>Choose what the timer collapses to after starting.</p></div>
+              <div className="overlay-mode-options">
+                <button aria-pressed={appSettings.preferredOverlayMode === "mini"} className={appSettings.preferredOverlayMode === "mini" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "mini" })} type="button">Mini</button>
+                <button aria-pressed={appSettings.preferredOverlayMode === "tiny"} className={appSettings.preferredOverlayMode === "tiny" ? "is-active" : ""} onClick={() => updateAppSettings({ preferredOverlayMode: "tiny" })} type="button">Tiny</button>
+              </div>
+            </div>
+            <label className="settings-slider-field">Overlay transparency <strong>{formatTransparency(appSettings.overlayTransparency)}</strong><input aria-label="Overlay transparency" max="100" min="50" onChange={(event) => updateAppSettings({ overlayTransparency: Number(event.target.value) / 100 })} type="range" value={Math.round(appSettings.overlayTransparency * 100)} /></label>
+            <div className="settings-slider-scale"><span>Subtle</span><span>Solid</span></div>
+          </section>
+
+          <section className="dashboard-panel profile-settings-panel review-settings-panel profile-review-panel">
+            <PanelKicker icon="clock" label="Review" />
+            <h2>Tracked time</h2>
+            <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
+            <div className="settings-review-bar"><span /></div>
           </section>
         </div> : null}
 
@@ -1086,6 +1106,23 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   );
 }
 
+function TaskIdentityIcon({
+  className = "task-identity-icon",
+  identity,
+  task,
+  taskId,
+  title
+}: {
+  className?: string;
+  identity?: TaskVisualIdentity;
+  task?: Task | null;
+  taskId?: string;
+  title?: string;
+}) {
+  const visual = identity ?? getTaskVisual(task, taskId, title);
+  return <span className={`${className} task-tone-${visual.tone}`}><MainIcon name={visual.icon} /></span>;
+}
+
 function MetricPill({ icon, label, value, delta }: { icon: MainIconName; label: string; value: string; delta: string }) {
   return <article><span><MainIcon name={icon} /></span><div><p>{label}</p><strong>{value}</strong><small>{delta}</small></div></article>;
 }
@@ -1096,13 +1133,28 @@ function SectionNumber({ number, title }: { number: string; title: string }) {
 
 function InsightRanking({ rows, totalSeconds }: { rows: InsightSummaryRow[]; totalSeconds: number }) {
   return <div className="time-ranking-list">
-    {rows.length === 0 ? <p className="empty-state">Tracked time will appear here.</p> : rows.slice(0, 6).map((row, index) => <article key={row.id}><span className={`time-rank-icon time-tone-bg-${index}`}><MainIcon name={row.icon} /></span><div><div><strong>{row.title}</strong><small>{formatCompactDuration(row.durationSeconds)}</small><b>{totalSeconds ? row.percent : 0}%</b></div><i><em style={cssVars({ "--bar-width": `${row.percent}%` })} /></i><p>{row.meta}</p></div></article>)}
+    {rows.length === 0 ? <p className="empty-state">Tracked time will appear here.</p> : rows.slice(0, 6).map((row) => <article key={row.id}><span className={`time-rank-icon time-tone-bg-${row.tone}`}><MainIcon name={row.icon} /></span><div><div><strong>{row.title}</strong><small>{formatCompactDuration(row.durationSeconds)}</small><b>{totalSeconds ? row.percent : 0}%</b></div><i><em className={`task-tone-${row.tone}`} style={cssVars({ "--bar-width": `${row.percent}%` })} /></i><p>{row.meta}</p></div></article>)}
     {rows.length ? <footer><span>Total</span><strong>{formatCompactDuration(totalSeconds)}</strong></footer> : null}
   </div>;
 }
 
 function HighlightItem({ icon, label, value, detail }: { icon: MainIconName; label: string; value: string; detail: string }) {
   return <article><span><MainIcon name={icon} />{label}</span><strong>{value}</strong><p>{detail}</p></article>;
+}
+
+function renderStackedTaskSegments(bucket: InsightBucket, taskRows: InsightSummaryRow[]): ReactNode {
+  if (!bucket.totalSeconds) {
+    return null;
+  }
+
+  return bucket.durations.map((durationSeconds, index) => {
+    const taskRow = taskRows[index];
+    if (!taskRow || durationSeconds <= 0) {
+      return null;
+    }
+
+    return <i className={`time-tone-bg-${taskRow.tone}`} key={`${bucket.key}-${taskRow.id}`} style={cssVars({ "--segment-height": `${Math.max(7, durationSeconds / bucket.totalSeconds * 100)}%` })} />;
+  });
 }
 
 function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode): TimeInsights {
@@ -1123,6 +1175,7 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
   for (const entry of periodEntries) {
     const task = taskById.get(entry.taskId);
     const taskTitle = task?.title ?? "Archived task";
+    const taskVisual = getTaskVisual(task, entry.taskId, taskTitle);
     const projectsForTask = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
     const taskRow = taskTotals.get(entry.taskId) ?? {
       id: entry.taskId,
@@ -1130,7 +1183,8 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
       meta: projectsForTask.length ? projectsForTask.join(" · ") : "No project",
       durationSeconds: 0,
       percent: 0,
-      icon: summaryIcon(taskTotals.size)
+      icon: taskVisual.icon,
+      tone: taskVisual.tone
     };
     taskRow.durationSeconds += entry.durationSeconds;
     taskTotals.set(entry.taskId, taskRow);
@@ -1144,7 +1198,8 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
         meta: `${taskTitle}${allocationTargets.length > 1 ? " shared" : ""}`,
         durationSeconds: 0,
         percent: 0,
-        icon: projectSummaryIcon(projectTotals.size + index)
+        icon: projectSummaryIcon(projectTotals.size + index),
+        tone: stableTone(projectTitle)
       };
       projectRow.durationSeconds += allocatedSeconds;
       projectTotals.set(projectTitle, projectRow);
@@ -1168,14 +1223,17 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
   const sessionRows = [...periodEntries]
     .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
     .slice(0, 7)
-    .map((entry, index) => {
+    .map((entry) => {
       const task = taskById.get(entry.taskId);
+      const taskTitle = task?.title ?? "Archived task";
+      const taskVisual = getTaskVisual(task, entry.taskId, taskTitle);
       const projectNames = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
       return {
         id: entry.id,
         date: formatShortDate(entry.startedAt),
-        task: task?.title ?? "Archived task",
-        taskTone: index % 6,
+        task: taskTitle,
+        taskIcon: taskVisual.icon,
+        taskTone: taskVisual.tone,
         project: projectNames.join(" · ") || "No project",
         durationSeconds: entry.durationSeconds,
         note: entry.note
@@ -1219,6 +1277,8 @@ function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Pro
 
   for (const entry of entries.filter((candidate) => isEntryInRange(candidate, range.start, range.end))) {
     const task = taskById.get(entry.taskId);
+    const taskTitle = task?.title ?? "Archived task";
+    const taskVisual = getTaskVisual(task, entry.taskId, taskTitle);
     const startedAt = new Date(entry.startedAt);
     const dayIndex = Math.floor((startOfDay(startedAt).getTime() - range.start.getTime()) / 86_400_000);
     if (dayIndex < 0 || dayIndex >= days.length) {
@@ -1227,10 +1287,11 @@ function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Pro
 
     const row = rows.get(entry.taskId) ?? {
       taskId: entry.taskId,
-      title: task?.title ?? "Archived task",
+      title: taskTitle,
+      icon: taskVisual.icon,
+      tone: taskVisual.tone,
       projects: task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [],
       tags: task?.tags ?? [],
-      status: task?.archived ? "Archived" : "In progress",
       cells: Array.from({ length: 7 }, () => ({ durationSeconds: 0, entryCount: 0 })),
       totalSeconds: 0
     };
@@ -1425,9 +1486,9 @@ function formatCompactDuration(totalSeconds: number): string {
 }
 
 function formatTimesheetDuration(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.round(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.round((seconds % 3600) / 60);
+  const minutesTotal = Math.max(0, Math.round(totalSeconds / 60));
+  const hours = Math.floor(minutesTotal / 60);
+  const minutes = minutesTotal % 60;
   return `${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
@@ -1456,12 +1517,39 @@ function normalizeHeat(durationSeconds: number, heatmap: Array<{ periods: number
   return durationSeconds / max;
 }
 
-function summaryIcon(index: number): MainIconName {
-  return ["code", "users", "book", "document", "target", "briefcase"][index % 6] as MainIconName;
+function getTaskVisual(task?: Task | null, fallbackId = "", fallbackTitle = "Task"): TaskVisualIdentity {
+  const title = (task?.title ?? fallbackTitle).trim() || "Task";
+  const seed = task?.id || fallbackId || title;
+  return {
+    icon: taskIconFromTitle(title, seed),
+    tone: stableTone(seed)
+  };
+}
+
+function taskIconFromTitle(title: string, seed: string): MainIconName {
+  const normalized = title.toLocaleLowerCase();
+  const match = TASK_ICON_KEYWORDS.find(({ keywords }) => keywords.some((keyword) => normalized.includes(keyword)));
+  if (match) {
+    return match.icon;
+  }
+  return TASK_ICON_FALLBACKS[stableHash(`${title}:${seed}`) % TASK_ICON_FALLBACKS.length];
 }
 
 function projectSummaryIcon(index: number): MainIconName {
   return ["globe", "chart", "users", "book", "settings", "more"][index % 6] as MainIconName;
+}
+
+function stableTone(seed: string): number {
+  return stableHash(seed || "task") % 6;
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function capitalize(value: string): string {
@@ -1474,12 +1562,23 @@ function cssVars(values: Record<string, string>): CSSProperties {
 
 type MainIconName = "calendar" | "chevron" | "clock" | "comment" | "filter" | "globe" | "home" | "info" | "list" | "more" | "note" | "overlay" | "pen" | "play" | "plus" | "search" | "settings" | "sparkle" | "target" | "timer" | "trend" | "trophy" | "users" | "briefcase" | "book" | "chart" | "code" | "phone" | "shield" | "document";
 
+const TASK_ICON_KEYWORDS: Array<{ icon: MainIconName; keywords: string[] }> = [
+  { icon: "phone", keywords: ["call", "phone", "zoom", "meet"] },
+  { icon: "users", keywords: ["standup", "sync", "interview", "workshop", "review"] },
+  { icon: "code", keywords: ["code", "dev", "develop", "implement", "bug", "fix", "api", "frontend", "backend"] },
+  { icon: "chart", keywords: ["data", "report", "analysis", "analytics", "metric", "dashboard"] },
+  { icon: "document", keywords: ["doc", "write", "draft", "spec", "proposal", "brief"] },
+  { icon: "book", keywords: ["read", "research", "learn", "study", "explore"] },
+  { icon: "target", keywords: ["plan", "roadmap", "strategy", "goal", "launch"] },
+  { icon: "shield", keywords: ["security", "audit", "risk", "compliance"] },
+  { icon: "timer", keywords: ["timer", "timesheet", "schedule"] },
+  { icon: "briefcase", keywords: ["client", "sales", "invoice", "admin", "ops"] }
+];
+
+const TASK_ICON_FALLBACKS: MainIconName[] = ["briefcase", "code", "chart", "document", "target", "book"];
+
 function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
   return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;
-}
-
-function projectIcon(index: number): MainIconName {
-  return ["briefcase", "chart", "phone", "shield", "document"][index % 5] as MainIconName;
 }
 
 function MainIcon({ name }: { name: MainIconName }) {
