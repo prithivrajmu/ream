@@ -41,6 +41,8 @@ let aiSidecar: AiSidecarHandle | null = null;
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayMode: OverlayMode = "default";
 let suppressMainBlurOverlay = false;
+let suppressMainMinimizeOverlay = false;
+let restoreMainFullScreenAfterOverlay = false;
 
 interface DataLocationInfo {
   path: string;
@@ -228,14 +230,15 @@ function createMainWindow(): BrowserWindow {
   // The main workspace is the only window shown at launch. The compact timer
   // appears whenever the user leaves it, either by minimizing or switching apps.
   window.on("minimize", () => {
-    showOverlayWindow();
+    if (!suppressMainMinimizeOverlay) {
+      void showOverlayWindow({ hideMain: false });
+    }
   });
   window.on("blur", () => {
     if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
-      showOverlayWindow();
+      void showOverlayWindow();
     }
   });
-
   return window;
 }
 
@@ -363,6 +366,19 @@ function runWithSuppressedMainBlur(action: () => void) {
   }, 0);
 }
 
+async function runWithSuppressedMainWindowOverlayEvents(action: () => Promise<void>) {
+  suppressMainBlurOverlay = true;
+  suppressMainMinimizeOverlay = true;
+  try {
+    await action();
+  } finally {
+    setTimeout(() => {
+      suppressMainBlurOverlay = false;
+      suppressMainMinimizeOverlay = false;
+    }, 0);
+  }
+}
+
 function hideMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
     return;
@@ -370,6 +386,51 @@ function hideMainWindow() {
 
   runWithSuppressedMainBlur(() => {
     mainWindow?.hide();
+  });
+}
+
+function leaveMainFullScreen(window: BrowserWindow): Promise<void> {
+  const isSimpleFullScreen = process.platform === "darwin" && window.isSimpleFullScreen();
+  if (!window.isFullScreen() && !isSimpleFullScreen) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolveLeave) => {
+    let didResolve = false;
+    const finish = () => {
+      if (didResolve) {
+        return;
+      }
+      didResolve = true;
+      clearTimeout(timeout);
+      window.off("leave-full-screen", finish);
+      resolveLeave();
+    };
+    const timeout = setTimeout(finish, 900);
+
+    window.once("leave-full-screen", finish);
+    if (window.isFullScreen()) {
+      window.setFullScreen(false);
+    }
+    if (isSimpleFullScreen) {
+      window.setSimpleFullScreen(false);
+    }
+  });
+}
+
+async function minimizeMainWindowToDrawer() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    return;
+  }
+
+  const window = mainWindow;
+  await runWithSuppressedMainWindowOverlayEvents(async () => {
+    restoreMainFullScreenAfterOverlay = window.isFullScreen() || (process.platform === "darwin" && window.isSimpleFullScreen());
+    await leaveMainFullScreen(window);
+    if (window.isDestroyed() || !window.isVisible() || window.isMinimized()) {
+      return;
+    }
+    window.minimize();
   });
 }
 
@@ -387,11 +448,22 @@ function destroyOverlayWindow() {
 function showMainWindow() {
   destroyOverlayWindow();
   const window = ensureMainWindow();
+  const shouldRestoreFullScreen = restoreMainFullScreenAfterOverlay;
+  restoreMainFullScreenAfterOverlay = false;
   if (window.isMinimized()) {
     window.restore();
   }
+  if (window.isFullScreen()) {
+    window.setFullScreen(false);
+  }
+  if (process.platform === "darwin" && window.isSimpleFullScreen()) {
+    window.setSimpleFullScreen(false);
+  }
   window.show();
   window.focus();
+  if (shouldRestoreFullScreen) {
+    window.setFullScreen(true);
+  }
 }
 
 function showSettingsWindow() {
@@ -437,9 +509,9 @@ function setOverlayExpanded(expanded: boolean) {
   setOverlayMode(expanded ? "expanded" : "default");
 }
 
-function showOverlayWindow(options: { hideMain?: boolean } = {}) {
+async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
   if (options.hideMain ?? true) {
-    hideMainWindow();
+    await minimizeMainWindowToDrawer();
   }
   const window = ensureOverlayWindow();
   setOverlayMode("default");
@@ -458,13 +530,13 @@ function hideOverlayWindow() {
   overlayWindow.hide();
 }
 
-function toggleOverlayWindow() {
+async function toggleOverlayWindow() {
   const window = ensureOverlayWindow();
   if (window.isVisible()) {
     showMainWindow();
     return;
   }
-  showOverlayWindow();
+  await showOverlayWindow();
 }
 
 function createTrayIcon() {
@@ -492,7 +564,7 @@ function buildAppMenu() {
       label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
-        { label: "Show Overlay", click: () => showOverlayWindow() },
+        { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
         { type: "separator" },
         { role: "quit" }
       ]
@@ -519,16 +591,16 @@ function setupTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Show Main Window", click: showMainWindow },
-      { label: "Show Overlay", click: () => showOverlayWindow() },
+      { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
       { type: "separator" },
       { label: "Quit", click: () => app.quit() }
     ])
   );
-  tray.on("click", toggleOverlayWindow);
+  tray.on("click", () => { void toggleOverlayWindow(); });
 }
 
 function registerShortcuts() {
-  globalShortcut.register("CommandOrControl+Shift+T", toggleOverlayWindow);
+  globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
 }
 
 function sendOverlayContextCommand(command: OverlayContextCommand) {
@@ -649,8 +721,8 @@ app.whenReady().then(() => {
     return window.isAlwaysOnTop();
   });
 
-  ipcMain.handle("window:show-overlay", (_event, options?: { hideMain?: boolean }) => {
-    showOverlayWindow(options);
+  ipcMain.handle("window:show-overlay", async (_event, options?: { hideMain?: boolean }) => {
+    await showOverlayWindow(options);
   });
 
   ipcMain.handle("window:set-overlay-expanded", (_event, expanded: boolean) => {
@@ -672,8 +744,8 @@ app.whenReady().then(() => {
     setOverlayMousePassthrough(window, !interactive);
   });
 
-  ipcMain.handle("window:toggle-overlay", () => {
-    toggleOverlayWindow();
+  ipcMain.handle("window:toggle-overlay", async () => {
+    await toggleOverlayWindow();
   });
 
   ipcMain.handle("window:minimize-overlay", () => {
