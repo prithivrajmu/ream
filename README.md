@@ -2,6 +2,40 @@
 
 A local-first task time tracker for tracking tasks, notes, time entries, and projects.
 
+## Install
+
+### macOS with Homebrew
+
+Ream is distributed through a Homebrew tap for public testing:
+
+```bash
+brew tap prithivrajmu/ream
+brew install ream
+```
+
+This installs the macOS app bundle and exposes a `ream` launcher command.
+
+### Linux with APT
+
+Add the Ream APT source once, then install the Debian package:
+
+```bash
+curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
+sudo apt install ream
+```
+
+### Run from source with Node.js
+
+Use this path if you want to review the code, test unreleased changes, or
+contribute:
+
+```bash
+git clone https://github.com/prithivrajmu/ream.git
+cd ream
+npm install
+npm run dev
+```
+
 ## Goal
 
 Build a clean personal tracker that lets you:
@@ -17,16 +51,22 @@ Build a clean personal tracker that lets you:
 
 ## Distribution
 
-Ream produces desktop artifacts with Electron Builder.
+Ream produces desktop artifacts with Electron Builder and release metadata for
+Homebrew and APT.
 
 ```bash
 npm run dist:linux
 npm run dist:mac:unsigned
+npm run release:checksums
+npm run release:homebrew
+npm run release:apt
 ```
 
 Linux outputs AppImage, Debian, and tarball artifacts in `release/`. macOS
 distribution should be built, signed, and notarized on a macOS machine; see
 [macOS packaging](docs/macos-packaging.md) and [Linux packaging](docs/linux-packaging.md).
+Plain `brew install ream` and plain `sudo apt install ream` without adding a
+Ream package source first require acceptance into upstream package indexes.
 
 ## Product Scope
 

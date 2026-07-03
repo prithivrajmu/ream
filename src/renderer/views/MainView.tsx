@@ -120,7 +120,7 @@ interface WeeklyTimesheet {
   rows: TimesheetRow[];
   dayTotals: number[];
   totalSeconds: number;
-  commentCount: number;
+  notesCount: number;
 }
 
 export function MainView({ appSettings, themeId, onAppSettingsChange }: MainViewProps) {
@@ -318,7 +318,11 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       if (!status) {
         throw new Error("Ollama status is only available in the desktop app.");
       }
-      setSettingsAiStatus(status.ollama.ok ? `Ollama is running. Active model: ${status.model}.` : "Ollama is not running yet.");
+      setSettingsAiStatus(
+        status.ollama.ok
+          ? `Ollama is running.\nActive model: ${status.model}\nFallback model: ${status.fallbackModel}`
+          : "Ollama is not running yet."
+      );
     } catch (statusError) {
       setSettingsAiStatus(statusError instanceof Error ? statusError.message : "Unable to check Ollama.");
     } finally {
@@ -332,27 +336,39 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       if (!openDownload) {
         throw new Error("Ollama download is only available in the desktop app.");
       }
+      const shouldOpen = window.confirm("Open the Ollama download page in your browser?");
+      if (!shouldOpen) {
+        setSettingsAiStatus("Stayed in Ream. No browser opened.");
+        return;
+      }
       await openDownload();
-      setSettingsAiStatus("Opened the Ollama download page.");
+      setSettingsAiStatus("Opened the Ollama download page in your browser.");
     } catch (downloadError) {
       setSettingsAiStatus(downloadError instanceof Error ? downloadError.message : "Unable to open Ollama download.");
     }
   }
 
   async function handlePullOllamaModel() {
-    setSettingsAiBusy(true);
-    setSettingsAiStatus(`Installing ${ollamaModel.trim() || DEFAULT_OLLAMA_MODEL}...`);
     try {
-      const result = await window.reamDesktop?.pullOllamaModel?.(ollamaModel.trim() || DEFAULT_OLLAMA_MODEL);
-      if (!result) {
-        throw new Error("Model install is only available in the desktop app.");
+      const model = ollamaModel.trim() || DEFAULT_OLLAMA_MODEL;
+      const openLibrary = window.reamDesktop?.openOllamaLibrary;
+      if (!openLibrary) {
+        throw new Error("Ollama library is only available in the desktop app.");
       }
-      setSettingsAiStatus(result.output || `${result.model} is installed.`);
+      const shouldOpen = window.confirm(`Open the Ollama library in your browser for ${model}?`);
+      if (!shouldOpen) {
+        setSettingsAiStatus("Stayed in Ream. No browser opened.");
+        return;
+      }
+      await openLibrary(model);
+      setSettingsAiStatus(`Opened the Ollama library in your browser for ${model}.`);
     } catch (pullError) {
-      setSettingsAiStatus(pullError instanceof Error ? pullError.message : "Unable to install Ollama model.");
-    } finally {
-      setSettingsAiBusy(false);
+      setSettingsAiStatus(pullError instanceof Error ? pullError.message : "Unable to open the Ollama library.");
     }
+  }
+
+  function applyLocalAiSuggestionUpdate(updatedSuggestion: NoteAiSuggestion) {
+    setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
   }
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
@@ -656,7 +672,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   async function handleRejectAiSuggestion(preview: AiNotePreview) {
     setAiError(null);
     try {
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      applyLocalAiSuggestionUpdate(updatedSuggestion);
       setAiPreview(null);
     } catch (rejectError) {
       setAiError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
@@ -667,7 +684,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setAiError(null);
     try {
       await navigator.clipboard.writeText(preview.output.clean_note);
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      applyLocalAiSuggestionUpdate(updatedSuggestion);
     } catch (copyError) {
       setAiError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
     }
@@ -780,7 +798,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     { id: "notes", label: "Notes", icon: "note" },
     { id: "projects", label: "Projects", icon: "briefcase" },
     { id: "backup", label: "Settings", icon: "settings" },
-    { id: "dev", label: "Dev", icon: "chart" }
+    { id: "dev", label: "AI Stats", icon: "chart" }
   ];
 
   const headerAction = (() => {
@@ -933,7 +951,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
               {weeklyTimesheet.rows.length === 0 ? <div className="timesheet-empty">Track time on a task this week to build your timesheet.</div> : weeklyTimesheet.rows.map((row) => <Fragment key={row.taskId}>
                 <div className="timesheet-task-cell" key={`${row.taskId}-task`}><div><strong>{row.title}</strong><span className="timesheet-chip-row">{[...row.projects, ...row.tags].slice(0, 4).map((tag) => <i key={tag}>{tag}</i>)}</span></div><b className={row.status === "Archived" ? "is-archived" : ""}>{row.status}</b></div>
-                {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="comment" />{cell.entryCount}</small> : null}</div>)}
+                {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="clock" />{cell.entryCount}</small> : null}</div>)}
                 <div className="timesheet-total-cell" key={`${row.taskId}-total`}>{formatTimesheetDuration(row.totalSeconds)}</div>
               </Fragment>)}
 
@@ -942,7 +960,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               <div className="timesheet-total-cell timesheet-footer-grand">{formatTimesheetDuration(weeklyTimesheet.totalSeconds)}</div>
             </div>
           </div>
-          <footer className="timesheet-comments"><MainIcon name="comment" />Comments ({weeklyTimesheet.commentCount}) across this week</footer>
+          <footer className="timesheet-notes"><MainIcon name="note" />Notes ({weeklyTimesheet.notesCount}) across this week</footer>
         </section> : null}
 
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
@@ -999,8 +1017,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
             <p>Improve notes with a local Ollama model.</p>
             <div className="settings-model-badges"><span>Default: <code>{DEFAULT_OLLAMA_MODEL}</code></span><span>Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code></span></div>
             <label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
-            <div className="settings-ai-actions"><button disabled={settingsAiBusy} onClick={() => void handleCheckOllamaStatus()} type="button"><MainIcon name="chart" />Check</button><button onClick={() => void handleOpenOllamaDownload()} type="button"><MainIcon name="timer" />Install Ollama</button><button disabled={settingsAiBusy} onClick={() => void handlePullOllamaModel()} type="button"><MainIcon name="overlay" />Pull model</button></div>
-            {settingsAiStatus ? <p className="settings-ai-status">{settingsAiStatus}</p> : null}
+            <div className="settings-ai-actions"><button disabled={settingsAiBusy} onClick={() => void handleCheckOllamaStatus()} type="button"><MainIcon name="chart" />Check</button><button onClick={() => void handleOpenOllamaDownload()} type="button"><MainIcon name="timer" />Install Ollama</button><button onClick={() => void handlePullOllamaModel()} type="button"><MainIcon name="overlay" />Pull model</button></div>
+            <p aria-live="polite" className="settings-ai-status">{settingsAiStatus ?? " "}</p>
           </section>
 
           <section className="dashboard-panel review-settings-panel">
@@ -1067,7 +1085,393 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   );
 }
 
-type MainIconName = "chevron" | "clock" | "home" | "list" | "more" | "note" | "overlay" | "pen" | "play" | "plus" | "settings" | "timer" | "briefcase" | "chart" | "phone" | "shield" | "document";
+function MetricPill({ icon, label, value, delta }: { icon: MainIconName; label: string; value: string; delta: string }) {
+  return <article><span><MainIcon name={icon} /></span><div><p>{label}</p><strong>{value}</strong><small>{delta}</small></div></article>;
+}
+
+function SectionNumber({ number, title }: { number: string; title: string }) {
+  return <h2 className="time-section-title"><span>{number}</span>{title}</h2>;
+}
+
+function InsightRanking({ rows, totalSeconds }: { rows: InsightSummaryRow[]; totalSeconds: number }) {
+  return <div className="time-ranking-list">
+    {rows.length === 0 ? <p className="empty-state">Tracked time will appear here.</p> : rows.slice(0, 6).map((row, index) => <article key={row.id}><span className={`time-rank-icon time-tone-bg-${index}`}><MainIcon name={row.icon} /></span><div><div><strong>{row.title}</strong><small>{formatCompactDuration(row.durationSeconds)}</small><b>{totalSeconds ? row.percent : 0}%</b></div><i><em style={cssVars({ "--bar-width": `${row.percent}%` })} /></i><p>{row.meta}</p></div></article>)}
+    {rows.length ? <footer><span>Total</span><strong>{formatCompactDuration(totalSeconds)}</strong></footer> : null}
+  </div>;
+}
+
+function HighlightItem({ icon, label, value, detail }: { icon: MainIconName; label: string; value: string; detail: string }) {
+  return <article><span><MainIcon name={icon} />{label}</span><strong>{value}</strong><p>{detail}</p></article>;
+}
+
+function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode): TimeInsights {
+  const range = getDateRange(mode);
+  const rangeMs = range.end.getTime() - range.start.getTime();
+  const previousRange = { start: new Date(range.start.getTime() - rangeMs), end: range.start };
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const periodEntries = entries.filter((entry) => isEntryInRange(entry, range.start, range.end));
+  const previousEntries = entries.filter((entry) => isEntryInRange(entry, previousRange.start, previousRange.end));
+  const totalSeconds = periodEntries.reduce((total, entry) => total + entry.durationSeconds, 0);
+  const previousTotalSeconds = previousEntries.reduce((total, entry) => total + entry.durationSeconds, 0);
+  const taskTotals = new Map<string, InsightSummaryRow>();
+  const projectTotals = new Map<string, InsightSummaryRow>();
+  const dayTotals = new Map<string, { label: string; durationSeconds: number }>();
+  let focusSeconds = 0;
+
+  for (const entry of periodEntries) {
+    const task = taskById.get(entry.taskId);
+    const taskTitle = task?.title ?? "Archived task";
+    const projectsForTask = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
+    const taskRow = taskTotals.get(entry.taskId) ?? {
+      id: entry.taskId,
+      title: taskTitle,
+      meta: projectsForTask.length ? projectsForTask.join(" · ") : "No project",
+      durationSeconds: 0,
+      percent: 0,
+      icon: summaryIcon(taskTotals.size)
+    };
+    taskRow.durationSeconds += entry.durationSeconds;
+    taskTotals.set(entry.taskId, taskRow);
+
+    const allocationTargets = projectsForTask.length ? projectsForTask : ["No project"];
+    const allocatedSeconds = entry.durationSeconds / allocationTargets.length;
+    allocationTargets.forEach((projectTitle, index) => {
+      const projectRow = projectTotals.get(projectTitle) ?? {
+        id: projectTitle,
+        title: projectTitle,
+        meta: `${taskTitle}${allocationTargets.length > 1 ? " shared" : ""}`,
+        durationSeconds: 0,
+        percent: 0,
+        icon: projectSummaryIcon(projectTotals.size + index)
+      };
+      projectRow.durationSeconds += allocatedSeconds;
+      projectTotals.set(projectTitle, projectRow);
+    });
+
+    if (entry.durationSeconds >= 25 * 60) {
+      focusSeconds += entry.durationSeconds;
+    }
+
+    const dayKey = toLocalDateKey(new Date(entry.startedAt));
+    const day = dayTotals.get(dayKey) ?? { label: formatDayHighlight(entry.startedAt), durationSeconds: 0 };
+    day.durationSeconds += entry.durationSeconds;
+    dayTotals.set(dayKey, day);
+  }
+
+  const taskRows = sortSummaryRows(taskTotals, totalSeconds);
+  const projectRows = sortSummaryRows(projectTotals, totalSeconds);
+  const buckets = buildInsightBuckets(range, mode, periodEntries, taskRows.slice(0, 6));
+  const heatmap = buildHeatmap(range, mode, periodEntries);
+  const daysInRange = Math.max(1, Math.round(rangeMs / 86_400_000));
+  const sessionRows = [...periodEntries]
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+    .slice(0, 7)
+    .map((entry, index) => {
+      const task = taskById.get(entry.taskId);
+      const projectNames = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
+      return {
+        id: entry.id,
+        date: formatShortDate(entry.startedAt),
+        task: task?.title ?? "Archived task",
+        taskTone: index % 6,
+        project: projectNames.join(" · ") || "No project",
+        durationSeconds: entry.durationSeconds,
+        note: entry.note
+      };
+    });
+  const bestDay = [...dayTotals.values()].sort((left, right) => right.durationSeconds - left.durationSeconds)[0] ?? null;
+  const longestEntry = [...periodEntries].sort((left, right) => right.durationSeconds - left.durationSeconds)[0] ?? null;
+
+  return {
+    range,
+    previousTotalSeconds,
+    totalSeconds,
+    dailyAverageSeconds: totalSeconds / daysInRange,
+    focusRatio: totalSeconds ? Math.round(focusSeconds / totalSeconds * 100) : 0,
+    buckets,
+    taskRows,
+    projectRows,
+    sessionRows,
+    heatmap,
+    bestDay,
+    longestEntry,
+    topTask: taskRows[0] ?? null
+  };
+}
+
+function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Project[]): WeeklyTimesheet {
+  const range = getDateRange("week");
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(range.start, index);
+    return {
+      date,
+      label: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date),
+      shortDate: new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(date)
+    };
+  });
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const rows = new Map<string, TimesheetRow>();
+  const dayTotals = Array.from({ length: 7 }, () => 0);
+  let notesCount = 0;
+
+  for (const entry of entries.filter((candidate) => isEntryInRange(candidate, range.start, range.end))) {
+    const task = taskById.get(entry.taskId);
+    const startedAt = new Date(entry.startedAt);
+    const dayIndex = Math.floor((startOfDay(startedAt).getTime() - range.start.getTime()) / 86_400_000);
+    if (dayIndex < 0 || dayIndex >= days.length) {
+      continue;
+    }
+
+    const row = rows.get(entry.taskId) ?? {
+      taskId: entry.taskId,
+      title: task?.title ?? "Archived task",
+      projects: task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [],
+      tags: task?.tags ?? [],
+      status: task?.archived ? "Archived" : "In progress",
+      cells: Array.from({ length: 7 }, () => ({ durationSeconds: 0, entryCount: 0 })),
+      totalSeconds: 0
+    };
+    row.cells[dayIndex].durationSeconds += entry.durationSeconds;
+    row.cells[dayIndex].entryCount += 1;
+    row.totalSeconds += entry.durationSeconds;
+    rows.set(entry.taskId, row);
+    dayTotals[dayIndex] += entry.durationSeconds;
+    if (entry.note.trim()) {
+      notesCount += 1;
+    }
+  }
+
+  const sortedRows = [...rows.values()].sort((left, right) => {
+    if (right.totalSeconds !== left.totalSeconds) {
+      return right.totalSeconds - left.totalSeconds;
+    }
+    return left.title.localeCompare(right.title, undefined, { sensitivity: "base" });
+  });
+
+  return {
+    range,
+    days,
+    rows: sortedRows,
+    dayTotals,
+    totalSeconds: dayTotals.reduce((total, day) => total + day, 0),
+    notesCount
+  };
+}
+
+function buildInsightBuckets(range: DateRange, mode: TimeViewMode, entries: TimeEntry[], taskRows: InsightSummaryRow[]): InsightBucket[] {
+  const buckets = createBucketShells(range, mode);
+  const taskIndexById = new Map(taskRows.map((row, index) => [row.id, index]));
+
+  for (const entry of entries) {
+    const bucketIndex = findBucketIndex(range, mode, new Date(entry.startedAt));
+    const taskIndex = taskIndexById.get(entry.taskId);
+    if (bucketIndex < 0 || !buckets[bucketIndex] || taskIndex === undefined) {
+      continue;
+    }
+    buckets[bucketIndex].durations[taskIndex] += entry.durationSeconds;
+    buckets[bucketIndex].totalSeconds += entry.durationSeconds;
+  }
+
+  return buckets;
+}
+
+function buildHeatmap(range: DateRange, mode: TimeViewMode, entries: TimeEntry[]) {
+  const bucketCount = createBucketShells(range, mode).length;
+  const heatmap = [
+    { label: "Morning", periods: Array.from({ length: bucketCount }, () => 0) },
+    { label: "Afternoon", periods: Array.from({ length: bucketCount }, () => 0) },
+    { label: "Evening", periods: Array.from({ length: bucketCount }, () => 0) }
+  ];
+
+  for (const entry of entries) {
+    const startedAt = new Date(entry.startedAt);
+    const bucketIndex = findBucketIndex(range, mode, startedAt);
+    if (bucketIndex < 0 || bucketIndex >= bucketCount) {
+      continue;
+    }
+    const hour = startedAt.getHours();
+    const rowIndex = hour < 12 ? 0 : hour < 17 ? 1 : 2;
+    heatmap[rowIndex].periods[bucketIndex] += entry.durationSeconds;
+  }
+
+  return heatmap;
+}
+
+function createBucketShells(range: DateRange, mode: TimeViewMode): InsightBucket[] {
+  if (mode === "day") {
+    return ["Morning", "Afternoon", "Evening", "Night"].map((label, index) => ({ key: `${label}-${index}`, label, durations: Array.from({ length: 6 }, () => 0), totalSeconds: 0 }));
+  }
+
+  if (mode === "week") {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = addDays(range.start, index);
+      return { key: toLocalDateKey(date), label: new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric" }).format(date), durations: Array.from({ length: 6 }, () => 0), totalSeconds: 0 };
+    });
+  }
+
+  const buckets: InsightBucket[] = [];
+  let cursor = new Date(range.start);
+  let index = 0;
+  while (cursor < range.end) {
+    const next = new Date(Math.min(addDays(cursor, 7).getTime(), range.end.getTime()));
+    buckets.push({
+      key: `${toLocalDateKey(cursor)}-${index}`,
+      label: `${new Intl.DateTimeFormat(undefined, { day: "numeric" }).format(cursor)}-${new Intl.DateTimeFormat(undefined, { day: "numeric" }).format(addDays(next, -1))}`,
+      durations: Array.from({ length: 6 }, () => 0),
+      totalSeconds: 0
+    });
+    cursor = next;
+    index += 1;
+  }
+  return buckets;
+}
+
+function findBucketIndex(range: DateRange, mode: TimeViewMode, date: Date): number {
+  if (mode === "day") {
+    const hour = date.getHours();
+    if (hour >= 5 && hour < 12) {
+      return 0;
+    }
+    if (hour >= 12 && hour < 17) {
+      return 1;
+    }
+    if (hour >= 17 && hour < 21) {
+      return 2;
+    }
+    return 3;
+  }
+
+  const days = Math.floor((startOfDay(date).getTime() - range.start.getTime()) / 86_400_000);
+  return mode === "week" ? days : Math.floor(days / 7);
+}
+
+function sortSummaryRows(rows: Map<string, InsightSummaryRow>, totalSeconds: number): InsightSummaryRow[] {
+  return [...rows.values()]
+    .sort((left, right) => {
+      if (right.durationSeconds !== left.durationSeconds) {
+        return right.durationSeconds - left.durationSeconds;
+      }
+      return left.title.localeCompare(right.title, undefined, { sensitivity: "base" });
+    })
+    .map((row) => ({ ...row, durationSeconds: Math.round(row.durationSeconds), percent: totalSeconds ? Math.round(row.durationSeconds / totalSeconds * 100) : 0 }));
+}
+
+function getDateRange(mode: TimeViewMode, today = new Date()): DateRange {
+  if (mode === "day") {
+    const start = startOfDay(today);
+    const end = addDays(start, 1);
+    return { start, end, label: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(start) };
+  }
+
+  if (mode === "week") {
+    const start = startOfWeek(today);
+    const end = addDays(start, 7);
+    return { start, end, label: `${formatRangeDate(start)} - ${formatRangeDate(addDays(end, -1))}` };
+  }
+
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return { start, end, label: new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(start) };
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfWeek(date: Date): Date {
+  const day = date.getDay();
+  const daysFromMonday = (day + 6) % 7;
+  return addDays(startOfDay(date), -daysFromMonday);
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isEntryInRange(entry: TimeEntry, start: Date, end: Date): boolean {
+  const startedAt = new Date(entry.startedAt).getTime();
+  return startedAt >= start.getTime() && startedAt < end.getTime();
+}
+
+function toLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatRangeDate(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function formatDayHighlight(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatCompactDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  if (hours === 0 && minutes === 0) {
+    return "0h 00m";
+  }
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+}
+
+function formatTimesheetDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+
+function formatPercentDelta(currentSeconds: number, previousSeconds: number): string {
+  if (!previousSeconds && currentSeconds) {
+    return "new time tracked";
+  }
+  if (!currentSeconds && !previousSeconds) {
+    return "no prior time";
+  }
+  const delta = Math.round((currentSeconds - previousSeconds) / Math.max(1, previousSeconds) * 100);
+  return `${delta >= 0 ? "+" : ""}${delta}% vs previous`;
+}
+
+function buildReflectionCopy(insights: TimeInsights): string {
+  if (!insights.totalSeconds) {
+    return "No tracked time in this range yet. Start a timer or add entries to see patterns across your work.";
+  }
+  const topTask = insights.topTask?.title ?? "your top task";
+  const focus = insights.focusRatio >= 60 ? "strong focus blocks" : "a lighter focus mix";
+  return `${topTask} led this range with ${focus} and ${insights.sessionRows.length} completed sessions.`;
+}
+
+function normalizeHeat(durationSeconds: number, heatmap: Array<{ periods: number[] }>): number {
+  const max = Math.max(1, ...heatmap.flatMap((row) => row.periods));
+  return durationSeconds / max;
+}
+
+function summaryIcon(index: number): MainIconName {
+  return ["code", "users", "book", "document", "target", "briefcase"][index % 6] as MainIconName;
+}
+
+function projectSummaryIcon(index: number): MainIconName {
+  return ["globe", "chart", "users", "book", "settings", "more"][index % 6] as MainIconName;
+}
+
+function capitalize(value: string): string {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function cssVars(values: Record<string, string>): CSSProperties {
+  return values as CSSProperties;
+}
+
+type MainIconName = "calendar" | "chevron" | "clock" | "comment" | "filter" | "globe" | "home" | "info" | "list" | "more" | "note" | "overlay" | "pen" | "play" | "plus" | "search" | "settings" | "sparkle" | "target" | "timer" | "trend" | "trophy" | "users" | "briefcase" | "book" | "chart" | "code" | "phone" | "shield" | "document";
 
 function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
   return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;

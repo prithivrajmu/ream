@@ -122,25 +122,30 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
 
   async function handleOpenOllamaDownload() {
     try {
+      const shouldOpen = window.confirm("Open the Ollama download page in your browser?");
+      if (!shouldOpen) {
+        setAiStatus("Stayed in Ream. No browser opened.");
+        return;
+      }
       await window.reamDesktop?.openOllamaDownload?.();
+      setAiStatus("Opened the Ollama download page in your browser.");
     } catch (downloadError) {
       setAiStatus(downloadError instanceof Error ? downloadError.message : "Unable to open Ollama download.");
     }
   }
 
   async function handlePullOllamaModel() {
-    setAiBusy(true);
-    setAiStatus(`Installing ${ollamaModel}...`);
     try {
-      const result = await window.reamDesktop?.pullOllamaModel?.(ollamaModel);
-      if (!result) {
-        throw new Error("Model install is only available in the desktop app.");
+      const model = ollamaModel.trim() || DEFAULT_OLLAMA_MODEL;
+      const shouldOpen = window.confirm(`Open the Ollama library in your browser for ${model}?`);
+      if (!shouldOpen) {
+        setAiStatus("Stayed in Ream. No browser opened.");
+        return;
       }
-      setAiStatus(result.output || `${result.model} is installed.`);
+      await window.reamDesktop?.openOllamaLibrary?.(model);
+      setAiStatus(`Opened the Ollama library in your browser for ${model}.`);
     } catch (pullError) {
-      setAiStatus(pullError instanceof Error ? pullError.message : "Unable to install Ollama model.");
-    } finally {
-      setAiBusy(false);
+      setAiStatus(pullError instanceof Error ? pullError.message : "Unable to open the Ollama library.");
     }
   }
 

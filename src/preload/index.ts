@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus, OllamaPullResult } from "../shared/ai";
+import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus } from "../shared/ai";
 import type { OverlayMode } from "../shared/overlayBounds";
 
 export interface ReamDataLocationInfo {
@@ -33,7 +33,7 @@ const desktopApi = {
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
   getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
   openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
-  pullOllamaModel: (model: string) => ipcRenderer.invoke("ai:pull-ollama-model", model) as Promise<OllamaPullResult>,
+  openOllamaLibrary: (model: string) => ipcRenderer.invoke("ai:open-ollama-library", model) as Promise<void>,
   getDataLocation: () => ipcRenderer.invoke("data:get-location") as Promise<ReamDataLocationInfo>,
   chooseDataLocation: () => ipcRenderer.invoke("data:choose-location") as Promise<ReamDataLocationInfo | null>,
   onOverlayExpandedChanged: (callback: (expanded: boolean) => void) => {

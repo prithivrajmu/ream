@@ -120,7 +120,7 @@ Tasks:
 - Add a local HTTP sidecar for AI requests.
 - Validate structured JSON responses before the renderer sees them.
 - Improve task notes with a preview, accept/reject, and copy workflow.
-- Record request duration and terminal status for Dev telemetry.
+- Record request duration and terminal status for AI Stats telemetry.
 - Keep raw notes unchanged unless the user explicitly accepts the suggestion.
 - Document the sidecar endpoints, model settings, and fallback behavior.
 

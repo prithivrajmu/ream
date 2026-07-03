@@ -745,6 +745,9 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     }
 
     setError(null);
+    if (expanded && !notesExpanded) {
+      setNotesExpanded(true);
+    }
     setAiLoading(true);
 
     try {
@@ -798,7 +801,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setError(null);
     try {
       const updated = await updateActiveTimerNote(db, preview.output.clean_note);
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setActiveTimer(updated);
       setNote(updated.note);
       setNoteDirty(false);
@@ -811,7 +815,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   async function handleRejectAiSuggestion(preview: OverlayAiPreview) {
     setError(null);
     try {
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setAiPreview(null);
     } catch (rejectError) {
       setError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
@@ -822,7 +827,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setError(null);
     try {
       await navigator.clipboard.writeText(preview.output.clean_note);
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
     }
@@ -840,7 +846,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
 
     const noteText = note.trim();
     const savedSuggestion = aiSuggestionByNoteId.get(activeTimer.id);
-    if (savedSuggestion && savedSuggestion.inputText === noteText) {
+    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === noteText)) {
       return <button className="reference-ai-button is-muted" onClick={() => void handleOpenSavedAiSuggestion({
         suggestionId: savedSuggestion.id,
         activeTimerId: activeTimer.id,
@@ -987,20 +993,24 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               />
               {aiPreview ? (
                 <div className="reference-ai-preview">
-                  <section>
+                  <section className="reference-ai-preview-panel">
                     <h3>Raw note</h3>
-                    <p>{aiPreview.rawNote}</p>
+                    <div className="reference-ai-preview-body">
+                      <p>{aiPreview.rawNote}</p>
+                    </div>
                   </section>
-                  <section>
+                  <section className="reference-ai-preview-panel is-suggestion">
                     <h3>AI suggestion</h3>
-                    <p>{aiPreview.output.clean_note}</p>
-                    <dl>
-                      <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
-                      <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
-                      <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
-                      <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
-                    </dl>
-                    <small>Model: {aiPreview.model}</small>
+                    <div className="reference-ai-preview-body">
+                      <p>{aiPreview.output.clean_note}</p>
+                      <dl>
+                        <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
+                        <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
+                        <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
+                        <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
+                      </dl>
+                      <small>Model: {aiPreview.model}</small>
+                    </div>
                     <div className="reference-ai-actions">
                       <button onClick={() => void handleAcceptAiSuggestion(aiPreview)}>Accept</button>
                       <button onClick={() => void handleCopyAiSuggestion(aiPreview)}>Copy suggestion</button>

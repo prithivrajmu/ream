@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  linux:
+    name: Build Linux packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run dist:linux
+      - run: npm run release:checksums
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.tar.gz
+            release/SHA256SUMS
+
+  macos:
+    name: Build macOS packages
+    runs-on: macos-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run dist:mac
+      - run: npm run release:checksums
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS
+
+  publish:
+    name: Publish release indexes
+    needs:
+      - linux
+      - macos
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: release
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: release
+
+      - run: npm run release:checksums
+      - run: npm run release:homebrew
+        env:
+          GITHUB_REPOSITORY: prithivrajmu/ream
+          REAM_RELEASE_TAG: ${{ github.ref_name }}
+
+      - name: Publish Homebrew tap formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not configured; skipping Homebrew tap publish."
+            exit 0
+          fi
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/prithivrajmu/homebrew-ream.git" homebrew-tap
+          mkdir -p homebrew-tap/Formula
+          cp packaging/homebrew/Formula/ream.rb homebrew-tap/Formula/ream.rb
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/ream.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula is already current."
+          else
+            git commit -m "Update ream ${{ github.ref_name }}"
+            git push
+          fi
+
+      - run: npm run release:apt
+
+      - name: Sign APT metadata
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "${APT_GPG_PRIVATE_KEY}" ]; then
+            echo "APT_GPG_PRIVATE_KEY is required to publish signed APT metadata." >&2
+            exit 1
+          fi
+
+          install -m 700 -d ~/.gnupg
+          printf '%s' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          GPG_KEY_ID="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^sec:/ { print $5; exit }')"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${APT_GPG_PASSPHRASE}" --output dist/apt/ream-archive-keyring.gpg --export "${GPG_KEY_ID}"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${APT_GPG_PASSPHRASE}" --default-key "${GPG_KEY_ID}" --clearsign --output dist/apt/dists/stable/InRelease dist/apt/dists/stable/Release
+          gpg --batch --yes --pinentry-mode loopback --passphrase "${APT_GPG_PASSPHRASE}" --default-key "${GPG_KEY_ID}" --detach-sign --armor --output dist/apt/dists/stable/Release.gpg dist/apt/dists/stable/Release
+
+      - name: Stage Pages content
+        run: |
+          mkdir -p public/apt
+          cp -R dist/apt/. public/apt/
+          mkdir -p public/homebrew
+          cp packaging/homebrew/Formula/ream.rb public/homebrew/ream.rb
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - uses: actions/deploy-pages@v4
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.AppImage
+            release/*.deb
+            release/*.tar.gz
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS
+            packaging/homebrew/Formula/ream.rb

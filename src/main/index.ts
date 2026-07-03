@@ -1,5 +1,4 @@
 import { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, ipcMain, nativeImage, screen, shell } from "electron";
-import { execFile } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
@@ -8,7 +7,6 @@ import {
   type ImproveNoteRequest,
   type ImproveNoteResult,
   type OllamaHealthStatus,
-  type OllamaPullResult,
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
@@ -28,6 +26,7 @@ const LEGACY_USER_DATA_DIR = "timesheet-tracker";
 const DATA_LOCATION_CONFIG_FILE = "ream-data-location.json";
 const OVERLAY_STATE_CONFIG_FILE = "ream-overlay-state.json";
 const OLLAMA_DOWNLOAD_URL = "https://ollama.com/download";
+const OLLAMA_LIBRARY_URL = "https://ollama.com/library";
 
 const defaultUserDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
 const userDataPath = readConfiguredUserDataPath() ?? defaultUserDataPath;
@@ -318,6 +317,7 @@ function createOverlayWindow(): BrowserWindow {
   });
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  window.setBackgroundColor("#00000000");
   applyOverlayPinned(window, true);
   setOverlayMousePassthrough(window, false);
   window.loadURL(rendererUrl("/overlay"));
@@ -444,6 +444,7 @@ function showOverlayWindow(options: { hideMain?: boolean } = {}) {
   const window = ensureOverlayWindow();
   setOverlayMode("default");
   setOverlayMousePassthrough(window, false);
+  window.setBackgroundColor("#00000000");
   window.show();
   applyOverlayPinned(window, true);
   window.focus();
@@ -569,23 +570,6 @@ async function readOllamaStatus(): Promise<OllamaHealthStatus> {
   return normalizeOllamaHealthStatus(payload);
 }
 
-async function pullOllamaModel(model: string): Promise<OllamaPullResult> {
-  const normalizedModel = normalizeOllamaModelName(model);
-  return new Promise((resolve, reject) => {
-    execFile("ollama", ["pull", normalizedModel], { timeout: 600_000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        const message = error.message.includes("ENOENT")
-          ? "Ollama CLI is not installed or is not on PATH."
-          : stderr.trim() || error.message;
-        reject(new Error(message));
-        return;
-      }
-
-      resolve({ model: normalizedModel, output: [stdout, stderr].map((value) => value.trim()).filter(Boolean).join("\n") });
-    });
-  });
-}
-
 function normalizeOllamaModelName(value: string): string {
   const model = value.trim();
   if (!model) {
@@ -597,6 +581,28 @@ function normalizeOllamaModelName(value: string): string {
   }
 
   return model;
+}
+
+function getOllamaLibraryUrl(model: string): string {
+  try {
+    const normalizedModel = normalizeOllamaModelName(model);
+    const baseModel = normalizedModel.split(":")[0]?.trim();
+    return baseModel ? `${OLLAMA_LIBRARY_URL}/${encodeURIComponent(baseModel)}` : OLLAMA_LIBRARY_URL;
+  } catch {
+    return OLLAMA_LIBRARY_URL;
+  }
+}
+
+function bringExternalBrowserToFront(url: string) {
+  if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+    overlayWindow.hide();
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    hideMainWindow();
+  }
+
+  void shell.openExternal(url);
 }
 
 function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
@@ -711,10 +717,12 @@ app.whenReady().then(() => {
   ipcMain.handle("ai:ollama-status", () => readOllamaStatus());
 
   ipcMain.handle("ai:open-ollama-download", async () => {
-    await shell.openExternal(OLLAMA_DOWNLOAD_URL);
+    bringExternalBrowserToFront(OLLAMA_DOWNLOAD_URL);
   });
 
-  ipcMain.handle("ai:pull-ollama-model", (_event, model: string) => pullOllamaModel(model));
+  ipcMain.handle("ai:open-ollama-library", async (_event, model: string) => {
+    bringExternalBrowserToFront(getOllamaLibraryUrl(model));
+  });
 
   app.on("activate", () => {
     ensureMainWindow();
