@@ -319,23 +319,6 @@ code {
   align-self: end;
 }
 
-.pet-state-chip {
-  position: absolute;
-  right: 18px;
-  bottom: 10px;
-  max-width: 180px;
-  padding: 5px 9px;
-  border: 1px solid rgb(139 94 49 / 18%);
-  border-radius: 999px;
-  color: #5a3a24;
-  background: rgb(255 247 232 / 88%);
-  box-shadow: 0 8px 18px rgb(78 52 29 / 12%), inset 0 1px 0 rgb(255 255 255 / 66%);
-  font-size: 11px;
-  font-weight: 780;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .pet-message {
   position: absolute;
   z-index: 2;

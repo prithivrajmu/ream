@@ -89,56 +89,56 @@ const PET_STATES: Record<PetStateId, PetStateDefinition> = {
     id: "timer-running",
     label: "Timer running",
     mood: "Energetic, alert, cheerful.",
-    crop: { x: 34, y: 146, width: 258, height: 304, scale: 0.64 },
+    crop: { x: 20, y: 135, width: 300, height: 330, scale: 0.58 },
     messages: ["I am monitoring productivity. Also crumbs.", "Run, apparently. I support this chaos.", "Fine, we are focused. Try to look natural."]
   },
   "timer-paused": {
     id: "timer-paused",
     label: "Timer paused",
     mood: "Sitting still, slightly puzzled.",
-    crop: { x: 382, y: 140, width: 268, height: 314, scale: 0.63 },
+    crop: { x: 370, y: 135, width: 300, height: 330, scale: 0.58 },
     messages: ["Paused? Bold strategy.", "I sat down emotionally and physically.", "Wake me when ambition resumes."]
   },
   "no-timer-today": {
     id: "no-timer-today",
     label: "No timer run today",
     mood: "Slumped, sleepy, low-energy.",
-    crop: { x: 700, y: 302, width: 318, height: 160, scale: 0.68 },
+    crop: { x: 660, y: 278, width: 390, height: 210, scale: 0.56 },
     messages: ["A historic absence of timers.", "Nothing tracked. I respect the mystery.", "Today is currently theoretical."]
   },
   "deep-focus": {
     id: "deep-focus",
     label: "Deep focus",
     mood: "Determined, focused, confident.",
-    crop: { x: 1082, y: 154, width: 254, height: 294, scale: 0.66 },
+    crop: { x: 1060, y: 140, width: 300, height: 330, scale: 0.58 },
     messages: ["Do not disturb the wrinkles.", "We are locked in. I look serious for both of us.", "Deep focus detected. I have tightened my face."]
   },
   "task-completed": {
     id: "task-completed",
     label: "Task completed",
     mood: "Very happy, celebratory, proud.",
-    crop: { x: 52, y: 570, width: 258, height: 318, scale: 0.62 },
+    crop: { x: 35, y: 550, width: 300, height: 350, scale: 0.56 },
     messages: ["Acceptable. I will allow one celebration.", "Task done. My paws were instrumental.", "Victory. Try not to make it weird."]
   },
   idle: {
     id: "idle",
     label: "Idle / no active task",
     mood: "Curious, sniffing, looking around.",
-    crop: { x: 386, y: 604, width: 260, height: 276, scale: 0.66 },
+    crop: { x: 350, y: 570, width: 330, height: 330, scale: 0.56 },
     messages: ["I am available for vague supervision.", "No active task. Suspiciously peaceful.", "I sniffed the backlog. It sniffed back."]
   },
   "break-time": {
     id: "break-time",
     label: "Break time",
     mood: "Relaxed, stretching, content.",
-    crop: { x: 684, y: 700, width: 360, height: 172, scale: 0.58 },
+    crop: { x: 660, y: 680, width: 410, height: 220, scale: 0.54 },
     messages: ["Break approved. Hydrate, tiny legend.", "Stretching is productivity with fewer spreadsheets.", "I scheduled this nap-adjacent pause."]
   },
   "daily-goal-met": {
     id: "daily-goal-met",
     label: "Daily goal met",
     mood: "Cozy, satisfied, sleepy-happy.",
-    crop: { x: 1080, y: 700, width: 326, height: 174, scale: 0.62 },
+    crop: { x: 1060, y: 680, width: 360, height: 220, scale: 0.56 },
     messages: ["Daily goal met. I am retiring immediately.", "You did it. I will now be insufferably cozy.", "Enough productivity. The wrinkles demand rest."]
   }
 };
@@ -361,14 +361,18 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
       dispatchInteraction({ type: "set-mode", mode: nextExpanded ? "expanded" : "default" });
     });
 
-    window.reamDesktop?.getOverlayMode?.()
-      .then((mode) => {
+    const overlayModeRequest = window.reamDesktop?.getOverlayMode?.();
+    if (overlayModeRequest) {
+      overlayModeRequest.then((mode) => {
         dispatchInteraction({ type: "set-mode", mode });
         if (mode === "default") {
           scheduleAutoCollapse();
         }
       })
-      .catch(() => undefined);
+        .catch(() => undefined);
+    } else {
+      scheduleAutoCollapse();
+    }
 
     return () => {
       unsubscribeMode?.();
@@ -431,10 +435,8 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     }
 
     const timeoutId = window.setTimeout(() => {
+      void setOverlayMode("tiny");
       setPetMessage(null);
-      if (interactionStateRef.current.mode === "pet") {
-        void setOverlayMode("tiny");
-      }
     }, PET_MESSAGE_DURATION_MS);
 
     return () => window.clearTimeout(timeoutId);
@@ -945,7 +947,6 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
         <span className="pet-sprite-frame" style={spriteStyle}>
           <img alt="" draggable={false} src={sharpeiStateSheet} />
         </span>
-        <span className="pet-state-chip">{petState.label}</span>
       </button>
     );
   }
