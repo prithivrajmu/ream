@@ -18,6 +18,11 @@ export interface ShowOverlayWindowInput {
   hideMain?: boolean;
 }
 
+export interface MovePetOverlayInput {
+  dx: number;
+  dy: number;
+}
+
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
   showSettingsWindow: () => ipcRenderer.invoke("window:show-settings"),
@@ -27,6 +32,7 @@ const desktopApi = {
   setOverlayExpanded: (expanded: boolean) => ipcRenderer.invoke("window:set-overlay-expanded", expanded),
   getOverlayMode: () => ipcRenderer.invoke("window:get-overlay-mode") as Promise<OverlayMode>,
   setOverlayMode: (mode: OverlayMode) => ipcRenderer.invoke("window:set-overlay-mode", mode),
+  movePetOverlay: (input: MovePetOverlayInput) => ipcRenderer.invoke("window:move-pet-overlay", input),
   showOverlayContextMenu: (input: OverlayContextMenuInput) => ipcRenderer.invoke("window:show-overlay-context-menu", input),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),

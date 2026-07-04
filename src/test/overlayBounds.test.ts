@@ -3,7 +3,9 @@ import {
   calculateExpandedOverlayBounds,
   getTopRightOverlayBounds,
   OVERLAY_COMPACT_SIZE,
-  OVERLAY_EXPANDED_SIZE
+  OVERLAY_EXPANDED_SIZE,
+  OVERLAY_PET_SIZE,
+  getOverlaySize
 } from "../shared/overlayBounds";
 
 describe("overlay bounds", () => {
@@ -70,5 +72,9 @@ describe("overlay bounds", () => {
       x: 34,
       y: 34
     });
+  });
+
+  it("returns the pet sidecar size for pet mode", () => {
+    expect(getOverlaySize("pet")).toEqual(OVERLAY_PET_SIZE);
   });
 });

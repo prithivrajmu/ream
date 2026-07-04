@@ -17,7 +17,8 @@ import {
   type OverlayBounds,
   type OverlayMode,
   OVERLAY_DEFAULT_SIZE,
-  OVERLAY_EXPANDED_SIZE
+  OVERLAY_EXPANDED_SIZE,
+  OVERLAY_PET_SIZE
 } from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
@@ -65,6 +66,11 @@ type OverlayContextCommand = "mini" | "default" | "pause-resume" | "stop" | "set
 
 interface OverlayContextMenuInput {
   timerState?: "idle" | "running" | "paused" | "stopped";
+}
+
+interface MovePetOverlayInput {
+  dx: number;
+  dy: number;
 }
 
 function getDataLocationConfigPath(): string {
@@ -300,7 +306,7 @@ function createOverlayWindow(): BrowserWindow {
     ...initialBounds,
     minWidth: 1,
     minHeight: 1,
-    maxWidth: Math.max(OVERLAY_DEFAULT_SIZE.width, OVERLAY_EXPANDED_SIZE.width),
+    maxWidth: Math.max(OVERLAY_DEFAULT_SIZE.width, OVERLAY_EXPANDED_SIZE.width, OVERLAY_PET_SIZE.width),
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Ream Overlay",
     frame: false,
@@ -503,6 +509,19 @@ function setOverlayMode(mode: OverlayMode) {
   resizeOverlayWindow(overlayWindow, mode);
   overlayWindow.webContents.send("overlay:mode-changed", mode);
   overlayWindow.webContents.send("overlay:expanded-changed", mode === "expanded");
+}
+
+function movePetOverlay(input: MovePetOverlayInput) {
+  if (!overlayWindow || overlayWindow.isDestroyed() || overlayMode !== "pet") {
+    return;
+  }
+
+  const bounds = overlayWindow.getBounds();
+  applyOverlayBounds(overlayWindow, clampOverlayBoundsToWorkArea({
+    ...bounds,
+    x: bounds.x + Math.round(input.dx),
+    y: bounds.y + Math.round(input.dy)
+  }));
 }
 
 function setOverlayExpanded(expanded: boolean) {
@@ -733,6 +752,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:set-overlay-mode", (_event, mode: OverlayMode) => {
     setOverlayMode(mode);
+  });
+
+  ipcMain.handle("window:move-pet-overlay", (_event, input: MovePetOverlayInput) => {
+    movePetOverlay(input);
   });
 
   ipcMain.handle("window:show-overlay-context-menu", (_event, input: OverlayContextMenuInput) => {

@@ -86,7 +86,9 @@ export function App() {
 
   if (route === "overlay") {
     return <OverlayView
+      desktopPetEnabled={appSettings.desktopPetEnabled}
       overlayTransparency={appSettings.overlayTransparency}
+      preferredOverlayMode={appSettings.preferredOverlayMode}
       themeId={themeId}
     />;
   }
