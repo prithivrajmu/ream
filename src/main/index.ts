@@ -10,6 +10,7 @@ import {
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
+import { startGodotPetSidecar, type GodotPetContract, type GodotPetSidecarHandle, type GodotPetSidecarStatus } from "./godotPetSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
   getOverlaySize,
@@ -38,6 +39,7 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let aiSidecar: AiSidecarHandle | null = null;
+let godotPetSidecar: GodotPetSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayMode: OverlayMode = "default";
@@ -713,6 +715,19 @@ function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
   };
 }
 
+function getGodotPetStatus(): GodotPetSidecarStatus {
+  if (!godotPetSidecar) {
+    return {
+      running: false,
+      pid: null,
+      projectPath: app.isPackaged ? join(process.resourcesPath, "pet-sidecar") : resolve(app.getAppPath(), "godot/pet-sidecar"),
+      contractPath: join(app.getPath("userData"), "ream-pet-contract.json")
+    };
+  }
+
+  return godotPetSidecar.status();
+}
+
 app.whenReady().then(() => {
   ensureMainWindow();
   buildAppMenu();
@@ -777,6 +792,33 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:close-overlay", () => {
     hideOverlayWindow();
+  });
+
+  ipcMain.handle("pet:godot-status", () => getGodotPetStatus());
+
+  ipcMain.handle("pet:start-godot-sidecar", async (_event, input?: GodotPetContract) => {
+    if (!godotPetSidecar || !godotPetSidecar.status().running) {
+      godotPetSidecar = await startGodotPetSidecar(input);
+    } else if (input) {
+      godotPetSidecar.update(input);
+    }
+
+    return getGodotPetStatus();
+  });
+
+  ipcMain.handle("pet:update-godot-contract", (_event, input: GodotPetContract) => {
+    if (!godotPetSidecar || !godotPetSidecar.status().running) {
+      throw new Error("Godot pet sidecar is not running.");
+    }
+
+    godotPetSidecar.update(input);
+    return getGodotPetStatus();
+  });
+
+  ipcMain.handle("pet:stop-godot-sidecar", async () => {
+    await godotPetSidecar?.close();
+    godotPetSidecar = null;
+    return getGodotPetStatus();
   });
 
   ipcMain.handle("data:get-location", () => getDataLocationInfo());
