@@ -692,10 +692,15 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setAiError(null);
     try {
       await navigator.clipboard.writeText(preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
-      applyLocalAiSuggestionUpdate(updatedSuggestion);
     } catch (copyError) {
       setAiError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      return;
+    }
+    try {
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      applyLocalAiSuggestionUpdate(updatedSuggestion);
+    } catch (statusError) {
+      console.error("Failed to record AI suggestion copy status", statusError);
     }
   }
 

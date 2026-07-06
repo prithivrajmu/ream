@@ -758,6 +758,13 @@ app.whenReady().then(() => {
     setOverlayMousePassthrough(window, !interactive);
   });
 
+  ipcMain.handle("window:focus-overlay", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.focus();
+      overlayWindow.webContents.focus();
+    }
+  });
+
   ipcMain.handle("window:toggle-overlay", async () => {
     await toggleOverlayWindow();
   });

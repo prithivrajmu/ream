@@ -826,11 +826,17 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   async function handleCopyAiSuggestion(preview: OverlayAiPreview) {
     setError(null);
     try {
+      await window.reamDesktop?.focusOverlayWindow?.();
       await navigator.clipboard.writeText(preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
-      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      return;
+    }
+    try {
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
+    } catch (statusError) {
+      console.error("Failed to record AI suggestion copy status", statusError);
     }
   }
 
