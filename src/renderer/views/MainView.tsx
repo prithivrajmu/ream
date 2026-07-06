@@ -12,7 +12,7 @@ import {
   serializeReamExport
 } from "../../shared/reporting";
 import { archiveProject, createProject, listActiveProjects, updateProject } from "../../shared/projectRepository";
-import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
+import { createTask, deleteTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
@@ -470,6 +470,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       await refreshAppState();
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Unable to restore task.");
+    }
+  }
+
+  async function handleDeleteTask(task: Task) {
+    if (!window.confirm(`Delete "${task.title}" permanently? Its time entries will remain but show as an archived task.`)) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await deleteTask(db, task.id);
+      await refreshAppState();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete task.");
     }
   }
 
@@ -1013,7 +1028,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
           {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
           {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
-          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
+          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">

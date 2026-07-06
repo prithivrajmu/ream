@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
 import { ReamDatabase } from "../shared/db";
-import { createTask, listActiveTasks, listAllTasks, updateTask } from "../shared/taskRepository";
+import { createTask, deleteTask, listActiveTasks, listAllTasks, updateTask } from "../shared/taskRepository";
 
 let database: ReamDatabase | null = null;
 
@@ -56,5 +56,30 @@ describe("task repository", () => {
     expect(activeTasks.map((task) => task.title)).toEqual(["Answer email"]);
     expect(allTasks.map((task) => task.title)).toEqual(["Answer email", "Write update"]);
     expect(allTasks.at(-1)?.archived).toBe(true);
+  });
+
+  it("deletes an archived task", async () => {
+    const db = createTestDatabase();
+
+    const task = await createTask(db, { title: "Old task" });
+    await updateTask(db, task.id, { archived: true });
+    await deleteTask(db, task.id);
+
+    await expect(listAllTasks(db)).resolves.toHaveLength(0);
+  });
+
+  it("refuses to delete a task that is not archived", async () => {
+    const db = createTestDatabase();
+
+    const task = await createTask(db, { title: "Active task" });
+
+    await expect(deleteTask(db, task.id)).rejects.toThrow("Archive the task before deleting it.");
+    await expect(listAllTasks(db)).resolves.toHaveLength(1);
+  });
+
+  it("rejects deleting a task that does not exist", async () => {
+    const db = createTestDatabase();
+
+    await expect(deleteTask(db, "missing-task")).rejects.toThrow("Task not found.");
   });
 });
