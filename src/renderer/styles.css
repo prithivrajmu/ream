@@ -122,14 +122,14 @@ code {
 }
 
 .transition-overlay-pill-compact {
-  width: 392px;
+  width: 440px;
   height: 58px;
   gap: 12px;
   padding: 0 10px 0 18px;
 }
 
 .transition-overlay-pill-compact.has-stop {
-  width: 420px;
+  width: 468px;
 }
 
 .transition-overlay-pill-tiny {
@@ -182,7 +182,7 @@ code {
 }
 
 .transition-overlay-pill-compact .transition-timer {
-  width: 88px;
+  width: 136px;
   text-align: center;
 }
 
@@ -270,7 +270,7 @@ code {
 }
 
 .reference-overlay-shell.mode-mini .transition-timer {
-  width: 88px;
+  width: 136px;
 }
 
 .reference-overlay-shell.mode-mini .transition-stop {
