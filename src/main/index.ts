@@ -561,6 +561,20 @@ function buildAppMenu() {
         ]
       : []),
     {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { role: "selectAll" }
+      ]
+    },
+    {
       label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
