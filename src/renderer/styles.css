@@ -5159,7 +5159,6 @@ body.overlay-route {
 }
 
 .time-range-button,
-.time-filter-button,
 .time-icon-button {
   display: inline-flex;
   min-height: 44px;
@@ -5181,11 +5180,23 @@ body.overlay-route {
   padding: 0;
 }
 
+.time-icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .time-range-button .main-icon,
-.time-filter-button .main-icon,
 .time-icon-button .main-icon {
   width: 18px;
   height: 18px;
+}
+
+.chevron-left {
+  transform: rotate(90deg);
+}
+
+.chevron-right {
+  transform: rotate(-90deg);
 }
 
 .time-view-section,
@@ -5982,14 +5993,12 @@ body.overlay-route {
 .dashboard-shell.theme-retro-console .timesheet-frame,
 .dashboard-shell.theme-retro-console .time-mode-tabs,
 .dashboard-shell.theme-retro-console .time-range-button,
-.dashboard-shell.theme-retro-console .time-filter-button,
 .dashboard-shell.theme-retro-console .time-icon-button,
 .dashboard-shell.theme-manga-ink .time-reflection-panel,
 .dashboard-shell.theme-manga-ink .time-card,
 .dashboard-shell.theme-manga-ink .timesheet-frame,
 .dashboard-shell.theme-manga-ink .time-mode-tabs,
 .dashboard-shell.theme-manga-ink .time-range-button,
-.dashboard-shell.theme-manga-ink .time-filter-button,
 .dashboard-shell.theme-manga-ink .time-icon-button {
   border-width: 2px;
 }

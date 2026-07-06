@@ -168,6 +168,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [settingsAiStatus, setSettingsAiStatus] = useState<string | null>(null);
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
   const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -184,8 +185,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
-  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode), [allEntries, allProjects, allTasks, timeViewMode]);
-  const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects), [allEntries, allProjects, allTasks]);
+  const referenceDate = useMemo(() => addDays(new Date(), weekOffset * 7), [weekOffset]);
+  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, referenceDate), [allEntries, allProjects, allTasks, timeViewMode, referenceDate]);
+  const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects, referenceDate), [allEntries, allProjects, allTasks, referenceDate]);
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
@@ -837,10 +839,19 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return <button className="new-project-button" onClick={() => setIsProjectComposerOpen(true)}><MainIcon name="plus" />New Project</button>;
     }
     if (activeSection === "insights") {
-      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{timeInsights.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button></div>;
+      return <div className="time-header-actions">
+        <button className="time-icon-button" aria-label={`Previous ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+        <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{timeInsights.range.label}</button>
+        <button className="time-icon-button" aria-label={`Next ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+      </div>;
     }
     if (activeSection === "timesheet") {
-      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{weeklyTimesheet.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button><button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button></div>;
+      return <div className="time-header-actions">
+        <button className="time-icon-button" aria-label="Previous week" onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+        <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{weeklyTimesheet.range.label}</button>
+        <button className="time-icon-button" aria-label="Next week" onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+        <button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button>
+      </div>;
     }
     return null;
   })();
@@ -907,7 +918,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         {activeSection === "insights" ? <section className="time-view-section">
           <div className="time-mode-tabs" role="tablist" aria-label="Time view range">
-            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => setTimeViewMode(mode)} type="button">{capitalize(mode)}</button>)}
+            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => { setTimeViewMode(mode); setWeekOffset(0); }} type="button">{capitalize(mode)}</button>)}
           </div>
 
           <section className="time-reflection-panel">
@@ -1163,8 +1174,8 @@ function renderStackedTaskSegments(bucket: InsightBucket, taskRows: InsightSumma
   });
 }
 
-function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode): TimeInsights {
-  const range = getDateRange(mode);
+function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode, today = new Date()): TimeInsights {
+  const range = getDateRange(mode, today);
   const rangeMs = range.end.getTime() - range.start.getTime();
   const previousRange = { start: new Date(range.start.getTime() - rangeMs), end: range.start };
   const taskById = new Map(tasks.map((task) => [task.id, task]));
@@ -1265,8 +1276,8 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
   };
 }
 
-function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Project[]): WeeklyTimesheet {
-  const range = getDateRange("week");
+function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Project[], today = new Date()): WeeklyTimesheet {
+  const range = getDateRange("week", today);
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = addDays(range.start, index);
     return {
@@ -1587,7 +1598,7 @@ function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
   return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;
 }
 
-function MainIcon({ name }: { name: MainIconName }) {
+function MainIcon({ name, className }: { name: MainIconName; className?: string }) {
   const paths: Record<MainIconName, ReactNode> = {
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
     chevron: <path d="m8 10 4 4 4-4" />,
@@ -1620,7 +1631,7 @@ function MainIcon({ name }: { name: MainIconName }) {
     shield: <path d="M12 3 19 6v5c0 4.5-2.8 7.5-7 10-4.2-2.5-7-5.5-7-10V6z" />,
     document: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 13h6M9 17h6" /></>
   };
-  return <svg aria-hidden="true" className="main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+  return <svg aria-hidden="true" className={`main-icon${className ? ` ${className}` : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
 function toDateTimeLocalValue(value: string): string {
