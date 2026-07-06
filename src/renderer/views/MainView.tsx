@@ -704,8 +704,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return null;
     }
 
+    const noteText = entry.note.trim();
     const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
-    if (aiSuggestion) {
+    if (aiSuggestion && (aiSuggestion.status === "accepted" || aiSuggestion.inputText === noteText)) {
       return <button className="ai-note-button is-muted" onClick={() => void handleOpenSavedAiSuggestion(entry, aiSuggestion)}>{getAiSuggestionButtonLabel(aiSuggestion)}</button>;
     }
 
