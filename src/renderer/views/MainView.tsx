@@ -156,6 +156,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<ActiveSection>("home");
   const [isTaskComposerOpen, setIsTaskComposerOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isProjectComposerOpen, setIsProjectComposerOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [quickCapture, setQuickCapture] = useState("");
@@ -381,26 +382,57 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
   }
 
-  async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
+  function resetTaskComposer() {
+    setTitle("");
+    setTaskProjectIds([]);
+    setTags("");
+    setDefaultNote("");
+    setEditingTask(null);
+  }
+
+  function handleOpenNewTaskComposer(initialTitle = "") {
+    resetTaskComposer();
+    setTitle(initialTitle);
+    setError(null);
+    setIsTaskComposerOpen(true);
+  }
+
+  function handleEditTask(task: Task) {
+    setError(null);
+    setEditingTask(task);
+    setTitle(task.title);
+    setTaskProjectIds(task.projectIds);
+    setTags(task.tags.join(", "));
+    setDefaultNote(task.defaultNote);
+    setIsTaskComposerOpen(true);
+  }
+
+  function handleCloseTaskComposer() {
+    setIsTaskComposerOpen(false);
+    resetTaskComposer();
+  }
+
+  async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     try {
-      const task = await createTask(db, {
+      const input = {
         title,
         projectIds: taskProjectIds,
         tags: parseTags(tags),
         defaultNote
-      });
-      setTitle("");
-      setTaskProjectIds([]);
-      setTags("");
-      setDefaultNote("");
+      };
+      const task = editingTask
+        ? await updateTask(db, editingTask.id, input)
+        : await createTask(db, input);
       await refreshAppState();
-      setSelectedTaskId(task.id);
-      setIsTaskComposerOpen(false);
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Unable to create task.");
+      if (!editingTask) {
+        setSelectedTaskId(task.id);
+      }
+      handleCloseTaskComposer();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save task.");
     }
   }
 
@@ -506,12 +538,11 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     event.preventDefault();
     const capturedTitle = quickCapture.trim();
     if (!capturedTitle) {
-      setIsTaskComposerOpen(true);
+      handleOpenNewTaskComposer();
       return;
     }
-    setTitle(capturedTitle);
     setQuickCapture("");
-    setIsTaskComposerOpen(true);
+    handleOpenNewTaskComposer(capturedTitle);
   }
 
   async function handleStopTimer() {
@@ -845,7 +876,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
   const headerAction = (() => {
     if (activeSection === "home" || activeSection === "tasks") {
-      return <button className="new-project-button" onClick={() => setIsTaskComposerOpen(true)}><MainIcon name="plus" />New Task</button>;
+      return <button className="new-project-button" onClick={() => handleOpenNewTaskComposer()}><MainIcon name="plus" />New Task</button>;
     }
     if (activeSection === "entries") {
       return <button className="new-project-button" disabled={tasks.length === 0} onClick={handleNewEntry}><MainIcon name="plus" />New Entry</button>;
@@ -925,6 +956,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
             {tasks.map((task) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
               <TaskIdentityIcon className="project-icon task-identity-icon" task={task} /><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
               {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer)} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
+              <button className="archive-task-button" onClick={() => handleEditTask(task)}>Edit</button>
               <button className="archive-task-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button>
             </article>; })}
           </div></section>
@@ -1026,9 +1058,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><span>{tasks.length} active</span></div><div className="project-management-list">
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
-          {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
+          {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button onClick={() => handleEditTask(task)}>Edit</button><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
           {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
-          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
+          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleEditTask(task)}>Edit</button><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">
@@ -1129,7 +1161,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         </div></section> : null}
       </section>
 
-      {isTaskComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsTaskComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-task-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new task" className="modal-close" onClick={() => setIsTaskComposerOpen(false)}>×</button><p className="panel-kicker">New task</p><h2 id="new-task-heading">What needs your attention?</h2><form onSubmit={handleCreateTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create task</button></form></section></div> : null}
+      {isTaskComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={handleCloseTaskComposer} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="task-composer-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close task editor" className="modal-close" onClick={handleCloseTaskComposer}>×</button><p className="panel-kicker">{editingTask ? "Edit task" : "New task"}</p><h2 id="task-composer-heading">{editingTask ? "Update the task details." : "What needs your attention?"}</h2><form onSubmit={handleSaveTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><div className="composer-actions"><button className="new-project-button" type="submit"><MainIcon name={editingTask ? "pen" : "plus"} />{editingTask ? "Save changes" : "Create task"}</button><button type="button" onClick={handleCloseTaskComposer}>Cancel</button></div></form></section></div> : null}
 
       {isProjectComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsProjectComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-project-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new project" className="modal-close" onClick={() => setIsProjectComposerOpen(false)}>×</button><p className="panel-kicker">New project</p><h2 id="new-project-heading">Organize related tasks.</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create project</button></form></section></div> : null}
 
