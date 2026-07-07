@@ -4,35 +4,33 @@ Ream is a local-first desktop workspace for tracking tasks, notes, time entries,
 
 ## Install
 
-### macOS with Homebrew
-
-Ream is distributed through a Homebrew tap:
-
-```bash
-brew tap prithivrajmu/ream
-brew install ream
-```
-
-This installs the macOS app bundle and exposes a `ream` launcher command.
-
-### Linux with APT
-
-Add the Ream APT source once, then install the Debian package:
-
-```bash
-curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
-sudo apt install ream
-```
-
 ### Run from source with Node.js
 
-Use this path if you want to review the code, test unreleased changes, or contribute:
+This is the only install path that works today — no packaged release has been published yet.
 
 ```bash
 git clone https://github.com/prithivrajmu/ream.git
 cd ream
 npm install
 npm run dev
+```
+
+### macOS with Homebrew (not yet available)
+
+Ream's Homebrew tap infrastructure (`packaging/homebrew/`, `npm run release:homebrew`) is in place, but the `prithivrajmu/homebrew-ream` tap repository is currently private and has no published formula, so `brew tap`/`brew install` will not work for external users yet. Once a signed release is published:
+
+```bash
+brew tap prithivrajmu/ream
+brew install ream
+```
+
+### Linux with APT (not yet available)
+
+Ream's APT repository generation (`npm run release:apt`) is in place and GitHub Pages is configured for this repo, but no release has been published to it yet — the URL below currently 404s. Once a release is published:
+
+```bash
+curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
+sudo apt install ream
 ```
 
 ## What Ships Today
@@ -191,7 +189,10 @@ fully functional.
 
 ## Documentation
 
-- [Task roadmap](TASKS.md)
+- [User guide](USER_GUIDE.md)
+- [Future improvements](FUTURE_IMPROVEMENTS.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 - [Private backup guide](BACKUP.md)
 - [AI sidecar guide](docs/ai-sidecar.md)
 - [Theme implementation guide](docs/theme-implementation-guide.md)
