@@ -4,9 +4,30 @@ Ream is a local-first desktop workspace for tracking tasks, notes, time entries,
 
 ## Install
 
-### Run from source with Node.js
+### macOS unsigned DMG
 
-This is the only install path that works today — no packaged release has been published yet.
+Early tester builds are published automatically as raw, unsigned DMGs on GitHub
+Releases whenever changes land on `main`.
+Because these builds are not signed or notarized by Apple, macOS Gatekeeper will
+block the app on first launch with an "unidentified developer" warning.
+
+Download the latest DMG from:
+
+https://github.com/prithivrajmu/ream/releases
+
+Only open the app if you trust the repository and release artifact.
+
+### Linux x64 AppImage
+
+Early tester builds are also published automatically as x64 AppImages on GitHub
+Releases whenever changes land on `main`. ARM64 AppImages are not built or
+uploaded by this workflow.
+
+Download the latest AppImage from:
+
+https://github.com/prithivrajmu/ream/releases
+
+### Run from source with Node.js
 
 ```bash
 git clone https://github.com/prithivrajmu/ream.git
@@ -46,10 +67,11 @@ sudo apt install ream
 
 ## Distribution
 
-Ream produces desktop artifacts with Electron Builder and release metadata for Homebrew and APT.
+Ream produces desktop artifacts with Electron Builder and release metadata for Homebrew and APT. For the simplest tester releases, the `macOS Unsigned DMG` and `Linux x64 AppImage` GitHub Actions workflows auto-tag every `main` merge and upload raw artifacts to GitHub Releases.
 
 ```bash
 npm run dist:linux
+npm run dist:linux:appimage:x64
 npm run dist:mac:unsigned
 npm run release:checksums
 npm run release:homebrew

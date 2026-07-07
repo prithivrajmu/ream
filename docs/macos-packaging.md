@@ -1,6 +1,35 @@
 # Ream macOS Packaging
 
-The app is packaged with `electron-builder`. Local development can produce unsigned builds; public distribution should use Apple Developer ID signing and notarization.
+The app is packaged with `electron-builder`. Local development and early tester
+releases can produce unsigned DMGs; public distribution should use Apple
+Developer ID signing and notarization.
+
+## Raw GitHub DMG for testers
+
+The `macOS Unsigned DMG` GitHub Actions workflow runs automatically whenever a
+change lands on `main`. It creates a tag named like
+`macos-unsigned-v0.1.0`, builds unsigned DMG artifacts on a macOS runner, and
+uploads only `release/*.dmg` plus `release/SHA256SUMS` to the GitHub Release for
+that tag.
+
+Use the same workflow manually when you need to republish a one-off build:
+
+1. Open the repository's Actions tab.
+2. Run `macOS Unsigned DMG`.
+3. Optionally enter a release tag. If omitted, the workflow creates a
+   `macos-unsigned-v<version>` tag.
+4. Keep `ref` as `main`, or enter a branch, tag, or commit SHA.
+
+Because these builds are unsigned and not notarized, macOS Gatekeeper will block
+the app on first launch with an "unidentified developer" warning. Testers can
+open it only after explicitly approving the app in macOS security controls, and
+they should do that only when they trust the repository and release artifact.
+The automatic workflow starts from `package.json` when there are no existing
+macOS unsigned release tags. After that, it increments the patch version from
+the latest existing `macos-unsigned-v*` tag. For example, releases produce
+`macos-unsigned-v0.1.0`, `macos-unsigned-v0.1.1`, and `macos-unsigned-v0.1.2`.
+After upload, the workflow keeps the newest three `macos-unsigned-v*` releases
+and deletes older releases and their tags.
 
 ## Homebrew install
 
