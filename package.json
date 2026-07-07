@@ -6,6 +6,11 @@
   "main": "out/main/index.js",
   "desktopName": "ream",
   "homepage": "https://github.com/prithivrajmu/ream",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prithivrajmu/ream.git"
+  },
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
