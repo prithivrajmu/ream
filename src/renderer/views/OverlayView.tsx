@@ -15,6 +15,7 @@ import {
   stopTimer,
   updateActiveTimerNote
 } from "../../shared/timerRepository";
+import { buildOverlayProjectTagLabels } from "../overlayUtils";
 import { formatEntryDateTime } from "../rendererUtils";
 import type { ThemeId } from "../themeOptions";
 import type { OverlayMode } from "../../shared/overlayBounds";
@@ -136,6 +137,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     [selectedTaskId, tasks]
   );
   const displayTask = activeTask ?? selectedTask;
+  const projectTagLabels = useMemo(() => buildOverlayProjectTagLabels(projects, displayTask), [displayTask, projects]);
   const isPaused = Boolean(activeTimer?.pausedAt);
   const timerState: TimerState = activeTimer ? (isPaused ? "paused" : "running") : "idle";
   const expanded = interactionState.mode === "expanded";
@@ -967,10 +969,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               <div className="reference-tags">
                 <p>Project Tags</p>
                 <div>
-                  {[
-                    ...(displayTask?.projectIds ?? []).map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)),
-                    ...(displayTask?.tags ?? [])
-                  ].slice(0, 4).map((label) => (
+                  {projectTagLabels.map((label) => (
                     <button key={label} onClick={() => handleQuickTag(label)}><Icon name="tag" />{label}</button>
                   ))}
                 </div>
