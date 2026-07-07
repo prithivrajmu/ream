@@ -64,6 +64,18 @@ export async function updateTask(
   return updated;
 }
 
+export async function deleteTask(database: ReamDatabase, taskId: string): Promise<void> {
+  const existing = await database.tasks.get(taskId);
+  if (!existing) {
+    throw new Error("Task not found.");
+  }
+  if (!existing.archived) {
+    throw new Error("Archive the task before deleting it.");
+  }
+
+  await database.tasks.delete(taskId);
+}
+
 function normalizeProjectIds(projectIds: string[] = []): string[] {
   return Array.from(new Set(projectIds.filter(Boolean)));
 }

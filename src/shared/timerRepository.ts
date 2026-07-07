@@ -223,6 +223,11 @@ export async function listTimeEntriesForDay(
   return entries.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
 }
 
+export async function listTimeEntriesForTask(database: ReamDatabase, taskId: string): Promise<TimeEntry[]> {
+  const entries = await database.timeEntries.where("taskId").equals(taskId).toArray();
+  return entries.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+}
+
 export function activeTimerElapsedSeconds(activeTimer: ActiveTimer, now = new Date()): number {
   const normalized = normalizeActiveTimer(activeTimer);
   if (!normalized) {

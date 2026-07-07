@@ -12,7 +12,7 @@ import {
   serializeReamExport
 } from "../../shared/reporting";
 import { archiveProject, createProject, listActiveProjects, updateProject } from "../../shared/projectRepository";
-import { createTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
+import { createTask, deleteTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
@@ -168,6 +168,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [settingsAiStatus, setSettingsAiStatus] = useState<string | null>(null);
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
   const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -184,8 +185,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
-  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode), [allEntries, allProjects, allTasks, timeViewMode]);
-  const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects), [allEntries, allProjects, allTasks]);
+  const referenceDate = useMemo(() => addDays(new Date(), weekOffset * 7), [weekOffset]);
+  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, referenceDate), [allEntries, allProjects, allTasks, timeViewMode, referenceDate]);
+  const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects, referenceDate), [allEntries, allProjects, allTasks, referenceDate]);
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
@@ -471,6 +473,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     }
   }
 
+  async function handleDeleteTask(task: Task) {
+    if (!window.confirm(`Delete "${task.title}" permanently? Its time entries will remain but show as an archived task.`)) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await deleteTask(db, task.id);
+      await refreshAppState();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete task.");
+    }
+  }
+
   async function handleStartTask(taskId: string) {
     setSelectedTaskId(taskId);
     setError(null);
@@ -692,10 +709,15 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setAiError(null);
     try {
       await navigator.clipboard.writeText(preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
-      applyLocalAiSuggestionUpdate(updatedSuggestion);
     } catch (copyError) {
       setAiError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      return;
+    }
+    try {
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      applyLocalAiSuggestionUpdate(updatedSuggestion);
+    } catch (statusError) {
+      console.error("Failed to record AI suggestion copy status", statusError);
     }
   }
 
@@ -704,8 +726,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return null;
     }
 
+    const noteText = entry.note.trim();
     const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
-    if (aiSuggestion) {
+    if (aiSuggestion && (aiSuggestion.status === "accepted" || aiSuggestion.inputText === noteText)) {
       return <button className="ai-note-button is-muted" onClick={() => void handleOpenSavedAiSuggestion(entry, aiSuggestion)}>{getAiSuggestionButtonLabel(aiSuggestion)}</button>;
     }
 
@@ -831,10 +854,19 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return <button className="new-project-button" onClick={() => setIsProjectComposerOpen(true)}><MainIcon name="plus" />New Project</button>;
     }
     if (activeSection === "insights") {
-      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{timeInsights.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button></div>;
+      return <div className="time-header-actions">
+        <button className="time-icon-button" aria-label={`Previous ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+        <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{timeInsights.range.label}</button>
+        <button className="time-icon-button" aria-label={`Next ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+      </div>;
     }
     if (activeSection === "timesheet") {
-      return <div className="time-header-actions"><button className="time-range-button" type="button"><MainIcon name="calendar" />{weeklyTimesheet.range.label}<MainIcon name="chevron" /></button><button className="time-filter-button" type="button"><MainIcon name="filter" />Filters<MainIcon name="chevron" /></button><button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button></div>;
+      return <div className="time-header-actions">
+        <button className="time-icon-button" aria-label="Previous week" onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+        <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{weeklyTimesheet.range.label}</button>
+        <button className="time-icon-button" aria-label="Next week" onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+        <button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button>
+      </div>;
     }
     return null;
   })();
@@ -901,7 +933,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         {activeSection === "insights" ? <section className="time-view-section">
           <div className="time-mode-tabs" role="tablist" aria-label="Time view range">
-            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => setTimeViewMode(mode)} type="button">{capitalize(mode)}</button>)}
+            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => { setTimeViewMode(mode); setWeekOffset(0); }} type="button">{capitalize(mode)}</button>)}
           </div>
 
           <section className="time-reflection-panel">
@@ -933,7 +965,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
             </section>
 
             <section className="time-card time-session-card">
-              <div className="time-card-heading-row"><SectionNumber title="Session log" number="4." /><div className="time-session-tools"><label><MainIcon name="search" /><input placeholder="Search sessions..." readOnly /></label><button type="button"><MainIcon name="filter" />Filter</button><button aria-label="More session actions" type="button"><MainIcon name="more" /></button></div></div>
+              <div className="time-card-heading-row"><SectionNumber title="Session log" number="4." /></div>
               <div className="time-session-table">
                 <div className="time-session-head"><span>Date</span><span>Task</span><span>Project</span><span>Duration</span><span>Notes</span></div>
                 {timeInsights.sessionRows.length === 0 ? <p className="empty-state">Tracked sessions will appear here.</p> : timeInsights.sessionRows.map((row) => <div className="time-session-row" key={row.id}><span>{row.date}</span><span><i className={`time-tone-bg-${row.taskTone}`}><MainIcon name={row.taskIcon} /></i>{row.task}</span><span>{row.project}</span><strong>{formatCompactDuration(row.durationSeconds)}</strong><p>{row.note || "No note"}</p></div>)}
@@ -996,7 +1028,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
           {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
           {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
-          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button></article>)}
+          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">
@@ -1157,8 +1189,8 @@ function renderStackedTaskSegments(bucket: InsightBucket, taskRows: InsightSumma
   });
 }
 
-function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode): TimeInsights {
-  const range = getDateRange(mode);
+function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Project[], mode: TimeViewMode, today = new Date()): TimeInsights {
+  const range = getDateRange(mode, today);
   const rangeMs = range.end.getTime() - range.start.getTime();
   const previousRange = { start: new Date(range.start.getTime() - rangeMs), end: range.start };
   const taskById = new Map(tasks.map((task) => [task.id, task]));
@@ -1259,8 +1291,8 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
   };
 }
 
-function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Project[]): WeeklyTimesheet {
-  const range = getDateRange("week");
+function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Project[], today = new Date()): WeeklyTimesheet {
+  const range = getDateRange("week", today);
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = addDays(range.start, index);
     return {
@@ -1581,7 +1613,7 @@ function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
   return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;
 }
 
-function MainIcon({ name }: { name: MainIconName }) {
+function MainIcon({ name, className }: { name: MainIconName; className?: string }) {
   const paths: Record<MainIconName, ReactNode> = {
     calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></>,
     chevron: <path d="m8 10 4 4 4-4" />,
@@ -1614,7 +1646,7 @@ function MainIcon({ name }: { name: MainIconName }) {
     shield: <path d="M12 3 19 6v5c0 4.5-2.8 7.5-7 10-4.2-2.5-7-5.5-7-10V6z" />,
     document: <><path d="M6 3h9l3 3v15H6zM15 3v4h4M9 13h6M9 17h6" /></>
   };
-  return <svg aria-hidden="true" className="main-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+  return <svg aria-hidden="true" className={`main-icon${className ? ` ${className}` : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
 function toDateTimeLocalValue(value: string): string {

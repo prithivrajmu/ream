@@ -561,6 +561,20 @@ function buildAppMenu() {
         ]
       : []),
     {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { role: "selectAll" }
+      ]
+    },
+    {
       label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
@@ -742,6 +756,13 @@ app.whenReady().then(() => {
   ipcMain.handle("window:set-overlay-interactive", (_event, interactive: boolean) => {
     const window = ensureOverlayWindow();
     setOverlayMousePassthrough(window, !interactive);
+  });
+
+  ipcMain.handle("window:focus-overlay", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.focus();
+      overlayWindow.webContents.focus();
+    }
   });
 
   ipcMain.handle("window:toggle-overlay", async () => {

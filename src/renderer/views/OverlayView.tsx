@@ -826,11 +826,17 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   async function handleCopyAiSuggestion(preview: OverlayAiPreview) {
     setError(null);
     try {
+      await window.reamDesktop?.focusOverlayWindow?.();
       await navigator.clipboard.writeText(preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
-      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      return;
+    }
+    try {
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
+    } catch (statusError) {
+      console.error("Failed to record AI suggestion copy status", statusError);
     }
   }
 
@@ -961,8 +967,11 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               <div className="reference-tags">
                 <p>Project Tags</p>
                 <div>
-                  {(displayTask?.tags ?? []).slice(0, 4).map((tag) => (
-                    <button key={tag} onClick={() => handleQuickTag(tag)}><Icon name="tag" />{tag}</button>
+                  {[
+                    ...(displayTask?.projectIds ?? []).map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)),
+                    ...(displayTask?.tags ?? [])
+                  ].slice(0, 4).map((label) => (
+                    <button key={label} onClick={() => handleQuickTag(label)}><Icon name="tag" />{label}</button>
                   ))}
                 </div>
               </div>

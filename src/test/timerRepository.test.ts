@@ -8,6 +8,7 @@ import {
   deleteTimeEntry,
   getActiveTimer,
   listTimeEntriesForDay,
+  listTimeEntriesForTask,
   pauseTimer,
   resumeTimer,
   startTimer,
@@ -99,6 +100,38 @@ describe("timer repository", () => {
 
     expect(entries.map((entry) => entry.id)).toEqual([second.id, first.id]);
     expect(otherDayEntries).toEqual([]);
+  });
+
+  it("keeps each entry's note independent across many entries for one task", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Recurring task" });
+    const otherTask = await createTask(db, { title: "Unrelated task" });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T09:00:00.000Z"));
+    const first = await stopTimer(db, new Date("2026-06-25T09:15:00.000Z"));
+    await updateTimeEntry(db, first.id, {
+      taskId: task.id,
+      startedAt: first.startedAt,
+      endedAt: first.endedAt,
+      note: "First session note"
+    });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T11:00:00.000Z"));
+    await updateActiveTimerNote(db, "Second session note", new Date("2026-06-25T11:05:00.000Z"));
+    const second = await stopTimer(db, new Date("2026-06-25T11:30:00.000Z"));
+
+    await createTimeEntry(db, {
+      taskId: otherTask.id,
+      startedAt: "2026-06-25T12:00:00.000Z",
+      endedAt: "2026-06-25T12:15:00.000Z",
+      note: "Note for a different task"
+    });
+
+    const entriesForTask = await listTimeEntriesForTask(db, task.id);
+
+    expect(entriesForTask.map((entry) => entry.id)).toEqual([second.id, first.id]);
+    expect(entriesForTask.map((entry) => entry.note)).toEqual(["Second session note", "First session note"]);
+    expect(entriesForTask.every((entry) => entry.taskId === task.id)).toBe(true);
   });
 
   it("updates an entry's task, time range, note, and calculated duration", async () => {

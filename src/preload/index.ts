@@ -29,6 +29,7 @@ const desktopApi = {
   setOverlayMode: (mode: OverlayMode) => ipcRenderer.invoke("window:set-overlay-mode", mode),
   showOverlayContextMenu: (input: OverlayContextMenuInput) => ipcRenderer.invoke("window:show-overlay-context-menu", input),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
+  focusOverlayWindow: () => ipcRenderer.invoke("window:focus-overlay") as Promise<void>,
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
   getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
