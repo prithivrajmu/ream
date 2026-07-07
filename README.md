@@ -17,7 +17,7 @@ npm run dev
 
 ### macOS with Homebrew (not yet available)
 
-Ream's Homebrew tap infrastructure (`packaging/homebrew/`, `npm run release:homebrew`) is in place, but the `prithivrajmu/homebrew-ream` tap repository is currently private and has no published formula, so `brew tap`/`brew install` will not work for external users yet. Once a signed release is published:
+Once a signed release is published:
 
 ```bash
 brew tap prithivrajmu/ream
@@ -26,7 +26,7 @@ brew install ream
 
 ### Linux with APT (not yet available)
 
-Ream's APT repository generation (`npm run release:apt`) is in place and GitHub Pages is configured for this repo, but no release has been published to it yet — the URL below currently 404s. Once a release is published:
+Once a release is published:
 
 ```bash
 curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
