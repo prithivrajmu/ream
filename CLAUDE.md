@@ -41,10 +41,21 @@ The full local gate (mirrors CI expectations) is: `npm run lint && npm run typec
 
 ### Data layer
 
+- `src/shared/domain.ts` defines the current entity shapes (Dexie tables mirror these 1:1):
+
+  ```ts
+  Task { id, title, projectIds[], tags[], defaultNote, archived, createdAt, updatedAt }
+  Project { id, title, archived, createdAt, updatedAt }
+  TimeEntry { id, taskId, startedAt, endedAt, durationSeconds, note, createdAt, updatedAt }
+  ActiveTimer { id, taskId, startedAt, note, pausedAt, totalPausedSeconds, createdAt, updatedAt }
+  NoteAiSuggestion { id, noteId, model, inputText, outputJson, status, durationMs, createdAt, statusUpdatedAt, acceptedAt }
+  ```
+
+  There is no separate `Note` entity — notes live directly on `TimeEntry.note` (completed sessions) and `ActiveTimer.note` (in-progress sessions); `Task.defaultNote` is a per-task starting-note template, not a note record.
 - `src/shared/db.ts` defines the single Dexie database (`ReamDatabase`) and every schema migration as a numbered `.version(n).stores(...)`. When changing the schema, add a new version with an `.upgrade()` step rather than editing an existing version — existing user data must migrate forward.
 - There is also a one-time migration path from a legacy database name (`timesheet-tracker`) and a legacy `userData` folder name, both handled defensively (skipped if the target already has data). Ream was renamed from "timesheet-tracker" at some point; that name still shows up in code and CI/tooling in a few places.
 - Repositories (`taskRepository.ts`, `projectRepository.ts`, `timerRepository.ts`, `exportRepository.ts`, `aiSuggestionRepository.ts`) take a `ReamDatabase` instance as their first argument rather than importing the singleton `db` directly — this is what makes them testable against a fresh in-memory database per test (see `createTestDatabase()` pattern in `src/test/*.test.ts`).
-- Only one active timer exists at a time (`activeTimers` table), by design — see `README.md` "Open Decisions".
+- Only one active timer exists at a time (`activeTimers` table), by design.
 - JSON export/import (`exportRepository.ts`) is the durable backup format; CSV (`reporting.ts`) is for reporting only, not round-tripping. Import replaces data wholesale — there is no merge semantics yet.
 
 ### AI sidecar
