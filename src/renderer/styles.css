@@ -5565,46 +5565,6 @@ body.overlay-route {
   gap: 14px;
 }
 
-.time-session-tools {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.time-session-tools label,
-.time-session-tools button {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--theme-subtle, #e3ded3);
-  border-radius: 8px;
-  color: var(--theme-ink, #1d2026);
-  background: var(--theme-panel-alt, #eef3ea);
-  font-size: 12px;
-  font-weight: 680;
-}
-
-.time-session-tools label {
-  width: min(100%, 220px);
-  padding: 0 10px;
-}
-
-.time-session-tools button {
-  padding: 0 11px;
-}
-
-.time-session-tools input {
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  outline: 0;
-  color: var(--theme-ink, #1d2026);
-  background: transparent;
-  font: inherit;
-}
-
 .time-session-table {
   display: grid;
   margin-top: 14px;
