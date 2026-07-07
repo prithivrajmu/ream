@@ -1,0 +1,119 @@
+name: Linux x64 AppImage
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub Release tag to create or update, for example v0.1.0"
+        required: false
+      ref:
+        description: "Branch, tag, or commit SHA to build"
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    name: Build and upload x64 AppImage
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${MANUAL_TAG}" ]; then
+            tag="${MANUAL_TAG}"
+            version="${tag#linux-appimage-x64-v}"
+          else
+            base_version="$(node -p "require('./package.json').version")"
+            latest_tag="$(git tag --list 'linux-appimage-x64-v*' --sort=-v:refname | head -n 1)"
+
+            if [ -n "${latest_tag}" ]; then
+              latest_version="${latest_tag#linux-appimage-x64-v}"
+              IFS='.' read -r major minor patch <<< "${latest_version}"
+              version="${major}.${minor}.$((patch + 1))"
+            else
+              version="${base_version}"
+            fi
+
+            tag="linux-appimage-x64-v${version}"
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - run: npm ci
+      - name: Set CI release version
+        run: npm version --no-git-tag-version --allow-same-version "${{ steps.release.outputs.version }}"
+      - run: npm run dist:linux:appimage:x64
+      - name: Keep only x64 AppImage artifacts
+        run: find release -maxdepth 1 -type f ! -name "*.AppImage" -delete
+      - run: npm run release:checksums
+
+      - name: Push release tag
+        shell: bash
+        run: |
+          tag="${{ steps.release.outputs.tag }}"
+
+          if git rev-parse "${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists locally."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${tag}" -m "Release ${tag}"
+          fi
+
+          git push origin "refs/tags/${tag}"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Ream ${{ steps.release.outputs.tag }}
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            Linux x64 AppImage build for Ream ${{ steps.release.outputs.version }}.
+
+            This release intentionally publishes only the x64 AppImage artifact. ARM64 AppImage artifacts are not built or uploaded by this workflow.
+          files: |
+            release/*.AppImage
+            release/SHA256SUMS
+
+      - name: Delete older Linux AppImage releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mapfile -t old_tags < <(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^linux-appimage-x64-v' | sort -Vr | tail -n +4)
+
+          for tag in "${old_tags[@]}"; do
+            echo "Deleting old release and tag: ${tag}"
+            gh release delete "${tag}" --cleanup-tag --yes
+          done
