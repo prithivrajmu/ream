@@ -114,9 +114,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          mapfile -t old_tags < <(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^macos-unsigned-v' | sort -Vr | tail -n +4)
+          gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^macos-unsigned-v' \
+            | sort -Vr \
+            | tail -n +4 \
+            | while IFS= read -r tag; do
+            if [ -z "${tag}" ]; then
+              continue
+            fi
 
-          for tag in "${old_tags[@]}"; do
             echo "Deleting old release and tag: ${tag}"
             gh release delete "${tag}" --cleanup-tag --yes
           done
