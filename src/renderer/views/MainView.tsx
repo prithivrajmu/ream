@@ -18,6 +18,7 @@ import { formatDuration } from "../../shared/time";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { type AppSettings } from "../appSettings";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
+import { noteMatchesQuery, RichNoteView } from "../richNotes";
 import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
@@ -152,6 +153,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [entryStartedAt, setEntryStartedAt] = useState("");
   const [entryEndedAt, setEntryEndedAt] = useState("");
   const [entryNote, setEntryNote] = useState("");
+  const [entryProjectIds, setEntryProjectIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState<ActiveSection>("home");
@@ -170,6 +172,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
   const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [notesSearch, setNotesSearch] = useState("");
+  const [selectedTimesheetDateKey, setSelectedTimesheetDateKey] = useState("");
+  const [selectedTimesheetTaskId, setSelectedTimesheetTaskId] = useState<string | null>(null);
+  const [reviewPage, setReviewPage] = useState(0);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -185,6 +191,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const archivedTasks = useMemo(() => allTasks.filter((task) => task.archived), [allTasks]);
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
+  const entryEditorTask = entryTaskId ? taskById.get(entryTaskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
   const referenceDate = useMemo(() => addDays(new Date(), weekOffset * 7), [weekOffset]);
   const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, referenceDate), [allEntries, allProjects, allTasks, timeViewMode, referenceDate]);
@@ -194,6 +201,30 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     [allEntries]
   );
   const noteEntries = useMemo(() => recentEntries.filter((entry) => entry.note.trim()), [recentEntries]);
+  const filteredNoteEntries = useMemo(
+    () => noteEntries.filter((entry) => noteMatchesQuery(buildNoteSearchText(entry, taskById, projectById), notesSearch)),
+    [noteEntries, notesSearch, projectById, taskById]
+  );
+  const selectedTimesheetEntries = useMemo(() => {
+    if (!selectedTimesheetDateKey) {
+      return [];
+    }
+    return recentEntries.filter((entry) => {
+      if (toLocalDateKey(new Date(entry.startedAt)) !== selectedTimesheetDateKey) {
+        return false;
+      }
+      return selectedTimesheetTaskId ? entry.taskId === selectedTimesheetTaskId : true;
+    });
+  }, [recentEntries, selectedTimesheetDateKey, selectedTimesheetTaskId]);
+  const selectedTimesheetDay = useMemo(
+    () => weeklyTimesheet.days.find((day) => toLocalDateKey(day.date) === selectedTimesheetDateKey) ?? weeklyTimesheet.days[0] ?? null,
+    [selectedTimesheetDateKey, weeklyTimesheet.days]
+  );
+  const reviewPageCount = Math.max(1, Math.ceil(dailySummaries.length / REVIEW_PAGE_SIZE));
+  const pagedDailySummaries = useMemo(
+    () => dailySummaries.slice(reviewPage * REVIEW_PAGE_SIZE, reviewPage * REVIEW_PAGE_SIZE + REVIEW_PAGE_SIZE),
+    [dailySummaries, reviewPage]
+  );
   const improvedAiSuggestions = useMemo(() => aiSuggestions.filter((suggestion) => suggestion.status !== "pending"), [aiSuggestions]);
   const aiSuggestionStats = useMemo(() => {
     const recordedDurations = aiSuggestions
@@ -299,6 +330,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }, []);
 
   useEffect(() => {
+    const dayKeys = weeklyTimesheet.days.map((day) => toLocalDateKey(day.date));
+    if (dayKeys.includes(selectedTimesheetDateKey)) {
+      return;
+    }
+
+    const todayKey = toLocalDateKey(new Date());
+    setSelectedTimesheetDateKey(dayKeys.includes(todayKey) ? todayKey : dayKeys[0] ?? "");
+    setSelectedTimesheetTaskId(null);
+  }, [selectedTimesheetDateKey, weeklyTimesheet.days]);
+
+  useEffect(() => {
+    setReviewPage((currentPage) => Math.min(currentPage, Math.max(0, reviewPageCount - 1)));
+  }, [reviewPageCount]);
+
+  useEffect(() => {
     return window.reamDesktop?.onOpenSettingsRequested?.(() => setActiveSection("profile"));
   }, []);
 
@@ -325,13 +371,19 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setSettingsAiBusy(true);
     setSettingsAiStatus(null);
     try {
-      const status = await window.reamDesktop?.getOllamaStatus?.();
+      const requestedModel = ollamaModel.trim();
+      const status = await window.reamDesktop?.getOllamaStatus?.(requestedModel);
       if (!status) {
         throw new Error("Ollama status is only available in the desktop app.");
       }
       setSettingsAiStatus(
         status.ollama.ok
-          ? `Ollama is running.\nActive model: ${status.model}\nFallback model: ${status.fallbackModel}`
+          ? [
+              "Ollama is running.",
+              `Checked model: ${status.checkedModel} (${status.modelAvailable ? "available" : "not found"})`,
+              `Fallback model: ${status.fallbackModel} (${status.fallbackAvailable ? "available" : "not found"})`,
+              `AI will try: ${requestedModel || status.checkedModel}${requestedModel ? "" : `, then ${status.fallbackModel} if needed`}`
+            ].join("\n")
           : "Ollama is not running yet."
       );
     } catch (statusError) {
@@ -581,6 +633,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setEntryStartedAt(toDateTimeLocalValue(entry.startedAt));
     setEntryEndedAt(toDateTimeLocalValue(entry.endedAt));
     setEntryNote(entry.note);
+    setEntryProjectIds(entry.projectIds.length ? entry.projectIds : taskById.get(entry.taskId)?.projectIds ?? []);
   }
 
   function handleNewEntry() {
@@ -592,6 +645,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setEntryStartedAt(toDateTimeLocalValue(startedAt.toISOString()));
     setEntryEndedAt(toDateTimeLocalValue(endedAt.toISOString()));
     setEntryNote("");
+    setEntryProjectIds(tasks[0]?.projectIds ?? []);
     setIsEntryComposerOpen(true);
   }
 
@@ -602,6 +656,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setEntryStartedAt("");
     setEntryEndedAt("");
     setEntryNote("");
+    setEntryProjectIds([]);
+  }
+
+  function handleChangeEntryTask(taskId: string) {
+    setEntryTaskId(taskId);
+    setEntryProjectIds(taskById.get(taskId)?.projectIds ?? []);
   }
 
   async function handleSaveEntry(event: FormEvent<HTMLFormElement>) {
@@ -615,6 +675,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     try {
       const input = {
         taskId: entryTaskId,
+        projectIds: entryProjectIds,
         startedAt: entryStartedAt,
         endedAt: entryEndedAt,
         note: entryNote
@@ -669,7 +730,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         throw new Error("AI is only available in the desktop app.");
       }
 
-      const projectName = task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
+      const projectName = getEntryProjectNames(entry, task, projectById).join(", ");
       const requestStartedAt = readClockMs();
       const result = await window.reamDesktop.improveNoteWithAi({
         noteText,
@@ -772,7 +833,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return null;
     }
 
-    return <div className="ai-note-preview"><section className="ai-note-preview-panel"><h3>Raw note</h3><div className="ai-note-preview-body"><p>{preview.rawNote}</p></div></section><section className="ai-note-preview-panel is-suggestion"><h3>AI suggestion</h3><div className="ai-note-preview-body"><p>{preview.output.clean_note}</p><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small></div><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
+    return <div className="ai-note-preview"><section className="ai-note-preview-panel"><h3>Raw note</h3><div className="ai-note-preview-body"><RichNoteView text={preview.rawNote} /></div></section><section className="ai-note-preview-panel is-suggestion"><h3>AI suggestion</h3><div className="ai-note-preview-body"><RichNoteView text={preview.output.clean_note} /><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small></div><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
   }
 
   async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
@@ -1029,14 +1090,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <div className="timesheet-frame">
             <div className="timesheet-grid" style={cssVars({ "--timesheet-day-count": String(weeklyTimesheet.days.length) })}>
               <div className="timesheet-task-header"><strong>Task</strong><span>and projects</span></div>
-              {weeklyTimesheet.days.map((day) => <div className="timesheet-day-header" key={day.shortDate}><strong>{day.label}</strong><span>{day.shortDate}</span></div>)}
+              {weeklyTimesheet.days.map((day) => {
+                const dayKey = toLocalDateKey(day.date);
+                return <button className={`timesheet-day-header ${selectedTimesheetDateKey === dayKey && !selectedTimesheetTaskId ? "is-selected" : ""}`} key={day.shortDate} onClick={() => { setSelectedTimesheetDateKey(dayKey); setSelectedTimesheetTaskId(null); }} type="button"><strong>{day.label}</strong><span>{day.shortDate}</span></button>;
+              })}
               <div className="timesheet-total-header">Task total</div>
 
               {weeklyTimesheet.rows.length === 0 ? <div className="timesheet-empty">Track time on a task this week to build your timesheet.</div> : weeklyTimesheet.rows.map((row) => {
                 const chips = [...row.projects, ...row.tags].slice(0, 4);
                 return <Fragment key={row.taskId}>
                   <div className="timesheet-task-cell" key={`${row.taskId}-task`}><TaskIdentityIcon className="timesheet-task-icon" identity={{ icon: row.icon, tone: row.tone }} title={row.title} /><div><strong>{row.title}</strong>{chips.length ? <span className="timesheet-chip-row">{chips.map((tag) => <i key={tag}>{tag}</i>)}</span> : null}</div></div>
-                  {row.cells.map((cell, index) => <div className={cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`}><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="clock" />{cell.entryCount}</small> : null}</div>)}
+                  {row.cells.map((cell, index) => {
+                    const dayKey = toLocalDateKey(weeklyTimesheet.days[index].date);
+                    const selected = selectedTimesheetDateKey === dayKey && selectedTimesheetTaskId === row.taskId;
+                    return <button className={`${cell.durationSeconds ? "timesheet-time-cell" : "timesheet-time-cell is-empty"} ${selected ? "is-selected" : ""}`} key={`${row.taskId}-${weeklyTimesheet.days[index].shortDate}`} onClick={() => { setSelectedTimesheetDateKey(dayKey); setSelectedTimesheetTaskId(row.taskId); }} type="button"><strong>{formatTimesheetDuration(cell.durationSeconds)}</strong>{cell.entryCount ? <small><MainIcon name="clock" />{cell.entryCount}</small> : null}</button>;
+                  })}
                   <div className="timesheet-total-cell" key={`${row.taskId}-total`}>{formatTimesheetDuration(row.totalSeconds)}</div>
                 </Fragment>;
               })}
@@ -1046,13 +1114,27 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               <div className="timesheet-total-cell timesheet-footer-grand">{formatTimesheetDuration(weeklyTimesheet.totalSeconds)}</div>
             </div>
           </div>
-          <footer className="timesheet-notes"><MainIcon name="note" />Notes ({weeklyTimesheet.notesCount}) across this week</footer>
+          <section className="timesheet-detail-panel">
+            <div className="timesheet-detail-heading">
+              <div><h2>{selectedTimesheetDay ? `${selectedTimesheetDay.label}, ${selectedTimesheetDay.shortDate}` : "Selected day"}</h2><p>{selectedTimesheetTaskId ? taskById.get(selectedTimesheetTaskId)?.title ?? "Archived task" : "All tracked entries"}</p></div>
+              {selectedTimesheetTaskId ? <button onClick={() => setSelectedTimesheetTaskId(null)} type="button">Show all tasks</button> : null}
+            </div>
+            <div className="timesheet-entry-list">
+              {selectedTimesheetEntries.length === 0 ? <p className="empty-state">No entries for this selection.</p> : selectedTimesheetEntries.map((entry) => {
+                const task = taskById.get(entry.taskId);
+                const projectNames = getEntryProjectNames(entry, task, projectById);
+                return <article key={entry.id}><div><strong>{task?.title ?? "Archived task"}</strong><p>{projectNames.join(" · ") || "No project"} · {formatEntryTimeRange(entry)}</p>{projectNames.length ? <span className="entry-project-row">{projectNames.map((projectName) => <i key={projectName}>{projectName}</i>)}</span> : null}{entry.note ? <RichNoteView className="entry-note-rich" text={entry.note} /> : <small>No note</small>}</div><span>{formatDuration(entry.durationSeconds)}</span><button onClick={() => handleEditEntry(entry)} type="button">Edit</button></article>;
+              })}
+            </div>
+          </section>
         </section> : null}
 
         {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
           {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{entry.note ? <small className="entry-note-text">{entry.note}</small> : null}{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
+            const task = taskById.get(entry.taskId);
+            const projectNames = getEntryProjectNames(entry, task, projectById);
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><div><strong>{task?.title ?? "Archived task"}</strong><p>{formatEntryDateTime(entry.startedAt)} — {formatEntryDateTime(entry.endedAt)}</p>{projectNames.length ? <span className="entry-project-row">{projectNames.map((projectName) => <i key={projectName}>{projectName}</i>)}</span> : null}{entry.note ? <RichNoteView className="entry-note-rich" text={entry.note} /> : null}{aiSuggestion ? <small className="ai-note-status">{getAiSuggestionSummary(aiSuggestion)}</small> : null}{renderAiPreview(entry)}</div><span>{formatDuration(entry.durationSeconds)}</span>{renderImproveNoteButton(entry)}<button onClick={() => handleEditEntry(entry)}>Edit</button><button className="delete-entry" onClick={() => handleDeleteEntry(entry)}>Delete</button></article>;
           })}
         </div></section> : null}
 
@@ -1069,10 +1151,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           {archivedProjects.map((project) => <article className="is-archived" key={project.id}><div><strong>{project.title}</strong><p>Archived project</p></div><button onClick={() => handleRenameProject(project)}>Rename</button><button onClick={() => handleUnarchiveProject(project.id)}>Unarchive</button></article>)}
         </div></section> : null}
 
-        {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{noteEntries.length} saved</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
-          {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : noteEntries.map((entry) => {
+        {activeSection === "notes" ? <section className="dashboard-panel"><div className="section-title"><h2>Task notes</h2><span>{filteredNoteEntries.length} of {noteEntries.length} saved</span></div><label className="notes-search-field"><MainIcon name="search" /><input value={notesSearch} onChange={(event) => setNotesSearch(event.target.value)} placeholder="Search notes, tasks, projects, dates, tags..." /></label>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="notes-list">
+          {noteEntries.length === 0 ? <p className="empty-state">Notes added while tracking will appear here.</p> : filteredNoteEntries.length === 0 ? <p className="empty-state">No notes match your search.</p> : filteredNoteEntries.map((entry) => {
             const improveButton = renderImproveNoteButton(entry);
-            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{taskById.get(entry.taskId)?.title ?? "Archived task"}</strong><p>{entry.note}</p><small>{formatEntryDateTime(entry.startedAt)}</small></div><button className="note-edit-button" onClick={() => handleEditEntry(entry)} type="button"><MainIcon name="pen" />Edit</button></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
+            const task = taskById.get(entry.taskId);
+            const projectNames = getEntryProjectNames(entry, task, projectById);
+            return <article className={aiPreview?.entryId === entry.id ? "has-ai-preview" : ""} key={entry.id}><span><MainIcon name="note" /></span><div className="note-row-body"><div className="note-row-header"><div><strong>{task?.title ?? "Archived task"}</strong><RichNoteView className="entry-note-rich" text={entry.note} />{projectNames.length ? <span className="entry-project-row">{projectNames.map((projectName) => <i key={projectName}>{projectName}</i>)}</span> : null}<small>{formatEntryDateTime(entry.startedAt)}</small></div><button className="note-edit-button" onClick={() => handleEditEntry(entry)} type="button"><MainIcon name="pen" />Edit</button></div>{renderAiPreview(entry)}{improveButton ? <div className="ai-note-footer">{improveButton}</div> : null}</div></article>;
           })}
         </div></section> : null}
 
@@ -1102,7 +1186,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
             <h2>Ollama sidecar</h2>
             <p>Improve notes with a local Ollama model.</p>
             <div className="settings-model-badges"><span>Default: <code>{DEFAULT_OLLAMA_MODEL}</code></span><span>Fallback: <code>{FALLBACK_OLLAMA_MODEL}</code></span></div>
-            <label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim() || DEFAULT_OLLAMA_MODEL)} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
+            <label className="ai-model-field">Model name<input value={ollamaModel} onChange={(event) => setOllamaModel(event.target.value)} onBlur={() => setOllamaModel((current) => current.trim())} placeholder={DEFAULT_OLLAMA_MODEL} /></label>
             <div className="settings-ai-actions"><button disabled={settingsAiBusy} onClick={() => void handleCheckOllamaStatus()} type="button"><MainIcon name="chart" />Check</button><button onClick={() => void handleOpenOllamaDownload()} type="button"><MainIcon name="timer" />Install Ollama</button><button onClick={() => void handlePullOllamaModel()} type="button"><MainIcon name="overlay" />Pull model</button></div>
             <p aria-live="polite" className="settings-ai-status">{settingsAiStatus ?? " "}</p>
           </section>
@@ -1151,7 +1235,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <section className="dashboard-panel profile-settings-panel review-settings-panel profile-review-panel">
             <PanelKicker icon="clock" label="Review" />
             <h2>Tracked time</h2>
-            <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{dailySummaries.slice(0, 5).map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>)}</div>
+            <div className="totals-list"><p><span>All entries</span><strong>{formatDuration(totalDuration(allEntries))}</strong></p>{pagedDailySummaries.length ? pagedDailySummaries.map((summary) => <p key={summary.date}><span>{summary.date}</span><strong>{formatDuration(summary.durationSeconds)}</strong></p>) : <p><span>No daily entries yet</span><strong>0h 0m</strong></p>}</div>
+            <div className="review-pagination"><button disabled={reviewPage === 0} onClick={() => setReviewPage((page) => Math.max(0, page - 1))} type="button"><MainIcon name="chevron" className="chevron-left" />Previous</button><span>Page {reviewPage + 1} of {reviewPageCount}</span><button disabled={reviewPage >= reviewPageCount - 1} onClick={() => setReviewPage((page) => Math.min(reviewPageCount - 1, page + 1))} type="button">Next<MainIcon name="chevron" className="chevron-right" /></button></div>
             <div className="settings-review-bar"><span /></div>
           </section>
         </div> : null}
@@ -1165,7 +1250,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
       {isProjectComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsProjectComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-project-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new project" className="modal-close" onClick={() => setIsProjectComposerOpen(false)}>×</button><p className="panel-kicker">New project</p><h2 id="new-project-heading">Organize related tasks.</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create project</button></form></section></div> : null}
 
-      {isEntryComposerOpen ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">{editingEntry ? "Edit entry" : "New entry"}</p><h2 id="entry-editor-title">{editingEntry ? "Correct tracked time." : "Log completed work."}</h2><form onSubmit={handleSaveEntry}><label>Task<select required value={entryTaskId} onChange={(event) => setEntryTaskId(event.target.value)}>{(editingEntry ? allTasks : tasks).map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">{editingEntry ? "Save changes" : "Create entry"}</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
+      {isEntryComposerOpen ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">{editingEntry ? "Edit entry" : "New entry"}</p><h2 id="entry-editor-title">{editingEntry ? "Correct tracked time." : "Log completed work."}</h2><form onSubmit={handleSaveEntry}><label>Task<select required value={entryTaskId} onChange={(event) => handleChangeEntryTask(event.target.value)}>{(editingEntry ? allTasks : tasks).map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><label>Projects <span className="project-options">{(editingEntry ? allProjects : projects).length ? (editingEntry ? allProjects : projects).map((project) => <label key={project.id}><input checked={entryProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setEntryProjectIds((current) => event.target.checked ? Array.from(new Set([...current, project.id])) : current.filter((id) => id !== project.id))} />{project.title}{project.archived ? " (archived)" : ""}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">These projects apply to this time entry. Changing the task above resets them to that task's projects.</small></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">{editingEntry ? "Save changes" : "Create entry"}</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
     </main>
   );
 }
@@ -1240,7 +1325,7 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
     const task = taskById.get(entry.taskId);
     const taskTitle = task?.title ?? "Archived task";
     const taskVisual = getTaskVisual(task, entry.taskId, taskTitle);
-    const projectsForTask = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
+    const projectsForTask = getEntryProjectNames(entry, task, projectById);
     const taskRow = taskTotals.get(entry.taskId) ?? {
       id: entry.taskId,
       title: taskTitle,
@@ -1291,7 +1376,7 @@ function buildTimeInsights(entries: TimeEntry[], tasks: Task[], projects: Projec
       const task = taskById.get(entry.taskId);
       const taskTitle = task?.title ?? "Archived task";
       const taskVisual = getTaskVisual(task, entry.taskId, taskTitle);
-      const projectNames = task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [];
+      const projectNames = getEntryProjectNames(entry, task, projectById);
       return {
         id: entry.id,
         date: formatShortDate(entry.startedAt),
@@ -1354,11 +1439,12 @@ function buildWeeklyTimesheet(entries: TimeEntry[], tasks: Task[], projects: Pro
       title: taskTitle,
       icon: taskVisual.icon,
       tone: taskVisual.tone,
-      projects: task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [],
+      projects: getEntryProjectNames(entry, task, projectById),
       tags: task?.tags ?? [],
       cells: Array.from({ length: 7 }, () => ({ durationSeconds: 0, entryCount: 0 })),
       totalSeconds: 0
     };
+    row.projects = Array.from(new Set([...row.projects, ...getEntryProjectNames(entry, task, projectById)]));
     row.cells[dayIndex].durationSeconds += entry.durationSeconds;
     row.cells[dayIndex].entryCount += 1;
     row.totalSeconds += entry.durationSeconds;
@@ -1535,6 +1621,29 @@ function formatShortDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
+function formatEntryTimeRange(entry: TimeEntry): string {
+  const formatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${formatter.format(new Date(entry.startedAt))} - ${formatter.format(new Date(entry.endedAt))}`;
+}
+
+function buildNoteSearchText(entry: TimeEntry, taskById: Map<string, Task>, projectById: Map<string, Project>): string {
+  const task = taskById.get(entry.taskId);
+  const projectNames = getEntryProjectNames(entry, task, projectById);
+  return [
+    entry.note,
+    task?.title ?? "Archived task",
+    formatEntryDateTime(entry.startedAt),
+    formatShortDate(entry.startedAt),
+    ...projectNames,
+    ...(task?.tags ?? [])
+  ].join(" ");
+}
+
+function getEntryProjectNames(entry: TimeEntry, task: Task | undefined, projectById: Map<string, Project>): string[] {
+  const projectIds = entry.projectIds.length ? entry.projectIds : task?.projectIds ?? [];
+  return projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title));
+}
+
 function formatDayHighlight(value: string): string {
   return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" }).format(new Date(value));
 }
@@ -1640,6 +1749,7 @@ const TASK_ICON_KEYWORDS: Array<{ icon: MainIconName; keywords: string[] }> = [
 ];
 
 const TASK_ICON_FALLBACKS: MainIconName[] = ["briefcase", "code", "chart", "document", "target", "book"];
+const REVIEW_PAGE_SIZE = 5;
 
 function PanelKicker({ icon, label }: { icon: MainIconName; label: string }) {
   return <p className="panel-kicker settings-panel-kicker"><MainIcon name={icon} />{label}</p>;
