@@ -1326,10 +1326,6 @@ body.overlay-route {
   box-shadow: var(--theme-shadow), inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
 }
 
-.reference-overlay-shell.mode-tiny[class*="theme-"] .transition-overlay-pill-tiny {
-  box-shadow: 0 2px 4px color-mix(in srgb, var(--theme-ink) 16%, transparent), inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
-}
-
 .reference-overlay-shell[class*="theme-"] .reference-app-icon,
 .reference-overlay-shell[class*="theme-"] .reference-entry-icon,
 .reference-overlay-shell[class*="theme-"] .reference-entry-tag,

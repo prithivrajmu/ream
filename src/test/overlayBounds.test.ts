@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   calculateExpandedOverlayBounds,
   getTopRightOverlayBounds,
+  getOverlaySize,
   OVERLAY_COMPACT_SIZE,
   OVERLAY_EXPANDED_SIZE
 } from "../shared/overlayBounds";
 
 describe("overlay bounds", () => {
+  it("reserves room around the tiny overlay for its theme shadow", () => {
+    expect(getOverlaySize("tiny")).toEqual({ width: 196, height: 66 });
+  });
+
   it("places the compact overlay at the top center of the work area", () => {
     expect(getTopRightOverlayBounds({ x: 0, y: 0, width: 1440, height: 900 })).toEqual({
       width: OVERLAY_COMPACT_SIZE.width,
