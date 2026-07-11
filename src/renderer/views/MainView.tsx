@@ -172,6 +172,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
   const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [entriesSearch, setEntriesSearch] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [selectedTimesheetDateKey, setSelectedTimesheetDateKey] = useState("");
   const [selectedTimesheetTaskId, setSelectedTimesheetTaskId] = useState<string | null>(null);
@@ -199,6 +200,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
+  );
+  const filteredRecentEntries = useMemo(
+    () => recentEntries.filter((entry) => noteMatchesQuery(entry.note, entriesSearch)),
+    [entriesSearch, recentEntries]
   );
   const noteEntries = useMemo(() => recentEntries.filter((entry) => entry.note.trim()), [recentEntries]);
   const filteredNoteEntries = useMemo(
@@ -1129,8 +1134,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           </section>
         </section> : null}
 
-        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{recentEntries.length} entries</span></div>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
-          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : recentEntries.map((entry) => {
+        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{filteredRecentEntries.length} of {recentEntries.length} entries</span></div><label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search entries by note" value={entriesSearch} onChange={(event) => setEntriesSearch(event.target.value)} placeholder="Search entry notes..." /></label>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
+          {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : filteredRecentEntries.length === 0 ? <p className="empty-state">No entries match this note search.</p> : filteredRecentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
             const task = taskById.get(entry.taskId);
             const projectNames = getEntryProjectNames(entry, task, projectById);
