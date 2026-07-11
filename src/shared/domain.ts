@@ -22,6 +22,7 @@ export interface Project {
 export interface TimeEntry {
   id: EntityId;
   taskId: EntityId;
+  projectIds: EntityId[];
   startedAt: string;
   endedAt: string;
   durationSeconds: number;
@@ -82,6 +83,7 @@ export interface UpdateProjectInput {
 
 export interface UpdateTimeEntryInput {
   taskId: EntityId;
+  projectIds?: EntityId[];
   startedAt: string;
   endedAt: string;
   note?: string;

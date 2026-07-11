@@ -39,6 +39,7 @@ const entries: TimeEntry[] = [
   {
     id: "entry_1",
     taskId: "task_a",
+    projectIds: ["project_acme"],
     startedAt: "2026-06-25T09:00:00.000Z",
     endedAt: "2026-06-25T09:30:00.000Z",
     durationSeconds: 1800,
@@ -49,6 +50,7 @@ const entries: TimeEntry[] = [
   {
     id: "entry_2",
     taskId: "task_b",
+    projectIds: ["project_internal"],
     startedAt: "2026-06-25T10:00:00.000Z",
     endedAt: "2026-06-25T11:00:00.000Z",
     durationSeconds: 3600,
@@ -59,6 +61,7 @@ const entries: TimeEntry[] = [
   {
     id: "entry_3",
     taskId: "task_b",
+    projectIds: ["project_internal"],
     startedAt: "2026-06-24T10:00:00.000Z",
     endedAt: "2026-06-24T10:15:00.000Z",
     durationSeconds: 900,
@@ -130,6 +133,21 @@ describe("reporting", () => {
 
     expect(parsed.projects).toMatchObject([{ title: "Acme", archived: false }]);
     expect(parsed.tasks[0].projectIds).toEqual([parsed.projects[0].id]);
+  });
+
+  it("defaults missing entry projects from the entry task when importing older backups", () => {
+    const legacyEntry = { ...entries[0] };
+    delete (legacyEntry as Partial<TimeEntry>).projectIds;
+
+    const parsed = parseReamExport(JSON.stringify({
+      exportedAt: "2026-06-25T12:00:00.000Z",
+      schemaVersion: 2,
+      tasks: [taskA],
+      projects: [projects[0]],
+      timeEntries: [legacyEntry]
+    }));
+
+    expect(parsed.timeEntries[0].projectIds).toEqual(["project_acme"]);
   });
 
   it("rejects malformed imports before restore", () => {

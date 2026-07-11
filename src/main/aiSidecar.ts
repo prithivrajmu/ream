@@ -48,12 +48,13 @@ export async function startAiSidecar(): Promise<AiSidecarHandle> {
 
 async function routeRequest(request: IncomingMessage, response: ServerResponse) {
   try {
-    if (request.method === "GET" && request.url === "/ai/health") {
-      await handleHealth(response);
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (request.method === "GET" && requestUrl.pathname === "/ai/health") {
+      await handleHealth(response, requestUrl.searchParams.get("model") ?? "");
       return;
     }
 
-    if (request.method === "POST" && request.url === "/ai/improve-note") {
+    if (request.method === "POST" && requestUrl.pathname === "/ai/improve-note") {
       await handleImproveNote(request, response);
       return;
     }
@@ -64,15 +65,58 @@ async function routeRequest(request: IncomingMessage, response: ServerResponse) 
   }
 }
 
-async function handleHealth(response: ServerResponse) {
-  const model = readModelName();
+async function handleHealth(response: ServerResponse, requestedModel: string) {
+  const model = requestedModel.trim() || readModelName();
   const fallbackModel = readFallbackModelName();
   try {
-    await fetchWithTimeout(OLLAMA_HEALTH_URL, { method: "GET" }, HEALTH_TIMEOUT_MS);
-    sendJson(response, 200, { ok: true, ollama: { ok: true }, model, fallbackModel });
+    const ollamaResponse = await fetchWithTimeout(OLLAMA_HEALTH_URL, { method: "GET" }, HEALTH_TIMEOUT_MS);
+    if (!ollamaResponse.ok) {
+      throw new Error(`Ollama returned ${ollamaResponse.status}.`);
+    }
+    const tags = await ollamaResponse.json() as unknown;
+    const availableModels = readAvailableOllamaModels(tags);
+    sendJson(response, 200, {
+      ok: true,
+      ollama: { ok: true },
+      model,
+      checkedModel: model,
+      fallbackModel,
+      modelAvailable: hasOllamaModel(availableModels, model),
+      fallbackAvailable: hasOllamaModel(availableModels, fallbackModel)
+    });
   } catch {
-    sendJson(response, 200, { ok: true, ollama: { ok: false }, model, fallbackModel });
+    sendJson(response, 200, {
+      ok: true,
+      ollama: { ok: false },
+      model,
+      checkedModel: model,
+      fallbackModel,
+      modelAvailable: false,
+      fallbackAvailable: false
+    });
   }
+}
+
+function readAvailableOllamaModels(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  const models = (value as Record<string, unknown>).models;
+  if (!Array.isArray(models)) {
+    return [];
+  }
+  return models
+    .map((model) => model && typeof model === "object" && !Array.isArray(model) ? (model as Record<string, unknown>).name : null)
+    .filter((name): name is string => typeof name === "string" && Boolean(name.trim()))
+    .map((name) => name.trim());
+}
+
+function hasOllamaModel(availableModels: string[], model: string): boolean {
+  const normalized = model.trim();
+  if (!normalized) {
+    return false;
+  }
+  return availableModels.some((candidate) => candidate === normalized || candidate === `${normalized}:latest`);
 }
 
 async function handleImproveNote(request: IncomingMessage, response: ServerResponse) {

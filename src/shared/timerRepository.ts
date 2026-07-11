@@ -114,9 +114,11 @@ export async function stopTimer(database: ReamDatabase, now = new Date()): Promi
 
   const endedAt = now.toISOString();
   const timestamp = endedAt;
+  const task = await database.tasks.get(activeTimer.taskId);
   const entry: TimeEntry = {
     id: createId("entry"),
     taskId: activeTimer.taskId,
+    projectIds: task?.projectIds ?? [],
     startedAt: activeTimer.startedAt,
     endedAt,
     durationSeconds: activeTimerElapsedSeconds(activeTimer, now),
@@ -143,7 +145,7 @@ export async function createTimeEntry(
     throw new Error("Choose an active task for this entry.");
   }
 
-  const entry = buildTimeEntry(createId("entry"), input, now);
+  const entry = buildTimeEntry(createId("entry"), input, now, input.projectIds ?? task.projectIds);
   await database.timeEntries.add(entry);
   return entry;
 }
@@ -167,12 +169,15 @@ export async function updateTimeEntry(
     throw new Error("Choose a valid task for this entry.");
   }
 
-  const updated = { ...buildTimeEntry(existing.id, input, now), createdAt: existing.createdAt };
+  const updated = {
+    ...buildTimeEntry(existing.id, input, now, input.projectIds === undefined ? existing.projectIds : undefined),
+    createdAt: existing.createdAt
+  };
   await database.timeEntries.put(updated);
   return updated;
 }
 
-function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new Date()): TimeEntry {
+function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new Date(), fallbackProjectIds: string[] = []): TimeEntry {
   const startedAt = new Date(input.startedAt);
   const endedAt = new Date(input.endedAt);
   if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
@@ -187,6 +192,7 @@ function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new 
   return {
     id: entryId,
     taskId: input.taskId,
+    projectIds: normalizeProjectIds(input.projectIds ?? fallbackProjectIds),
     startedAt: startedAt.toISOString(),
     endedAt: endedAt.toISOString(),
     durationSeconds: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
@@ -194,6 +200,10 @@ function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new 
     createdAt: timestamp,
     updatedAt: timestamp
   };
+}
+
+function normalizeProjectIds(projectIds: string[] = []): string[] {
+  return Array.from(new Set(projectIds.filter(Boolean)));
 }
 
 export async function deleteTimeEntry(database: ReamDatabase, entryId: string): Promise<void> {

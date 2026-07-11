@@ -10,7 +10,7 @@ export async function readAllExportData(database: ReamDatabase): Promise<ReamExp
 
   return {
     exportedAt: new Date().toISOString(),
-    schemaVersion: 2,
+    schemaVersion: 3,
     tasks,
     projects,
     timeEntries

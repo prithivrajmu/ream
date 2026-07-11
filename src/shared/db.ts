@@ -79,6 +79,53 @@ export class ReamDatabase extends Dexie {
         suggestion.statusUpdatedAt = statusTimestamp;
       });
     });
+
+    this.version(5).stores({
+      tasks: "id, title, *projectIds, archived, createdAt, updatedAt",
+      projects: "id, title, archived, createdAt, updatedAt",
+      timeEntries: "id, taskId, startedAt, endedAt, createdAt",
+      activeTimers: "id, taskId, startedAt",
+      noteAiSuggestions: "id, noteId, status, createdAt, statusUpdatedAt, acceptedAt"
+    }).upgrade(async (transaction) => {
+      const tasks = transaction.table("tasks") as Table<Task, string>;
+      const timeEntries = transaction.table("timeEntries") as Table<TimeEntry, string>;
+      const taskById = new Map((await tasks.toArray()).map((task) => [task.id, task]));
+      await timeEntries.toCollection().modify((entry) => {
+        entry.projectIds = Array.isArray(entry.projectIds)
+          ? entry.projectIds.filter((projectId): projectId is string => typeof projectId === "string").filter(Boolean)
+          : taskById.get(entry.taskId)?.projectIds ?? [];
+        delete (entry as TimeEntry & { tags?: string[] }).tags;
+      });
+    });
+
+    this.version(6).stores({
+      tasks: "id, title, *projectIds, archived, createdAt, updatedAt",
+      projects: "id, title, archived, createdAt, updatedAt",
+      timeEntries: "id, taskId, startedAt, endedAt, createdAt",
+      activeTimers: "id, taskId, startedAt",
+      noteAiSuggestions: "id, noteId, status, createdAt, statusUpdatedAt, acceptedAt"
+    }).upgrade(async (transaction) => {
+      const [tasks, projects] = await Promise.all([
+        (transaction.table("tasks") as Table<Task, string>).toArray(),
+        (transaction.table("projects") as Table<Project, string>).toArray()
+      ]);
+      const taskById = new Map(tasks.map((task) => [task.id, task]));
+      const projectIdByTitle = new Map(projects.map((project) => [project.title.trim().toLocaleLowerCase(), project.id]));
+      const timeEntries = transaction.table("timeEntries") as Table<TimeEntry & { tags?: string[] }, string>;
+      await timeEntries.toCollection().modify((entry) => {
+        const legacyProjectIds = Array.isArray(entry.tags)
+          ? entry.tags
+              .map((tag) => projectIdByTitle.get(tag.trim().toLocaleLowerCase()))
+              .filter((projectId): projectId is string => Boolean(projectId))
+          : [];
+        entry.projectIds = Array.isArray(entry.projectIds) && entry.projectIds.length
+          ? entry.projectIds.filter((projectId): projectId is string => typeof projectId === "string").filter(Boolean)
+          : legacyProjectIds.length
+            ? Array.from(new Set(legacyProjectIds))
+            : taskById.get(entry.taskId)?.projectIds ?? [];
+        delete entry.tags;
+      });
+    });
   }
 }
 

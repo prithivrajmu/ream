@@ -32,7 +32,7 @@ const desktopApi = {
   focusOverlayWindow: () => ipcRenderer.invoke("window:focus-overlay") as Promise<void>,
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
-  getOllamaStatus: () => ipcRenderer.invoke("ai:ollama-status") as Promise<OllamaHealthStatus>,
+  getOllamaStatus: (model?: string) => ipcRenderer.invoke("ai:ollama-status", model) as Promise<OllamaHealthStatus>,
   openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
   openOllamaLibrary: (model: string) => ipcRenderer.invoke("ai:open-ollama-library", model) as Promise<void>,
   getDataLocation: () => ipcRenderer.invoke("data:get-location") as Promise<ReamDataLocationInfo>,
@@ -63,6 +63,13 @@ const desktopApi = {
     ipcRenderer.on("main:open-settings", listener);
     return () => {
       ipcRenderer.off("main:open-settings", listener);
+    };
+  },
+  onQuickNoteRequested: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("overlay:quick-note-requested", listener);
+    return () => {
+      ipcRenderer.off("overlay:quick-note-requested", listener);
     };
   },
   closeOverlay: () => ipcRenderer.invoke("window:close-overlay")

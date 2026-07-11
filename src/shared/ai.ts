@@ -9,6 +9,9 @@ export interface OllamaHealthStatus {
   };
   model: string;
   fallbackModel: string;
+  checkedModel: string;
+  modelAvailable: boolean;
+  fallbackAvailable: boolean;
 }
 
 export interface OllamaPullResult {
