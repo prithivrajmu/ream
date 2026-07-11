@@ -615,6 +615,7 @@ function setupTray() {
 
 function registerShortcuts() {
   globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
+  globalShortcut.register("CommandOrControl+Shift+O", () => { void showQuickNoteOverlay(); });
 }
 
 function sendOverlayContextCommand(command: OverlayContextCommand) {
@@ -641,17 +642,25 @@ function showOverlayContextMenu(input: OverlayContextMenuInput) {
   menu.popup({ window: overlayWindow ?? undefined });
 }
 
-async function readOllamaStatus(): Promise<OllamaHealthStatus> {
+async function readOllamaStatus(model = ""): Promise<OllamaHealthStatus> {
+  const checkedModel = model.trim() || DEFAULT_OLLAMA_MODEL;
   if (!aiSidecar) {
     return {
       ok: false,
       ollama: { ok: false },
-      model: DEFAULT_OLLAMA_MODEL,
-      fallbackModel: FALLBACK_OLLAMA_MODEL
+      model: checkedModel,
+      checkedModel,
+      fallbackModel: FALLBACK_OLLAMA_MODEL,
+      modelAvailable: false,
+      fallbackAvailable: false
     };
   }
 
-  const response = await fetch(`${aiSidecar.url}/ai/health`);
+  const healthUrl = new URL(`${aiSidecar.url}/ai/health`);
+  if (model.trim()) {
+    healthUrl.searchParams.set("model", model.trim());
+  }
+  const response = await fetch(healthUrl);
   const payload = await response.json() as unknown;
   return normalizeOllamaHealthStatus(payload);
 }
@@ -704,8 +713,31 @@ function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
     ok: payload.ok === true,
     ollama: { ok: ollama.ok === true },
     model: typeof payload.model === "string" && payload.model.trim() ? payload.model.trim() : DEFAULT_OLLAMA_MODEL,
-    fallbackModel: typeof payload.fallbackModel === "string" && payload.fallbackModel.trim() ? payload.fallbackModel.trim() : FALLBACK_OLLAMA_MODEL
+    checkedModel: typeof payload.checkedModel === "string" && payload.checkedModel.trim()
+      ? payload.checkedModel.trim()
+      : typeof payload.model === "string" && payload.model.trim()
+        ? payload.model.trim()
+        : DEFAULT_OLLAMA_MODEL,
+    fallbackModel: typeof payload.fallbackModel === "string" && payload.fallbackModel.trim() ? payload.fallbackModel.trim() : FALLBACK_OLLAMA_MODEL,
+    modelAvailable: payload.modelAvailable === true,
+    fallbackAvailable: payload.fallbackAvailable === true
   };
+}
+
+async function showQuickNoteOverlay() {
+  await showOverlayWindow({ hideMain: false });
+  const window = overlayWindow;
+  if (window && !window.isDestroyed() && window.webContents.isLoading()) {
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 900);
+      window.webContents.once("did-finish-load", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+  setOverlayExpanded(true);
+  overlayWindow?.webContents.send("overlay:quick-note-requested");
 }
 
 app.whenReady().then(() => {
@@ -807,7 +839,7 @@ app.whenReady().then(() => {
     };
   });
 
-  ipcMain.handle("ai:ollama-status", () => readOllamaStatus());
+  ipcMain.handle("ai:ollama-status", (_event, model?: string) => readOllamaStatus(typeof model === "string" ? model : ""));
 
   ipcMain.handle("ai:open-ollama-download", async () => {
     bringExternalBrowserToFront(OLLAMA_DOWNLOAD_URL);
