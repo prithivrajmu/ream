@@ -40,6 +40,39 @@ export interface ImproveNoteResult {
   output: ImprovedNoteOutput;
 }
 
+export interface RecapEntryInput {
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  taskTitle: string;
+  projectNames: string[];
+  note: string;
+}
+
+export interface RecapJournalPageInput {
+  dateKey: string;
+  markdown: string;
+}
+
+export interface GenerateRecapRequest {
+  sourceStartDateKey: string;
+  sourceEndDateKey: string;
+  sourceLabel: string;
+  entries: RecapEntryInput[];
+  journalPages: RecapJournalPageInput[];
+  model?: string;
+}
+
+export interface GeneratedRecapOutput {
+  summary: string;
+  todos: string[];
+}
+
+export interface GenerateRecapResult {
+  model: string;
+  output: GeneratedRecapOutput;
+}
+
 export function validateImprovedNoteOutput(value: unknown): ImprovedNoteOutput {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("AI returned an invalid note suggestion.");
@@ -53,6 +86,24 @@ export function validateImprovedNoteOutput(value: unknown): ImprovedNoteOutput {
     blockers: readStringArray(candidate.blockers, "blockers"),
     tags: readStringArray(candidate.tags, "tags").map((tag) => tag.trim().toLocaleLowerCase()).filter(Boolean)
   };
+}
+
+export function validateGeneratedRecapOutput(value: unknown): GeneratedRecapOutput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("AI returned an invalid recap.");
+  }
+  const candidate = value as Record<string, unknown>;
+  return {
+    summary: readString(candidate.summary, "summary"),
+    todos: readStringArray(candidate.todos, "todos")
+  };
+}
+
+export function formatGeneratedRecapMarkdown(output: GeneratedRecapOutput, sourceLabel: string): string {
+  const todos = output.todos.length
+    ? output.todos.map((todo) => `- [ ] ${todo}`).join("\n")
+    : "_No explicit todos found._";
+  return `## Recap · ${sourceLabel}\n\n### Summary\n\n${output.summary}\n\n### Todos\n\n${todos}`;
 }
 
 function readString(value: unknown, field: string): string {

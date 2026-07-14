@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "./domain";
+import type { ActiveTimer, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry } from "./domain";
 
 export const REAM_DATABASE_NAME = "ream";
 export const LEGACY_DATABASE_NAME = "timesheet-tracker";
@@ -10,6 +10,8 @@ export class ReamDatabase extends Dexie {
   timeEntries!: Table<TimeEntry, string>;
   activeTimers!: Table<ActiveTimer, string>;
   noteAiSuggestions!: Table<NoteAiSuggestion, string>;
+  journalPages!: Table<JournalPage, string>;
+  journalRecaps!: Table<JournalRecap, string>;
 
   constructor(name = REAM_DATABASE_NAME) {
     super(name);
@@ -126,6 +128,16 @@ export class ReamDatabase extends Dexie {
         delete entry.tags;
       });
     });
+
+    this.version(7).stores({
+      tasks: "id, title, *projectIds, archived, createdAt, updatedAt",
+      projects: "id, title, archived, createdAt, updatedAt",
+      timeEntries: "id, taskId, startedAt, endedAt, createdAt",
+      activeTimers: "id, taskId, startedAt",
+      noteAiSuggestions: "id, noteId, status, createdAt, statusUpdatedAt, acceptedAt",
+      journalPages: "id, &dateKey, createdAt, updatedAt",
+      journalRecaps: "id, journalPageId, journalDateKey, [sourceStartDateKey+sourceEndDateKey], createdAt, updatedAt"
+    });
   }
 }
 
@@ -137,24 +149,28 @@ export async function migrateLegacyDatabase(database: ReamDatabase = db, legacyN
   const legacyDatabase = new ReamDatabase(legacyName);
 
   try {
-    const [tasks, projects, timeEntries, activeTimers, noteAiSuggestions] = await Promise.all([
+    const [tasks, projects, timeEntries, activeTimers, noteAiSuggestions, journalPages, journalRecaps] = await Promise.all([
       legacyDatabase.tasks.toArray(),
       legacyDatabase.projects.toArray(),
       legacyDatabase.timeEntries.toArray(),
       legacyDatabase.activeTimers.toArray(),
-      legacyDatabase.noteAiSuggestions.toArray()
+      legacyDatabase.noteAiSuggestions.toArray(),
+      legacyDatabase.journalPages.toArray(),
+      legacyDatabase.journalRecaps.toArray()
     ]);
 
-    if (!tasks.length && !projects.length && !timeEntries.length && !activeTimers.length && !noteAiSuggestions.length) {
+    if (!tasks.length && !projects.length && !timeEntries.length && !activeTimers.length && !noteAiSuggestions.length && !journalPages.length && !journalRecaps.length) {
       return false;
     }
 
-    await database.transaction("rw", database.tasks, database.projects, database.timeEntries, database.activeTimers, database.noteAiSuggestions, async () => {
+    await database.transaction("rw", [database.tasks, database.projects, database.timeEntries, database.activeTimers, database.noteAiSuggestions, database.journalPages, database.journalRecaps], async () => {
       await bulkPutIfAny(database.tasks, tasks);
       await bulkPutIfAny(database.projects, projects);
       await bulkPutIfAny(database.timeEntries, timeEntries);
       await bulkPutIfAny(database.activeTimers, activeTimers);
       await bulkPutIfAny(database.noteAiSuggestions, noteAiSuggestions);
+      await bulkPutIfAny(database.journalPages, journalPages);
+      await bulkPutIfAny(database.journalRecaps, journalRecaps);
     });
 
     return true;
@@ -164,14 +180,16 @@ export async function migrateLegacyDatabase(database: ReamDatabase = db, legacyN
 }
 
 async function hasAnyData(database: ReamDatabase): Promise<boolean> {
-  const [taskCount, projectCount, timeEntryCount, activeTimerCount, noteAiSuggestionCount] = await Promise.all([
+  const [taskCount, projectCount, timeEntryCount, activeTimerCount, noteAiSuggestionCount, journalPageCount, journalRecapCount] = await Promise.all([
     database.tasks.count(),
     database.projects.count(),
     database.timeEntries.count(),
     database.activeTimers.count(),
-    database.noteAiSuggestions.count()
+    database.noteAiSuggestions.count(),
+    database.journalPages.count(),
+    database.journalRecaps.count()
   ]);
-  return taskCount + projectCount + timeEntryCount + activeTimerCount + noteAiSuggestionCount > 0;
+  return taskCount + projectCount + timeEntryCount + activeTimerCount + noteAiSuggestionCount + journalPageCount + journalRecapCount > 0;
 }
 
 async function bulkPutIfAny<T>(table: Table<T, string>, records: T[]): Promise<void> {

@@ -1,8 +1,8 @@
-import { Fragment, type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
+import { Fragment, type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, formatGeneratedRecapMarkdown, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
-import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
+import type { ActiveTimer, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
 import { importReamData, readAllExportData } from "../../shared/exportRepository";
 import {
   buildDailySummaries,
@@ -15,14 +15,18 @@ import { archiveProject, createProject, listActiveProjects, updateProject } from
 import { createTask, deleteTask, listActiveTasks, updateTask } from "../../shared/taskRepository";
 import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
+import { addLocalDays, formatRangeLabel, fromLocalDateKey, parseJournalCommand, RECAP_HELP_MARKDOWN, toLocalDateKey as toJournalDateKey } from "../../shared/journalCommands";
+import { createJournalRecap, findMatchingJournalRecaps, replaceJournalRecap, saveJournalPage } from "../../shared/journalRepository";
 import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { type AppSettings } from "../appSettings";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
 import { noteMatchesQuery, RichNoteView } from "../richNotes";
+import { MarkdownNoteEditor, type NoteSaveStatus } from "../notes/MarkdownNoteEditor";
+import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft } from "../notes/noteDrafts";
 import { themeOptions, type ThemeId } from "../themeOptions";
 import reamIcon from "../assets/ream-icon.png";
 
-type ActiveSection = "home" | "insights" | "timesheet" | "entries" | "tasks" | "notes" | "projects" | "backup" | "dev" | "profile";
+type ActiveSection = "home" | "insights" | "timesheet" | "entries" | "tasks" | "notes" | "journal" | "projects" | "backup" | "dev" | "profile";
 type TimeViewMode = "day" | "week" | "month";
 
 interface MainViewProps {
@@ -136,6 +140,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
+  const [journalPages, setJournalPages] = useState<JournalPage[]>([]);
+  const [journalRecaps, setJournalRecaps] = useState<JournalRecap[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<NoteAiSuggestion[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -177,6 +183,14 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [selectedTimesheetDateKey, setSelectedTimesheetDateKey] = useState("");
   const [selectedTimesheetTaskId, setSelectedTimesheetTaskId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
+  const [journalDateKey, setJournalDateKey] = useState(() => toJournalDateKey(new Date()));
+  const [journalMarkdown, setJournalMarkdown] = useState("");
+  const [journalSaveStatus, setJournalSaveStatus] = useState<NoteSaveStatus>("idle");
+  const [journalCommandFeedback, setJournalCommandFeedback] = useState<string | null>(null);
+  const [journalSearch, setJournalSearch] = useState("");
+  const [homeCommandFeedback, setHomeCommandFeedback] = useState<string | null>(null);
+  const [recapBusy, setRecapBusy] = useState(false);
+  const journalLoadedDateKeyRef = useRef<string | null>(null);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -192,7 +206,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const archivedTasks = useMemo(() => allTasks.filter((task) => task.archived), [allTasks]);
   const archivedProjects = useMemo(() => allProjects.filter((project) => project.archived), [allProjects]);
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
-  const entryEditorTask = entryTaskId ? taskById.get(entryTaskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
   const referenceDate = useMemo(() => addDays(new Date(), weekOffset * 7), [weekOffset]);
   const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, referenceDate), [allEntries, allProjects, allTasks, timeViewMode, referenceDate]);
@@ -246,6 +259,24 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     };
   }, [aiSuggestions]);
   const today = useMemo(() => new Date().toDateString(), []);
+  const todayJournalKey = toJournalDateKey(new Date());
+  const todayJournalPage = journalPages.find((page) => page.dateKey === todayJournalKey) ?? null;
+  const todayJournalRecaps = useMemo(
+    () => journalRecaps.filter((recap) => recap.journalDateKey === todayJournalKey).sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [journalRecaps, todayJournalKey]
+  );
+  const selectedJournalRecaps = useMemo(
+    () => journalRecaps.filter((recap) => recap.journalDateKey === journalDateKey).sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [journalDateKey, journalRecaps]
+  );
+  const filteredJournalPages = useMemo(() => {
+    const normalized = journalSearch.trim().toLocaleLowerCase();
+    if (!normalized) {
+      return journalPages;
+    }
+    const recapPageIds = new Set(journalRecaps.filter((recap) => recap.markdown.toLocaleLowerCase().includes(normalized)).map((recap) => recap.journalPageId));
+    return journalPages.filter((page) => page.markdown.toLocaleLowerCase().includes(normalized) || page.dateKey.includes(normalized) || recapPageIds.has(page.id));
+  }, [journalPages, journalRecaps, journalSearch]);
   const taskActivity = useMemo(() => {
     const activity = new Map<string, { durationSeconds: number; entryCount: number; noteCount: number }>();
     for (const entry of allEntries) {
@@ -274,6 +305,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setAllProjects(exportData.projects);
     setAllTasks(exportData.tasks);
     setAllEntries(exportData.timeEntries);
+    setJournalPages(exportData.journalPages);
+    setJournalRecaps(exportData.journalRecaps);
     setAiSuggestions(nextAiSuggestions);
     setActiveTimer(nextActiveTimer);
     setTimerNote(nextActiveTimer?.note ?? "");
@@ -311,6 +344,39 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       window.removeEventListener("focus", refreshAppState);
     };
   }, [refreshAppState]);
+
+  useEffect(() => {
+    if (loading || journalLoadedDateKeyRef.current === journalDateKey) {
+      return;
+    }
+    const page = journalPages.find((candidate) => candidate.dateKey === journalDateKey);
+    const recovery = readNoteRecoveryDraft(window.localStorage, `journal:${journalDateKey}`);
+    setJournalMarkdown(recovery?.markdown ?? page?.markdown ?? "");
+    setJournalSaveStatus(recovery ? "offline" : "idle");
+    setJournalCommandFeedback(null);
+    journalLoadedDateKeyRef.current = journalDateKey;
+  }, [activeSection, journalDateKey, journalPages, loading]);
+
+  useEffect(() => {
+    if (loading || journalLoadedDateKeyRef.current !== journalDateKey || journalMarkdown.trim().startsWith("/")) {
+      return;
+    }
+    const contextId = `journal:${journalDateKey}`;
+    writeNoteRecoveryDraft(window.localStorage, contextId, journalMarkdown);
+    setJournalSaveStatus("saving");
+    const timeoutId = window.setTimeout(() => {
+      saveJournalPage(db, journalDateKey, journalMarkdown)
+        .then((page) => {
+          clearNoteRecoveryDraft(window.localStorage, contextId);
+          setJournalSaveStatus("saved");
+          if (page) {
+            setJournalPages((current) => [page, ...current.filter((candidate) => candidate.id !== page.id)].sort((left, right) => right.dateKey.localeCompare(left.dateKey)));
+          }
+        })
+        .catch(() => setJournalSaveStatus("failed"));
+    }, 650);
+    return () => window.clearTimeout(timeoutId);
+  }, [journalDateKey, journalMarkdown, loading]);
 
   useEffect(() => {
     if (!activeTimer) {
@@ -591,11 +657,110 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     }
   }
 
-  function handleQuickCapture(event: FormEvent<HTMLFormElement>) {
+  async function executeJournalCommand(commandText: string, source: "home" | "journal"): Promise<boolean> {
+    const parsed = parseJournalCommand(commandText);
+    const setFeedback = source === "home" ? setHomeCommandFeedback : setJournalCommandFeedback;
+    if (parsed.kind === "not-command") {
+      return false;
+    }
+    if (parsed.kind === "help") {
+      setFeedback(parsed.markdown);
+      return true;
+    }
+    if (parsed.kind === "error") {
+      setFeedback(`**${parsed.message}**\n\n${parsed.helpMarkdown}`);
+      return false;
+    }
+    if (appSettings.aiSetupPreference !== "enabled") {
+      setFeedback("**Local AI is not set up.** Enable Local AI in Settings, make sure Ollama is running, and try the command again.");
+      return false;
+    }
+
+    const sourceEntries = allEntries.filter((entry) => {
+      const dateKey = toJournalDateKey(new Date(entry.startedAt));
+      return dateKey >= parsed.range.startDateKey && dateKey <= parsed.range.endDateKey;
+    });
+    const sourcePages = journalPages.filter((page) => page.dateKey >= parsed.range.startDateKey && page.dateKey <= parsed.range.endDateKey && page.markdown.trim());
+    if (!sourceEntries.length && !sourcePages.length) {
+      setFeedback(`**Nothing to recap for ${parsed.range.label}.** Add a journal note or track an entry, then try again.`);
+      return false;
+    }
+
+    const matchingRecaps = await findMatchingJournalRecaps(db, parsed.range.startDateKey, parsed.range.endDateKey);
+    let conflictChoice: "replace" | "append" | "cancel" = "append";
+    if (matchingRecaps.length) {
+      conflictChoice = await window.reamDesktop?.confirmRecapConflict?.(parsed.range.label) ?? "cancel";
+      if (conflictChoice === "cancel") {
+        setFeedback("Recap generation cancelled. Your command was preserved.");
+        return false;
+      }
+    }
+
+    setRecapBusy(true);
+    setFeedback(null);
+    try {
+      const generateRecap = window.reamDesktop?.generateRecapWithAi;
+      if (!generateRecap) {
+        throw new Error("Local AI recaps are only available in the desktop app.");
+      }
+      const result = await generateRecap({
+        sourceStartDateKey: parsed.range.startDateKey,
+        sourceEndDateKey: parsed.range.endDateKey,
+        sourceLabel: parsed.range.label,
+        entries: sourceEntries.map((entry) => {
+          const task = taskById.get(entry.taskId);
+          return {
+            startedAt: entry.startedAt,
+            endedAt: entry.endedAt,
+            durationSeconds: entry.durationSeconds,
+            taskTitle: task?.title ?? "Archived task",
+            projectNames: getEntryProjectNames(entry, task, projectById),
+            note: entry.note
+          };
+        }),
+        journalPages: sourcePages.map((page) => ({ dateKey: page.dateKey, markdown: page.markdown })),
+        model: ollamaModel.trim() || DEFAULT_OLLAMA_MODEL
+      });
+      const markdown = formatGeneratedRecapMarkdown(result.output, parsed.range.label);
+      if (conflictChoice === "replace" && matchingRecaps[0]) {
+        await replaceJournalRecap(db, matchingRecaps[0].id, markdown, result.model);
+      } else {
+        await createJournalRecap(db, {
+          journalDateKey: todayJournalKey,
+          sourceStartDateKey: parsed.range.startDateKey,
+          sourceEndDateKey: parsed.range.endDateKey,
+          markdown,
+          model: result.model
+        });
+      }
+      await refreshAppState();
+      journalLoadedDateKeyRef.current = null;
+      setJournalDateKey(todayJournalKey);
+      setJournalMarkdown(journalPages.find((page) => page.dateKey === todayJournalKey)?.markdown ?? "");
+      setActiveSection("journal");
+      setJournalCommandFeedback(`Recap saved for **${parsed.range.label}** using \`${result.model}\`.`);
+      setHomeCommandFeedback(null);
+      return true;
+    } catch (recapError) {
+      setFeedback(recapError instanceof Error ? `**Unable to generate recap.** ${recapError.message}` : "Unable to generate recap with Local AI.");
+      return false;
+    } finally {
+      setRecapBusy(false);
+    }
+  }
+
+  async function handleQuickCapture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const capturedTitle = quickCapture.trim();
     if (!capturedTitle) {
       handleOpenNewTaskComposer();
+      return;
+    }
+    if (capturedTitle.startsWith("/")) {
+      const completed = await executeJournalCommand(capturedTitle, "home");
+      if (completed) {
+        setQuickCapture("");
+      }
       return;
     }
     setQuickCapture("");
@@ -869,7 +1034,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       downloadTextFile(
         `ream-export-${new Date().toISOString().slice(0, 10)}.json`,
         "application/json",
-        serializeReamExport(createReamExport(exportData.tasks, exportData.projects, exportData.timeEntries))
+        serializeReamExport(createReamExport(exportData.tasks, exportData.projects, exportData.timeEntries, new Date(), exportData.journalPages, exportData.journalRecaps))
       );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export JSON.");
@@ -924,7 +1089,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         { id: "home", label: "Home", icon: "home" },
         { id: "entries", label: "Entries", icon: "clock" },
         { id: "tasks", label: "Tasks", icon: "list" },
-        { id: "notes", label: "Notes", icon: "note" },
+        { id: "notes", label: "Task Notes", icon: "note" },
+        { id: "journal", label: "Journal", icon: "book" },
         { id: "projects", label: "Projects", icon: "briefcase" }
       ]
     },
@@ -977,6 +1143,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       ? "Time View"
       : activeSection === "timesheet"
         ? "Weekly Timesheet"
+        : activeSection === "journal"
+          ? "Journal Notes"
         : navigation.find((item) => item.id === activeSection)?.label;
   const sectionSubtitle = activeSection === "home"
     ? "Stay focused. Make steady progress."
@@ -984,6 +1152,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       ? "See where you have spent your time across days, weeks, and months."
       : activeSection === "timesheet"
         ? "Track your time across tasks for the week."
+        : activeSection === "journal"
+          ? "A quiet daily page for thoughts, links, and local-AI recaps."
         : activeSection === "profile"
           ? "Tune how Ream feels on this device."
           : "Everything stays local to this device.";
@@ -1014,8 +1184,14 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         {error ? <p className="dashboard-error" role="alert">{error}</p> : null}
 
         {activeSection === "home" ? <>
-          <form className="quick-capture" onSubmit={handleQuickCapture}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} placeholder="Capture a task or note..." /><button aria-label="Create task" type="submit"><MainIcon name="plus" /></button></form>
+          <form className="quick-capture journal-omnibox" onSubmit={(event) => void handleQuickCapture(event)}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} placeholder="Capture a task or run /recap @yesterday" /><kbd>/recap</kbd><button aria-label="Create task or run command" disabled={recapBusy} type="submit">{recapBusy ? <MainIcon name="sparkle" /> : <MainIcon name="plus" />}</button></form>
+          {homeCommandFeedback ? <section className="journal-command-feedback" role="status"><RichNoteView text={homeCommandFeedback} />{homeCommandFeedback.includes("Local AI") ? <button onClick={() => setActiveSection("backup")} type="button">Open Local AI settings</button> : null}</section> : null}
           {activeTimer ? <section className="active-timer-banner"><div><span className="timer-pulse" />Tracking <strong>{activeTask?.title ?? "Task"}</strong><small>{formatDuration(elapsed)}</small></div><input value={timerNote} onBlur={handleSaveTimerNote} onChange={(event) => setTimerNote(event.target.value)} placeholder="Add a timer note..." /><button onClick={handleStopTimer}>Stop timer</button></section> : null}
+          <section className="home-journal-card">
+            <div><span className="home-journal-icon"><MainIcon name="book" /></span><div><p className="panel-kicker">Today's journal</p><h2>{formatRangeLabel(todayJournalKey, todayJournalKey)}</h2></div></div>
+            <div className="home-journal-preview">{todayJournalPage?.markdown.trim() ? <RichNoteView text={todayJournalPage.markdown} /> : <p>Start with a thought, paste a link, or capture what matters today.</p>}</div>
+            <footer><span>{todayJournalRecaps.length} {todayJournalRecaps.length === 1 ? "recap" : "recaps"}</span><button onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(todayJournalKey); setActiveSection("journal"); }} type="button">Open journal <MainIcon name="chevron" /></button></footer>
+          </section>
           <section className="projects-section"><div className="section-title"><h2>Your Tasks</h2><span>{tasks.length} active</span></div><div className="project-cards" aria-live="polite">
             {loading ? <p className="empty-state">Loading your tasks...</p> : null}
             {!loading && tasks.length === 0 ? <p className="empty-state">Create your first task to start tracking time.</p> : null}
@@ -1026,8 +1202,47 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
               <button className="archive-task-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button>
             </article>; })}
           </div></section>
-          <footer className="dashboard-footer"><MainIcon name="note" />Notes live with your tasks.</footer>
+          <footer className="dashboard-footer"><MainIcon name="book" />Journal notes stay independent. Task notes still live with tracked work.</footer>
         </> : null}
+
+        {activeSection === "journal" ? <section className="journal-section">
+          <aside className="journal-history-panel">
+            <label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search journal" value={journalSearch} onChange={(event) => setJournalSearch(event.target.value)} placeholder="Search journal and recaps..." /></label>
+            <div className="journal-history-list">
+              {filteredJournalPages.length === 0 ? <p className="empty-state">Your daily pages will appear here.</p> : filteredJournalPages.slice(0, 30).map((page) => <button className={page.dateKey === journalDateKey ? "is-active" : ""} key={page.id} onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(page.dateKey); }} type="button"><MainIcon name="document" /><span><strong>{formatRangeLabel(page.dateKey, page.dateKey)}</strong><small>{page.markdown.trim().slice(0, 72) || `${journalRecaps.filter((recap) => recap.journalPageId === page.id).length} saved recap(s)`}</small></span></button>)}
+            </div>
+          </aside>
+          <div className="journal-workspace">
+            <div className="journal-date-toolbar">
+              <button aria-label="Previous day" onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), -1))); }} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+              <label><MainIcon name="calendar" /><input aria-label="Journal date" type="date" value={journalDateKey} onChange={(event) => { if (event.target.value) { journalLoadedDateKeyRef.current = null; setJournalDateKey(event.target.value); } }} /></label>
+              <button aria-label="Next day" onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), 1))); }} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+              <button onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(todayJournalKey); }} type="button">Today</button>
+            </div>
+            <section className="journal-editor-card">
+              <MarkdownNoteEditor
+                aiAction={null}
+                ariaLabel="Journal notes"
+                metadata={["Independent daily page", "Type /recap @help for commands"]}
+                onChange={setJournalMarkdown}
+                onImproveWithAi={() => undefined}
+                onSubmitCommand={(command) => void executeJournalCommand(command, "journal")}
+                placeholder="Write freely. Markdown, links, checklists, and /recap commands are welcome..."
+                saveStatus={journalSaveStatus}
+                showAiAction={false}
+                showToolbar
+                taskTitle={formatRangeLabel(journalDateKey, journalDateKey)}
+                value={journalMarkdown}
+              />
+              <div className="journal-command-hints"><button disabled={recapBusy} onClick={() => void executeJournalCommand("/recap @yesterday", "journal")} type="button">/recap @yesterday</button><button disabled={recapBusy} onClick={() => setJournalCommandFeedback(RECAP_HELP_MARKDOWN)} type="button">/recap @help</button></div>
+            </section>
+            {journalCommandFeedback ? <section className="journal-command-feedback" role="status"><RichNoteView text={journalCommandFeedback} />{journalCommandFeedback.includes("Local AI") ? <button onClick={() => setActiveSection("backup")} type="button">Open Local AI settings</button> : null}</section> : null}
+            <section className="journal-recaps-section">
+              <div className="section-title"><h2>Saved recaps</h2><span>{selectedJournalRecaps.length}</span></div>
+              {selectedJournalRecaps.length === 0 ? <p className="empty-state">Run <code>/recap @yesterday</code> to add a private local-AI recap.</p> : selectedJournalRecaps.map((recap) => <article className="journal-recap-card" key={recap.id}><header><span><MainIcon name="sparkle" />Local recap</span><small>{new Date(recap.updatedAt).toLocaleString()} · {recap.model}</small></header><RichNoteView text={recap.markdown} /></article>)}
+            </section>
+          </div>
+        </section> : null}
 
         {activeSection === "insights" ? <section className="time-view-section">
           <div className="time-mode-tabs" role="tablist" aria-label="Time view range">

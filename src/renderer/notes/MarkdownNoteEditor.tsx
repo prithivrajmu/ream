@@ -37,6 +37,7 @@ import {
   $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
+  KEY_ENTER_COMMAND,
   PASTE_COMMAND,
   type EditorState,
   type LexicalEditor,
@@ -73,6 +74,10 @@ interface MarkdownNoteEditorProps {
   aiAction: ReactNode;
   disabledAi?: boolean;
   showToolbar?: boolean;
+  showAiAction?: boolean;
+  ariaLabel?: string;
+  placeholder?: string;
+  onSubmitCommand?: (command: string) => void;
 }
 
 type BlockFormat = "paragraph" | "h1" | "h2" | "h3" | "quote" | "code";
@@ -119,6 +124,10 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
     aiAction,
     disabledAi = false,
     showToolbar = false,
+    showAiAction = true,
+    ariaLabel = "Task notes",
+    placeholder = "Add decisions, progress, blockers, or anything you may need later...",
+    onSubmitCommand,
     onImproveWithAi
   }: MarkdownNoteEditorProps,
   ref: ForwardedRef<MarkdownNoteEditorHandle>
@@ -184,6 +193,11 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
   }
 
   function handleRawKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && rawValue.trim().startsWith("/") && onSubmitCommand) {
+      event.preventDefault();
+      onSubmitCommand(rawValue.trim());
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "b") {
       event.preventDefault();
       wrapTextareaSelection(event.currentTarget, "**", "**", handleRawChange);
@@ -223,6 +237,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
             disabledAi={disabledAi}
             onImproveWithAi={onImproveWithAi}
             rawMode={rawMode}
+            showAiAction={showAiAction}
             setRawMode={(nextRawMode) => {
               setRawMode(nextRawMode);
               if (nextRawMode) {
@@ -241,7 +256,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
             className="markdown-note-raw"
             onChange={(event) => handleRawChange(event.target.value)}
             onKeyDown={handleRawKeyDown}
-            placeholder="Add decisions, progress, blockers, or anything you may need later..."
+            placeholder={placeholder}
             ref={rawTextareaRef}
             value={rawValue}
           />
@@ -250,13 +265,13 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
             <RichTextPlugin
               contentEditable={(
                 <ContentEditable
-                  aria-label="Task notes"
+                  aria-label={ariaLabel}
                   className="markdown-note-editor"
                   ref={contentEditableRef}
                 />
               )}
               ErrorBoundary={LexicalErrorBoundary}
-              placeholder={<div className="markdown-note-placeholder">Add decisions, progress, blockers, or anything you may need later...</div>}
+              placeholder={<div className="markdown-note-placeholder">{placeholder}</div>}
             />
             <HistoryPlugin />
             <ListPlugin hasStrictIndent />
@@ -266,6 +281,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
             <TabIndentationPlugin />
             <MarkdownShortcutPlugin transformers={NOTE_TRANSFORMERS} />
             <SlashCommandPlugin />
+            {onSubmitCommand ? <SubmitCommandPlugin onSubmitCommand={onSubmitCommand} /> : null}
           </div>
         )}
       </LexicalComposer>
@@ -368,18 +384,43 @@ function PasteLinkPlugin() {
   return null;
 }
 
+function SubmitCommandPlugin({ onSubmitCommand }: { onSubmitCommand: (command: string) => void }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => editor.registerCommand(
+    KEY_ENTER_COMMAND,
+    (event) => {
+      let markdown = "";
+      editor.getEditorState().read(() => {
+        markdown = $convertToMarkdownString(NOTE_TRANSFORMERS, undefined, true).trim();
+      });
+      if (!markdown.startsWith("/")) {
+        return false;
+      }
+      event?.preventDefault();
+      window.queueMicrotask(() => onSubmitCommand(markdown));
+      return true;
+    },
+    COMMAND_PRIORITY_HIGH
+  ), [editor, onSubmitCommand]);
+
+  return null;
+}
+
 function ToolbarPlugin({
   aiAction,
   disabledAi,
   onImproveWithAi,
   rawMode,
-  setRawMode
+  setRawMode,
+  showAiAction = true
 }: {
   aiAction: ReactNode;
   disabledAi: boolean;
   onImproveWithAi: () => void;
   rawMode: boolean;
   setRawMode: (rawMode: boolean) => void;
+  showAiAction?: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -413,9 +454,9 @@ function ToolbarPlugin({
       <button aria-pressed={rawMode} className="markdown-note-mode-toggle" onClick={() => setRawMode(!rawMode)} type="button">
         {rawMode ? "Formatted" : "Markdown"}
       </button>
-      {aiAction ?? (
+      {showAiAction ? aiAction ?? (
         <button className="markdown-note-ai-fallback" disabled={disabledAi} onClick={onImproveWithAi} type="button">Improve with AI</button>
-      )}
+      ) : null}
     </div>
   );
 }

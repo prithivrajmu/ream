@@ -4,9 +4,12 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
   DEFAULT_OLLAMA_MODEL,
   FALLBACK_OLLAMA_MODEL,
+  type GenerateRecapRequest,
+  type GenerateRecapResult,
   type ImproveNoteRequest,
   type ImproveNoteResult,
   type OllamaHealthStatus,
+  validateGeneratedRecapOutput,
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
@@ -614,8 +617,14 @@ function setupTray() {
 }
 
 function registerShortcuts() {
-  globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
-  globalShortcut.register("CommandOrControl+Shift+O", () => { void showQuickNoteOverlay(); });
+  const overlayRegistered = globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
+  const quickNoteRegistered = globalShortcut.register("CommandOrControl+Shift+O", () => { void showQuickNoteOverlay(); });
+  if (!overlayRegistered) {
+    console.warn("Unable to register Cmd/Ctrl+Shift+T for the overlay toggle.");
+  }
+  if (!quickNoteRegistered) {
+    console.warn("Unable to register Cmd/Ctrl+Shift+O for quick notes.");
+  }
 }
 
 function sendOverlayContextCommand(command: OverlayContextCommand) {
@@ -837,6 +846,51 @@ app.whenReady().then(() => {
       model: response.headers.get("x-ream-ai-model")?.trim() || model,
       output: validateImprovedNoteOutput(payload)
     };
+  });
+
+  ipcMain.handle("ai:generate-recap", async (_event, input: GenerateRecapRequest): Promise<GenerateRecapResult> => {
+    if (!aiSidecar) {
+      throw new Error("AI sidecar is not available. Restart Ream and try again.");
+    }
+    const model = input.model?.trim() || DEFAULT_OLLAMA_MODEL;
+    const status = await readOllamaStatus(model);
+    if (!status.ollama.ok) {
+      throw new Error("Ollama is not running. Open Local AI settings to finish setup, then try again.");
+    }
+    if (!status.modelAvailable && !(model === DEFAULT_OLLAMA_MODEL && status.fallbackAvailable)) {
+      throw new Error(`The local AI model ${model} is not installed. Open Local AI settings to pull it, then try again.`);
+    }
+    const response = await fetch(`${aiSidecar.url}/ai/recap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...input, model })
+    });
+    const payload = (await response.json()) as unknown;
+    if (!response.ok) {
+      const message = payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : "Unable to generate recap with AI.";
+      throw new Error(message);
+    }
+    return {
+      model: response.headers.get("x-ream-ai-model")?.trim() || model,
+      output: validateGeneratedRecapOutput(payload)
+    };
+  });
+
+  ipcMain.handle("journal:confirm-recap-conflict", async (_event, sourceLabel: string) => {
+    const options: Electron.MessageBoxOptions = {
+      type: "question",
+      title: "Recap already exists",
+      message: `A recap for ${sourceLabel} already exists.`,
+      detail: "Replace the newest matching recap or append another timestamped recap?",
+      buttons: ["Replace", "Append", "Cancel"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    };
+    const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options);
+    return result.response === 0 ? "replace" : result.response === 1 ? "append" : "cancel";
   });
 
   ipcMain.handle("ai:ollama-status", (_event, model?: string) => readOllamaStatus(typeof model === "string" ? model : ""));

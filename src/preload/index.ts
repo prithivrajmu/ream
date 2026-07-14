@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus } from "../shared/ai";
+import type { GenerateRecapRequest, GenerateRecapResult, ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus } from "../shared/ai";
 import type { OverlayMode } from "../shared/overlayBounds";
 
 export interface ReamDataLocationInfo {
@@ -18,6 +18,8 @@ export interface ShowOverlayWindowInput {
   hideMain?: boolean;
 }
 
+export type RecapConflictChoice = "replace" | "append" | "cancel";
+
 const desktopApi = {
   showMainWindow: () => ipcRenderer.invoke("window:show-main"),
   showSettingsWindow: () => ipcRenderer.invoke("window:show-settings"),
@@ -32,6 +34,8 @@ const desktopApi = {
   focusOverlayWindow: () => ipcRenderer.invoke("window:focus-overlay") as Promise<void>,
   minimizeOverlay: () => ipcRenderer.invoke("window:minimize-overlay"),
   improveNoteWithAi: (input: ImproveNoteRequest) => ipcRenderer.invoke("ai:improve-note", input) as Promise<ImproveNoteResult>,
+  generateRecapWithAi: (input: GenerateRecapRequest) => ipcRenderer.invoke("ai:generate-recap", input) as Promise<GenerateRecapResult>,
+  confirmRecapConflict: (sourceLabel: string) => ipcRenderer.invoke("journal:confirm-recap-conflict", sourceLabel) as Promise<RecapConflictChoice>,
   getOllamaStatus: (model?: string) => ipcRenderer.invoke("ai:ollama-status", model) as Promise<OllamaHealthStatus>,
   openOllamaDownload: () => ipcRenderer.invoke("ai:open-ollama-download") as Promise<void>,
   openOllamaLibrary: (model: string) => ipcRenderer.invoke("ai:open-ollama-library", model) as Promise<void>,

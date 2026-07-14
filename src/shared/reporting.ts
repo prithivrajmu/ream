@@ -1,4 +1,4 @@
-import type { Project, Task, TimeEntry } from "./domain";
+import type { JournalPage, JournalRecap, Project, Task, TimeEntry } from "./domain";
 
 export interface TaskTotal {
   taskId: string;
@@ -16,10 +16,12 @@ export interface DaySummary {
 
 export interface ReamExport {
   exportedAt: string;
-  schemaVersion: 3;
+  schemaVersion: 4;
   tasks: Task[];
   projects: Project[];
   timeEntries: TimeEntry[];
+  journalPages: JournalPage[];
+  journalRecaps: JournalRecap[];
 }
 
 export function buildTaskTotals(entries: TimeEntry[], tasks: Task[], projects: Project[] = []): TaskTotal[] {
@@ -64,13 +66,15 @@ export function buildDailySummaries(entries: TimeEntry[]): DaySummary[] {
   return Array.from(summaries.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
-export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date()): ReamExport {
+export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date(), journalPages: JournalPage[] = [], journalRecaps: JournalRecap[] = []): ReamExport {
   return {
     exportedAt: exportedAt.toISOString(),
-    schemaVersion: 3,
+    schemaVersion: 4,
     tasks: [...tasks],
     projects: [...projects],
-    timeEntries: [...timeEntries]
+    timeEntries: [...timeEntries],
+    journalPages: [...journalPages],
+    journalRecaps: [...journalRecaps]
   };
 }
 
@@ -91,7 +95,7 @@ export function parseReamExport(value: string): ReamExport {
     throw new Error("Invalid Ream export file: root object is required.");
   }
 
-  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) {
+  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4) {
     throw new Error("Invalid Ream export file: unsupported schema version.");
   }
 
@@ -111,6 +115,10 @@ export function parseReamExport(value: string): ReamExport {
     throw new Error("Invalid Ream export file: timeEntries must be an array.");
   }
 
+  if (parsed.schemaVersion === 4 && (!Array.isArray(parsed.journalPages) || !Array.isArray(parsed.journalRecaps))) {
+    throw new Error("Invalid Ream export file: journalPages and journalRecaps must be arrays.");
+  }
+
   const legacy = parsed.schemaVersion === 1 ? convertLegacyProjects(parsed.tasks) : null;
   const projects = (legacy?.projects ?? parsed.projects as unknown[]).map((project, index) => validateProject(project, index));
   const projectIds = new Set(projects.map((project) => project.id));
@@ -124,14 +132,57 @@ export function parseReamExport(value: string): ReamExport {
     projectIds,
     taskById
   ));
+  const journalPages = (parsed.schemaVersion === 4 ? parsed.journalPages as unknown[] : []).map((page, index) => validateJournalPage(page, index));
+  const journalPageIds = new Set(journalPages.map((page) => page.id));
+  const journalRecaps = (parsed.schemaVersion === 4 ? parsed.journalRecaps as unknown[] : []).map((recap, index) => validateJournalRecap(recap, index, journalPageIds));
 
   return {
     exportedAt: parsed.exportedAt,
-    schemaVersion: 3,
+    schemaVersion: 4,
     tasks,
     projects,
-    timeEntries
+    timeEntries,
+    journalPages,
+    journalRecaps
   };
+}
+
+function validateJournalPage(value: unknown, index: number): JournalPage {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Ream export file: journal page ${index + 1} must be an object.`);
+  }
+  const page: JournalPage = {
+    id: requireString(value, "id", `journal page ${index + 1}`),
+    dateKey: requireString(value, "dateKey", `journal page ${index + 1}`),
+    markdown: requireString(value, "markdown", `journal page ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `journal page ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `journal page ${index + 1}`)
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(page.dateKey)) {
+    throw new Error(`Invalid Ream export file: journal page ${index + 1} has an invalid dateKey.`);
+  }
+  return page;
+}
+
+function validateJournalRecap(value: unknown, index: number, journalPageIds: Set<string>): JournalRecap {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Ream export file: journal recap ${index + 1} must be an object.`);
+  }
+  const recap: JournalRecap = {
+    id: requireString(value, "id", `journal recap ${index + 1}`),
+    journalPageId: requireString(value, "journalPageId", `journal recap ${index + 1}`),
+    journalDateKey: requireString(value, "journalDateKey", `journal recap ${index + 1}`),
+    sourceStartDateKey: requireString(value, "sourceStartDateKey", `journal recap ${index + 1}`),
+    sourceEndDateKey: requireString(value, "sourceEndDateKey", `journal recap ${index + 1}`),
+    markdown: requireString(value, "markdown", `journal recap ${index + 1}`),
+    model: requireString(value, "model", `journal recap ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `journal recap ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `journal recap ${index + 1}`)
+  };
+  if (!journalPageIds.has(recap.journalPageId)) {
+    throw new Error(`Invalid Ream export file: journal recap ${index + 1} references an unknown journal page.`);
+  }
+  return recap;
 }
 
 function convertLegacyProjects(tasks: unknown[]): { projects: Project[]; tasks: unknown[] } {

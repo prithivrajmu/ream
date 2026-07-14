@@ -31,6 +31,26 @@ export interface TimeEntry {
   updatedAt: string;
 }
 
+export interface JournalPage {
+  id: EntityId;
+  dateKey: string;
+  markdown: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalRecap {
+  id: EntityId;
+  journalPageId: EntityId;
+  journalDateKey: string;
+  sourceStartDateKey: string;
+  sourceEndDateKey: string;
+  markdown: string;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ActiveTimer {
   id: EntityId;
   taskId: EntityId;
