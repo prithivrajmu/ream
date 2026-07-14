@@ -7818,6 +7818,34 @@ button.timesheet-time-cell:hover,
   transition: opacity 160ms ease, transform 220ms ease, padding 220ms ease;
 }
 
+.dashboard-sidebar > .brand-lockup {
+  flex: 0 0 auto;
+}
+
+.dashboard-sidebar > .dashboard-nav {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin-right: -8px;
+  padding-right: 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-sidebar > .dashboard-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dashboard-sidebar > .dashboard-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-accent, #6848e5) 25%, transparent);
+}
+
+.dashboard-sidebar > .sidebar-bottom {
+  flex: 0 0 auto;
+}
+
 .dashboard-shell > .dashboard-page {
   grid-column: 2;
   grid-row: 1;
@@ -7892,6 +7920,16 @@ button.timesheet-time-cell:hover,
 }
 
 @media (max-width: 760px) {
+  .dashboard-sidebar > .dashboard-nav {
+    min-height: auto;
+    flex: 0 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin-right: 0;
+    padding-right: 0;
+    scrollbar-gutter: auto;
+  }
+
   .dashboard-shell.is-sidebar-hidden .dashboard-sidebar {
     display: none;
   }
