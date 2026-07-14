@@ -1566,10 +1566,6 @@ body.overlay-route {
   stroke-width: 2.2;
 }
 
-.reference-overlay-shell.is-expanded .reference-expand-button {
-  transform: translateX(-50%) rotate(180deg);
-}
-
 .reference-overlay-actions {
   gap: 18px;
   -webkit-app-region: no-drag;

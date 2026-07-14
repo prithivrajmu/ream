@@ -715,16 +715,17 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
 
         <button
           aria-expanded={expanded}
-          aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
+          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
           className="reference-expand-button"
           onClick={(event) => {
             stopEvent(event);
             markControlInteraction();
             void setOverlayExpanded(!expanded);
           }}
+          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
           type="button"
         >
-          <Icon name="chevron" />
+          <Icon name={expanded ? "minimize" : "maximize"} />
         </button>
 
         <div className="reference-overlay-actions" data-overlay-control="true">
