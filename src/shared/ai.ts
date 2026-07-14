@@ -88,6 +88,31 @@ export function validateImprovedNoteOutput(value: unknown): ImprovedNoteOutput {
   };
 }
 
+export function formatImprovedNoteMarkdown(output: ImprovedNoteOutput): string {
+  const todos = output.next_steps.length
+    ? output.next_steps.map((step) => `- [ ] ${step}`).join("\n")
+    : "_No follow-up actions identified._";
+  const blockers = output.blockers.length
+    ? output.blockers.map((blocker) => `- ${blocker}`).join("\n")
+    : "_No blockers identified._";
+  const tags = output.tags.length
+    ? output.tags.map((tag) => `#${tag.replace(/^#+/, "").replace(/\s+/g, "-").toLocaleLowerCase()}`).join(" ")
+    : "_No tags suggested._";
+
+  return [
+    "## Note",
+    output.clean_note,
+    "## Summary",
+    output.summary,
+    "## To-do",
+    todos,
+    "## Blockers",
+    blockers,
+    "## Tags",
+    tags
+  ].join("\n\n");
+}
+
 export function validateGeneratedRecapOutput(value: unknown): GeneratedRecapOutput {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("AI returned an invalid recap.");

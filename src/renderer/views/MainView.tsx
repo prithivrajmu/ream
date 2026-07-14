@@ -1,5 +1,5 @@
 import { Fragment, type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, formatGeneratedRecapMarkdown, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
+import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, formatGeneratedRecapMarkdown, formatImprovedNoteMarkdown, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
@@ -950,7 +950,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }
 
   async function handleAcceptAiSuggestion(preview: AiNotePreview) {
-    if (!window.confirm("Replace this note with the AI suggestion? The original raw note will remain stored with the AI record.")) {
+    if (!window.confirm("Replace this note with the full formatted AI rewrite? The original raw note will remain stored with the AI record.")) {
       return;
     }
 
@@ -960,7 +960,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         taskId: preview.taskId,
         startedAt: preview.startedAt,
         endedAt: preview.endedAt,
-        note: preview.output.clean_note
+        note: formatImprovedNoteMarkdown(preview.output)
       });
       await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
       setAiPreview(null);
@@ -984,7 +984,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   async function handleCopyAiSuggestion(preview: AiNotePreview) {
     setAiError(null);
     try {
-      await navigator.clipboard.writeText(preview.output.clean_note);
+      await navigator.clipboard.writeText(formatImprovedNoteMarkdown(preview.output));
     } catch (copyError) {
       setAiError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
       return;

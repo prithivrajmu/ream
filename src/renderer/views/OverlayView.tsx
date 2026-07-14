@@ -1,5 +1,5 @@
 import { type CSSProperties, type MouseEvent, type ReactNode, type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
+import { DEFAULT_OLLAMA_MODEL, formatImprovedNoteMarkdown, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
 import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
@@ -906,13 +906,13 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       return;
     }
 
-    if (!window.confirm("Replace this live note with the AI suggestion? The original raw note will remain stored with the AI record.")) {
+    if (!window.confirm("Replace this live note with the full formatted AI rewrite? The original raw note will remain stored with the AI record.")) {
       return;
     }
 
     setError(null);
     try {
-      const updated = await updateActiveTimerNote(db, preview.output.clean_note);
+      const updated = await updateActiveTimerNote(db, formatImprovedNoteMarkdown(preview.output));
       const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
       setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setActiveTimer(updated);
@@ -942,7 +942,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setError(null);
     try {
       await window.reamDesktop?.focusOverlayWindow?.();
-      await navigator.clipboard.writeText(preview.output.clean_note);
+      await navigator.clipboard.writeText(formatImprovedNoteMarkdown(preview.output));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
       return;
