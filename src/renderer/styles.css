@@ -1681,24 +1681,35 @@ body.overlay-route {
 }
 
 .reference-select-wrap {
+  position: relative;
   width: 100%;
   padding: 0 16px;
   gap: 14px;
 }
 
 .reference-select-wrap select {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  padding: 0;
+  padding: 0 48px;
   appearance: none;
   border: 0;
   outline: none;
   color: #363b45;
   background: transparent;
+  cursor: pointer;
   font-size: 13px;
 }
 
+.reference-select-wrap > .reference-icon {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .reference-select-wrap > .reference-icon:last-child {
+  margin-left: auto;
   width: 18px;
   height: 18px;
 }
