@@ -7812,8 +7812,16 @@ button.timesheet-time-cell:hover,
 }
 
 .dashboard-sidebar {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
-  transition: opacity 160ms ease, transform 220ms ease;
+  transition: opacity 160ms ease, transform 220ms ease, padding 220ms ease;
+}
+
+.dashboard-shell > .dashboard-page {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
 }
 
 .dashboard-shell.is-sidebar-hidden {
@@ -7821,9 +7829,11 @@ button.timesheet-time-cell:hover,
 }
 
 .dashboard-shell.is-sidebar-hidden .dashboard-sidebar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 325px;
+  width: 0;
+  overflow: hidden;
+  padding-right: 0;
+  padding-left: 0;
+  border-right: 0;
   opacity: 0;
   visibility: hidden;
   transform: translateX(-24px);
@@ -7883,7 +7893,7 @@ button.timesheet-time-cell:hover,
 
 @media (max-width: 760px) {
   .dashboard-shell.is-sidebar-hidden .dashboard-sidebar {
-    width: min(88vw, 325px);
+    display: none;
   }
 
   .sidebar-reveal-button {
