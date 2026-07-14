@@ -24,6 +24,7 @@ import { noteMatchesQuery, RichNoteView } from "../richNotes";
 import { MarkdownNoteEditor, type NoteSaveStatus } from "../notes/MarkdownNoteEditor";
 import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft } from "../notes/noteDrafts";
 import { themeOptions, type ThemeId } from "../themeOptions";
+import { autoHideVisibleSidebar, JOURNAL_SIDEBAR_AUTO_HIDE_MS, restoreSidebarOutsideJournal, type SidebarVisibility } from "../sidebarVisibility";
 import reamIcon from "../assets/ream-icon.png";
 
 type ActiveSection = "home" | "insights" | "timesheet" | "entries" | "tasks" | "notes" | "journal" | "projects" | "backup" | "dev" | "profile";
@@ -190,6 +191,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [journalSearch, setJournalSearch] = useState("");
   const [homeCommandFeedback, setHomeCommandFeedback] = useState<string | null>(null);
   const [recapBusy, setRecapBusy] = useState(false);
+  const [sidebarVisibility, setSidebarVisibility] = useState<SidebarVisibility>("visible");
   const journalLoadedDateKeyRef = useRef<string | null>(null);
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
@@ -389,6 +391,18 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
+
+  useEffect(() => {
+    if (activeSection !== "journal") {
+      setSidebarVisibility(restoreSidebarOutsideJournal);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSidebarVisibility(autoHideVisibleSidebar);
+    }, JOURNAL_SIDEBAR_AUTO_HIDE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeSection]);
 
   useEffect(() => {
     window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, ollamaModel.trim() || DEFAULT_OLLAMA_MODEL);
@@ -1137,6 +1151,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const displayName = appSettings.userName.trim() || "there";
   const profileInitials = getInitials(displayName);
   const activeTheme = themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0];
+  const isSidebarHidden = sidebarVisibility !== "visible";
   const sectionTitle = activeSection === "profile"
     ? "Profile"
     : activeSection === "insights"
@@ -1159,8 +1174,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           : "Everything stays local to this device.";
 
   return (
-    <main className={`dashboard-shell theme-${themeId}`}>
-      <aside className="dashboard-sidebar">
+    <main className={`dashboard-shell theme-${themeId} ${isSidebarHidden ? "is-sidebar-hidden" : ""}`}>
+      {isSidebarHidden ? <button aria-label="Show sidebar" className="sidebar-reveal-button" onClick={() => setSidebarVisibility("visible")} title="Show sidebar" type="button"><MainIcon name="chevron" /></button> : null}
+      <aside aria-hidden={isSidebarHidden} className="dashboard-sidebar" inert={isSidebarHidden}>
         <div className="brand-lockup"><span className="brand-mark"><img alt="Ream" src={reamIcon} /></span><div><strong>Ream</strong><p>Time on what matters.</p></div><button aria-label="Show overlay" className="brand-overlay-button" onClick={() => window.reamDesktop?.showOverlayWindow?.()} type="button"><MainIcon name="overlay" /><span>Show overlay</span></button></div>
         <nav className="dashboard-nav" aria-label="Main navigation">
           {navigationGroups.map((group) => <details className="nav-group" key={group.label} open>
@@ -1171,6 +1187,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           </details>)}
         </nav>
         <div className="sidebar-bottom">
+          <button className="sidebar-hide-button" onClick={() => setSidebarVisibility("manual-hidden")} type="button"><MainIcon name="chevron" className="chevron-left" />Hide sidebar</button>
           <button aria-label="Open profile settings" className={`profile-row ${activeSection === "profile" ? "is-active" : ""}`} onClick={() => setActiveSection("profile")} type="button"><span>{profileInitials}</span><p>{displayName}</p><MainIcon name="chevron" /></button>
         </div>
       </aside>
