@@ -1,4 +1,4 @@
-import type { Project, Task, TimeEntry } from "./domain";
+import type { JournalPage, JournalRecap, Project, Task, TimeEntry } from "./domain";
 
 export interface TaskTotal {
   taskId: string;
@@ -16,10 +16,12 @@ export interface DaySummary {
 
 export interface ReamExport {
   exportedAt: string;
-  schemaVersion: 2;
+  schemaVersion: 4;
   tasks: Task[];
   projects: Project[];
   timeEntries: TimeEntry[];
+  journalPages: JournalPage[];
+  journalRecaps: JournalRecap[];
 }
 
 export function buildTaskTotals(entries: TimeEntry[], tasks: Task[], projects: Project[] = []): TaskTotal[] {
@@ -32,7 +34,7 @@ export function buildTaskTotals(entries: TimeEntry[], tasks: Task[], projects: P
     const current = totals.get(entry.taskId) ?? {
       taskId: entry.taskId,
       taskTitle: task?.title ?? "Archived task",
-      projects: task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)) ?? [],
+      projects: readEntryProjectTitles(entry, task, projectById),
       durationSeconds: 0,
       entryCount: 0
     };
@@ -64,13 +66,15 @@ export function buildDailySummaries(entries: TimeEntry[]): DaySummary[] {
   return Array.from(summaries.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
-export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date()): ReamExport {
+export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date(), journalPages: JournalPage[] = [], journalRecaps: JournalRecap[] = []): ReamExport {
   return {
     exportedAt: exportedAt.toISOString(),
-    schemaVersion: 2,
+    schemaVersion: 4,
     tasks: [...tasks],
     projects: [...projects],
-    timeEntries: [...timeEntries]
+    timeEntries: [...timeEntries],
+    journalPages: [...journalPages],
+    journalRecaps: [...journalRecaps]
   };
 }
 
@@ -91,7 +95,7 @@ export function parseReamExport(value: string): ReamExport {
     throw new Error("Invalid Ream export file: root object is required.");
   }
 
-  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) {
+  if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4) {
     throw new Error("Invalid Ream export file: unsupported schema version.");
   }
 
@@ -111,20 +115,74 @@ export function parseReamExport(value: string): ReamExport {
     throw new Error("Invalid Ream export file: timeEntries must be an array.");
   }
 
+  if (parsed.schemaVersion === 4 && (!Array.isArray(parsed.journalPages) || !Array.isArray(parsed.journalRecaps))) {
+    throw new Error("Invalid Ream export file: journalPages and journalRecaps must be arrays.");
+  }
+
   const legacy = parsed.schemaVersion === 1 ? convertLegacyProjects(parsed.tasks) : null;
   const projects = (legacy?.projects ?? parsed.projects as unknown[]).map((project, index) => validateProject(project, index));
   const projectIds = new Set(projects.map((project) => project.id));
   const tasks = (legacy?.tasks ?? parsed.tasks).map((task, index) => validateTask(task, index, projectIds));
   const taskIds = new Set(tasks.map((task) => task.id));
-  const timeEntries = parsed.timeEntries.map((entry, index) => validateTimeEntry(entry, index, taskIds));
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const timeEntries = parsed.timeEntries.map((entry, index) => validateTimeEntry(
+    parsed.schemaVersion === 1 && isRecord(entry) ? { ...entry, projectIds: undefined } : entry,
+    index,
+    taskIds,
+    projectIds,
+    taskById
+  ));
+  const journalPages = (parsed.schemaVersion === 4 ? parsed.journalPages as unknown[] : []).map((page, index) => validateJournalPage(page, index));
+  const journalPageIds = new Set(journalPages.map((page) => page.id));
+  const journalRecaps = (parsed.schemaVersion === 4 ? parsed.journalRecaps as unknown[] : []).map((recap, index) => validateJournalRecap(recap, index, journalPageIds));
 
   return {
     exportedAt: parsed.exportedAt,
-    schemaVersion: 2,
+    schemaVersion: 4,
     tasks,
     projects,
-    timeEntries
+    timeEntries,
+    journalPages,
+    journalRecaps
   };
+}
+
+function validateJournalPage(value: unknown, index: number): JournalPage {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Ream export file: journal page ${index + 1} must be an object.`);
+  }
+  const page: JournalPage = {
+    id: requireString(value, "id", `journal page ${index + 1}`),
+    dateKey: requireString(value, "dateKey", `journal page ${index + 1}`),
+    markdown: requireString(value, "markdown", `journal page ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `journal page ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `journal page ${index + 1}`)
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(page.dateKey)) {
+    throw new Error(`Invalid Ream export file: journal page ${index + 1} has an invalid dateKey.`);
+  }
+  return page;
+}
+
+function validateJournalRecap(value: unknown, index: number, journalPageIds: Set<string>): JournalRecap {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Ream export file: journal recap ${index + 1} must be an object.`);
+  }
+  const recap: JournalRecap = {
+    id: requireString(value, "id", `journal recap ${index + 1}`),
+    journalPageId: requireString(value, "journalPageId", `journal recap ${index + 1}`),
+    journalDateKey: requireString(value, "journalDateKey", `journal recap ${index + 1}`),
+    sourceStartDateKey: requireString(value, "sourceStartDateKey", `journal recap ${index + 1}`),
+    sourceEndDateKey: requireString(value, "sourceEndDateKey", `journal recap ${index + 1}`),
+    markdown: requireString(value, "markdown", `journal recap ${index + 1}`),
+    model: requireString(value, "model", `journal recap ${index + 1}`),
+    createdAt: requireIsoDate(value, "createdAt", `journal recap ${index + 1}`),
+    updatedAt: requireIsoDate(value, "updatedAt", `journal recap ${index + 1}`)
+  };
+  if (!journalPageIds.has(recap.journalPageId)) {
+    throw new Error(`Invalid Ream export file: journal recap ${index + 1} references an unknown journal page.`);
+  }
+  return recap;
 }
 
 function convertLegacyProjects(tasks: unknown[]): { projects: Project[]; tasks: unknown[] } {
@@ -161,7 +219,7 @@ export function entriesToCsv(entries: TimeEntry[], tasks: Task[], projects: Proj
     const task = taskById.get(entry.taskId);
     rows.push([
       task?.title ?? "Archived task",
-      task?.projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title)).join(" | ") ?? "",
+      readEntryProjectTitles(entry, task, projectById).join(" | "),
       entry.startedAt,
       entry.endedAt,
       String(entry.durationSeconds),
@@ -217,7 +275,7 @@ function validateProject(value: unknown, index: number): Project {
   return project;
 }
 
-function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>): TimeEntry {
+function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>, projectIds: Set<string>, taskById: Map<string, Task>): TimeEntry {
   if (!isRecord(value)) {
     throw new Error(`Invalid Ream export file: time entry ${index + 1} must be an object.`);
   }
@@ -225,6 +283,7 @@ function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>):
   const entry: TimeEntry = {
     id: requireString(value, "id", `time entry ${index + 1}`),
     taskId: requireString(value, "taskId", `time entry ${index + 1}`),
+    projectIds: readOptionalStringArray(value, "projectIds", `time entry ${index + 1}`),
     startedAt: requireIsoDate(value, "startedAt", `time entry ${index + 1}`),
     endedAt: requireIsoDate(value, "endedAt", `time entry ${index + 1}`),
     durationSeconds: requireNonNegativeInteger(value, "durationSeconds", `time entry ${index + 1}`),
@@ -237,11 +296,21 @@ function validateTimeEntry(value: unknown, index: number, taskIds: Set<string>):
     throw new Error(`Invalid Ream export file: time entry ${index + 1} references an unknown task.`);
   }
 
+  entry.projectIds = entry.projectIds.length ? entry.projectIds : taskById.get(entry.taskId)?.projectIds ?? [];
+  if (entry.projectIds.some((projectId) => !projectIds.has(projectId))) {
+    throw new Error(`Invalid Ream export file: time entry ${index + 1} references an unknown project.`);
+  }
+
   if (new Date(entry.endedAt).getTime() < new Date(entry.startedAt).getTime()) {
     throw new Error(`Invalid Ream export file: time entry ${index + 1} ends before it starts.`);
   }
 
   return entry;
+}
+
+function readEntryProjectTitles(entry: TimeEntry, task: Task | undefined, projectById: Map<string, Project>): string[] {
+  const projectIds = entry.projectIds.length ? entry.projectIds : task?.projectIds ?? [];
+  return projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title));
 }
 
 function requireString(value: Record<string, unknown>, key: string, label: string): string {
@@ -256,6 +325,13 @@ function requireStringArray(value: Record<string, unknown>, key: string, label: 
     throw new Error(`Invalid Ream export file: ${label}.${key} must be a string array.`);
   }
   return value[key];
+}
+
+function readOptionalStringArray(value: Record<string, unknown>, key: string, label: string): string[] {
+  if (value[key] === undefined) {
+    return [];
+  }
+  return requireStringArray(value, key, label);
 }
 
 function requireBoolean(value: Record<string, unknown>, key: string, label: string): boolean {

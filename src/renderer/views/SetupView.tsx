@@ -108,11 +108,16 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
     setAiBusy(true);
     setAiStatus(null);
     try {
-      const status = await window.reamDesktop?.getOllamaStatus?.();
+      const requestedModel = ollamaModel.trim();
+      const status = await window.reamDesktop?.getOllamaStatus?.(requestedModel);
       if (!status) {
         throw new Error("Ollama setup is only available in the desktop app.");
       }
-      setAiStatus(status.ollama.ok ? `Ollama is running. Default model: ${status.model}.` : "Ollama is not running yet.");
+      setAiStatus(
+        status.ollama.ok
+          ? `Ollama is running. Checked model: ${status.checkedModel} (${status.modelAvailable ? "available" : "not found"}). Fallback: ${status.fallbackModel} (${status.fallbackAvailable ? "available" : "not found"}).`
+          : "Ollama is not running yet."
+      );
     } catch (statusError) {
       setAiStatus(statusError instanceof Error ? statusError.message : "Unable to check Ollama.");
     } finally {

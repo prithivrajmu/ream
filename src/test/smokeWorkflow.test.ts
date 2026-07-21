@@ -6,6 +6,7 @@ import { buildDailySummaries, buildTaskTotals, entriesToCsv, parseReamExport, se
 import { createProject } from "../shared/projectRepository";
 import { createTask } from "../shared/taskRepository";
 import { startTimer, stopTimer, updateActiveTimerNote } from "../shared/timerRepository";
+import { createJournalRecap, saveJournalPage } from "../shared/journalRepository";
 
 const databases: ReamDatabase[] = [];
 
@@ -33,6 +34,14 @@ describe("Ream smoke workflow", () => {
     await startTimer(sourceDb, { taskId: task.id }, new Date("2026-06-25T09:00:00.000Z"));
     await updateActiveTimerNote(sourceDb, "Captured decisions from the call", new Date("2026-06-25T09:10:00.000Z"));
     const entry = await stopTimer(sourceDb, new Date("2026-06-25T09:45:00.000Z"));
+    await saveJournalPage(sourceDb, "2026-06-25", "Remember to send the follow-up.");
+    await createJournalRecap(sourceDb, {
+      journalDateKey: "2026-06-26",
+      sourceStartDateKey: "2026-06-25",
+      sourceEndDateKey: "2026-06-25",
+      markdown: "## Recap\n\n- [ ] Send the follow-up",
+      model: "llama3.2:3b"
+    });
 
     const exportData = await readAllExportData(sourceDb);
     const parsedExport = parseReamExport(serializeReamExport(exportData));
@@ -51,5 +60,7 @@ describe("Ream smoke workflow", () => {
     await expect(targetDb.tasks.toArray()).resolves.toHaveLength(1);
     await expect(targetDb.projects.toArray()).resolves.toHaveLength(1);
     await expect(targetDb.timeEntries.toArray()).resolves.toHaveLength(1);
+    await expect(targetDb.journalPages.toArray()).resolves.toHaveLength(2);
+    await expect(targetDb.journalRecaps.toArray()).resolves.toHaveLength(1);
   });
 });

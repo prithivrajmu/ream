@@ -22,10 +22,31 @@ export interface Project {
 export interface TimeEntry {
   id: EntityId;
   taskId: EntityId;
+  projectIds: EntityId[];
   startedAt: string;
   endedAt: string;
   durationSeconds: number;
   note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalPage {
+  id: EntityId;
+  dateKey: string;
+  markdown: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalRecap {
+  id: EntityId;
+  journalPageId: EntityId;
+  journalDateKey: string;
+  sourceStartDateKey: string;
+  sourceEndDateKey: string;
+  markdown: string;
+  model: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -82,6 +103,7 @@ export interface UpdateProjectInput {
 
 export interface UpdateTimeEntryInput {
   taskId: EntityId;
+  projectIds?: EntityId[];
   startedAt: string;
   endedAt: string;
   note?: string;

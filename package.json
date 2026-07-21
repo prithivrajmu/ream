@@ -31,10 +31,20 @@
     "release:apt": "node scripts/generate-apt-repo.mjs"
   },
   "dependencies": {
+    "@lexical/code": "^0.47.0",
+    "@lexical/history": "^0.47.0",
+    "@lexical/link": "^0.47.0",
+    "@lexical/list": "^0.47.0",
+    "@lexical/markdown": "^0.47.0",
+    "@lexical/react": "^0.47.0",
+    "@lexical/rich-text": "^0.47.0",
+    "@lexical/selection": "^0.47.0",
+    "@lexical/utils": "^0.47.0",
     "@vitejs/plugin-react": "^5.1.1",
     "dexie": "^4.4.4",
     "electron-vite": "^5.0.0",
     "fake-indexeddb": "^6.2.5",
+    "lexical": "^0.47.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },

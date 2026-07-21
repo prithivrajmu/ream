@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it } from "vitest";
-import { validateImprovedNoteOutput } from "../shared/ai";
+import { formatImprovedNoteMarkdown, validateImprovedNoteOutput } from "../shared/ai";
 import { createNoteAiSuggestion, updateNoteAiSuggestionStatus } from "../shared/aiSuggestionRepository";
 import { ReamDatabase } from "../shared/db";
 
@@ -65,5 +65,48 @@ describe("AI note suggestions", () => {
     });
 
     expect(() => validateImprovedNoteOutput({ clean_note: "x" })).toThrow("summary");
+  });
+
+  it("formats the complete suggestion as a saved Markdown note", () => {
+    expect(formatImprovedNoteMarkdown({
+      clean_note: "Completed the API review and documented the authentication gap.",
+      summary: "The API review is complete with one unresolved dependency.",
+      next_steps: ["Request staging credentials", "Retest the authenticated endpoint"],
+      blockers: ["Staging credentials are unavailable"],
+      tags: ["API review", "#authentication"]
+    })).toBe(`## Note
+
+Completed the API review and documented the authentication gap.
+
+## Summary
+
+The API review is complete with one unresolved dependency.
+
+## To-do
+
+- [ ] Request staging credentials
+- [ ] Retest the authenticated endpoint
+
+## Blockers
+
+- Staging credentials are unavailable
+
+## Tags
+
+#api-review #authentication`);
+  });
+
+  it("keeps empty suggestion sections explicit", () => {
+    const markdown = formatImprovedNoteMarkdown({
+      clean_note: "Reviewed the implementation.",
+      summary: "The implementation was reviewed.",
+      next_steps: [],
+      blockers: [],
+      tags: []
+    });
+
+    expect(markdown).toContain("_No follow-up actions identified._");
+    expect(markdown).toContain("_No blockers identified._");
+    expect(markdown).toContain("_No tags suggested._");
   });
 });

@@ -100,6 +100,7 @@ jobs:
           name: Ream ${{ steps.release.outputs.tag }}
           prerelease: true
           make_latest: false
+          generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
             Unsigned macOS DMG build for Ream ${{ steps.release.outputs.version }}.

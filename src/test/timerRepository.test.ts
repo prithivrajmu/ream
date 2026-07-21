@@ -137,13 +137,14 @@ describe("timer repository", () => {
   it("updates an entry's task, time range, note, and calculated duration", async () => {
     const db = createTestDatabase();
     const originalTask = await createTask(db, { title: "Initial task" });
-    const revisedTask = await createTask(db, { title: "Revised task" });
+    const revisedTask = await createTask(db, { title: "Revised task", projectIds: ["project_beta", "project_gamma"] });
 
     await startTimer(db, { taskId: originalTask.id }, new Date("2026-06-25T09:00:00.000Z"));
     const entry = await stopTimer(db, new Date("2026-06-25T09:30:00.000Z"));
 
     const updated = await updateTimeEntry(db, entry.id, {
       taskId: revisedTask.id,
+      projectIds: ["project_beta"],
       startedAt: "2026-06-24T13:00:00.000Z",
       endedAt: "2026-06-24T14:45:00.000Z",
       note: "Corrected entry"
@@ -151,17 +152,27 @@ describe("timer repository", () => {
 
     expect(updated).toMatchObject({
       taskId: revisedTask.id,
+      projectIds: ["project_beta"],
       startedAt: "2026-06-24T13:00:00.000Z",
       endedAt: "2026-06-24T14:45:00.000Z",
       durationSeconds: 6300,
       note: "Corrected entry",
       updatedAt: "2026-06-26T09:00:00.000Z"
     });
+
+    const noteOnlyUpdate = await updateTimeEntry(db, entry.id, {
+      taskId: revisedTask.id,
+      startedAt: updated.startedAt,
+      endedAt: updated.endedAt,
+      note: "Retained projects"
+    }, new Date("2026-06-26T10:00:00.000Z"));
+
+    expect(noteOnlyUpdate.projectIds).toEqual(["project_beta"]);
   });
 
   it("creates a completed time entry without starting a timer", async () => {
     const db = createTestDatabase();
-    const task = await createTask(db, { title: "Manual work" });
+    const task = await createTask(db, { title: "Manual work", projectIds: ["project_manual"] });
 
     const entry = await createTimeEntry(db, {
       taskId: task.id,
@@ -172,6 +183,7 @@ describe("timer repository", () => {
 
     expect(entry).toMatchObject({
       taskId: task.id,
+      projectIds: ["project_manual"],
       durationSeconds: 2700,
       note: "Logged after the fact",
       createdAt: "2026-06-25T09:00:00.000Z",

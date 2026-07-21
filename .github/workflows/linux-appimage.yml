@@ -97,6 +97,7 @@ jobs:
           name: Ream ${{ steps.release.outputs.tag }}
           prerelease: true
           make_latest: false
+          generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
             Linux x64 AppImage build for Ream ${{ steps.release.outputs.version }}.
