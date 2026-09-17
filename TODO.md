@@ -74,9 +74,16 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 - [x] Commit the completed note and AI acceptance record together; reject delayed completed-entry AI results from before a restore.
 - [x] Add concurrency, rollback, and UI regression coverage; verify the required themes and run the full gate.
 
+## 8. Live-overlay AI acceptance — in progress
+
+- [x] Add repository APIs that scope AI suggestions to the timer session and workspace restore revision, not the shared `active` ID (overlay integration follows in the next slice).
+- [x] Atomically check the saved source note and commit the live note plus acceptance record; test stop/restart, restore, rollback, and concurrent writes.
+- [ ] Flush and recheck local drafts before applying AI; retain typing that arrives during acceptance and never autosave a failed AI rewrite.
+- [ ] Show stale-preview guidance and prevent duplicate actions in the overlay; verify themes, narrow layout, and the full code gate.
+- [ ] Commit the data-layer and UI integration as separate tested slices.
+
 ## Next iteration — remaining checks and limitations
 
-- [ ] Extend AI source-note checks and atomic acceptance to the live overlay; it still uses the separate autosave/status path and stores suggestions against the shared `active` ID.
 - [ ] Add AI quality evaluations for completed versus planned work: one live suggestion incorrectly turned a completed export check into a future task. Native Reject preserved the original note; keep explicit review before applying suggestions.
 - [ ] Expand native focus testing across app switching, minimizing, and multiple displays; the passive-overlay change is implemented, but the full matrix is not verified.
 - [ ] Automate the native smoke checks currently performed manually, including verifying exported CSV contents on disk (the desktop save dialog and existing CSV tests were checked).
@@ -118,3 +125,4 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 - Completed-entry pass: 140 normal tests passed across 27 files (three opt-in live-model checks skipped). TypeScript, production build, and whitespace checks passed; lint reports no errors and the same four existing warnings.
 - Separate database connections cover concurrent manual edits, task/project/time/duration changes with identical write timestamps, repeated conflict review, empty notes, deletion, restore, manual saves racing AI acceptance, and rollback if recording acceptance fails. AI application preserves the latest entry metadata and exact tracked duration.
 - `scripts/ui/entry-conflicts.html` visually verified both new notices in dark-studio, old-money, retro-console, color-blind, and a 360-pixel frame; the real dialog component and both explicit choice callbacks were exercised using synthetic props. Database race behavior is covered by repository tests, not a native multi-window UI automation test.
+- Live-overlay repository slice: 152 normal tests passed (three live-model checks skipped); TypeScript and whitespace checks passed. Twelve new regressions cover session-scoped suggestions, unchanged/empty/whitespace source notes, pause-duration preservation, legacy suggestions, stop/restart/restore, both write failures, concurrent autosave, and stop races. The existing overlay UI is not yet switched to these APIs in this slice.

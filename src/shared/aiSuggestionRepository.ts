@@ -1,4 +1,4 @@
-import type { NoteAiSuggestion, NoteAiSuggestionStatus } from "./domain";
+import type { ActiveTimer, NoteAiSuggestion, NoteAiSuggestionStatus } from "./domain";
 import { formatImprovedNoteMarkdown, validateImprovedNoteOutput, type ImprovedNoteOutput } from "./ai";
 import type { ReamDatabase } from "./db";
 import { createId } from "./id";
@@ -94,4 +94,61 @@ export async function acceptNoteAiSuggestion(
 
 export async function listNoteAiSuggestions(database: ReamDatabase): Promise<NoteAiSuggestion[]> {
   return database.noteAiSuggestions.orderBy("createdAt").reverse().toArray();
+}
+
+export interface TimerAiSession {
+  startedAt: string;
+  workspaceRevision: number;
+}
+
+/** No schema change: noteId is already a string; legacy "active" records stay in history. */
+export function timerAiNoteId(session: TimerAiSession): string {
+  return `timer:${session.workspaceRevision}:${session.startedAt}`;
+}
+
+async function readAiTimer(database: ReamDatabase, session: TimerAiSession): Promise<ActiveTimer> {
+  await assertWorkspaceRevision(database, session.workspaceRevision);
+  const timer = await database.activeTimers.get("active");
+  if (!timer || timer.startedAt !== session.startedAt) {
+    throw new Error("The timer ended or changed. This suggestion cannot be applied to a different session.");
+  }
+  return timer;
+}
+
+export async function createActiveTimerAiSuggestion(
+  database: ReamDatabase,
+  input: Omit<CreateNoteAiSuggestionInput, "noteId">,
+  session: TimerAiSession,
+  now = new Date()
+): Promise<NoteAiSuggestion> {
+  return database.transaction("rw", database.activeTimers, database.noteAiSuggestions, database.workspaceState, async () => {
+    await readAiTimer(database, session);
+    // The source may have changed during generation. Keep the preview available
+    // for copying, but acceptance below still compares against its exact source.
+    return createNoteAiSuggestion(database, { ...input, noteId: timerAiNoteId(session) }, now, session.workspaceRevision);
+  });
+}
+
+export async function acceptActiveTimerAiSuggestion(
+  database: ReamDatabase,
+  suggestionId: string,
+  session: TimerAiSession,
+  now = new Date()
+): Promise<{ timer: ActiveTimer; suggestion: NoteAiSuggestion }> {
+  return database.transaction("rw", database.activeTimers, database.noteAiSuggestions, database.workspaceState, async () => {
+    const timer = await readAiTimer(database, session);
+    const suggestion = await database.noteAiSuggestions.get(suggestionId);
+    if (!suggestion) throw new Error("AI suggestion not found. Generate a new suggestion from the current note.");
+    if (suggestion.noteId !== timerAiNoteId(session)) {
+      throw new Error("This suggestion belongs to another or an older unscoped timer session. Generate a new suggestion.");
+    }
+    const note = formatImprovedNoteMarkdown(validateImprovedNoteOutput(suggestion.outputJson));
+    assertNoteUnchanged(timer.note, suggestion.inputText, note);
+    const timestamp = now.toISOString();
+    const updatedTimer = { ...timer, note, updatedAt: timestamp };
+    const accepted: NoteAiSuggestion = { ...suggestion, status: "accepted", statusUpdatedAt: timestamp, acceptedAt: timestamp };
+    await database.activeTimers.put(updatedTimer);
+    await database.noteAiSuggestions.put(accepted);
+    return { timer: updatedTimer, suggestion: accepted };
+  });
 }
