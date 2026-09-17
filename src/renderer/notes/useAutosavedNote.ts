@@ -22,5 +22,5 @@ export function useAutosavedNote(contextId: string, savedValue: string, save: (v
     };
   }, [controller, ready]);
 
-  return { ...snapshot, change: controller.change, flush: controller.flush, resolveConflict: controller.resolveConflict };
+  return { ...snapshot, change: controller.change, flush: controller.flush, resolveConflict: controller.resolveConflict, getSnapshot: controller.getSnapshot, sync: controller.sync };
 }

@@ -50,6 +50,8 @@ It shows the four required themes and a narrow layout without accessing app data
 The recovery-panel fixture is available on the same server at
 `/scripts/ui/note-recovery.html`.
 Completed-entry and stale-AI review surfaces are at `/scripts/ui/entry-conflicts.html`.
+The live-overlay AI preview, including editable synthetic state and busy controls,
+is at `/scripts/ui/live-ai-preview.html`.
 
 ### macOS with Homebrew (not yet available)
 

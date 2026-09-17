@@ -51,17 +51,14 @@ export async function updateNoteAiSuggestionStatus(
     if (!suggestion) {
       throw new Error("AI suggestion not found.");
     }
-    // The live overlay still uses its autosave path. Completed entries must use
-    // acceptNoteAiSuggestion so the note and status cannot commit separately.
-    if (status === "accepted" && suggestion.noteId !== "active") {
-      throw new Error("Accept completed-entry suggestions through the atomic note update.");
+    if (status === "accepted") {
+      throw new Error("Accept suggestions through the atomic note update.");
     }
 
     const updated: NoteAiSuggestion = {
       ...suggestion,
       status,
-      statusUpdatedAt: now.toISOString(),
-      acceptedAt: status === "accepted" ? now.toISOString() : suggestion.acceptedAt
+      statusUpdatedAt: now.toISOString()
     };
 
     await database.noteAiSuggestions.put(updated);

@@ -74,13 +74,13 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 - [x] Commit the completed note and AI acceptance record together; reject delayed completed-entry AI results from before a restore.
 - [x] Add concurrency, rollback, and UI regression coverage; verify the required themes and run the full gate.
 
-## 8. Live-overlay AI acceptance — in progress
+## 8. Live-overlay AI acceptance
 
-- [x] Add repository APIs that scope AI suggestions to the timer session and workspace restore revision, not the shared `active` ID (overlay integration follows in the next slice).
+- [x] Scope overlay AI suggestions to the timer session and workspace restore revision, not the shared `active` ID. Legacy unscoped suggestions remain in history but are not offered for new sessions.
 - [x] Atomically check the saved source note and commit the live note plus acceptance record; test stop/restart, restore, rollback, and concurrent writes.
-- [ ] Flush and recheck local drafts before applying AI; retain typing that arrives during acceptance and never autosave a failed AI rewrite.
-- [ ] Show stale-preview guidance and prevent duplicate actions in the overlay; verify themes, narrow layout, and the full code gate.
-- [ ] Commit the data-layer and UI integration as separate tested slices.
+- [x] Flush and recheck local drafts before applying AI; retain typing that arrives during acceptance and never autosave a failed AI rewrite.
+- [x] Show stale-preview guidance and prevent duplicate actions in the overlay; verify themes, narrow layout, and the full code gate.
+- [x] Commit the data-layer and UI integration as separate tested slices (repository slice: `0059978`; integration in the following commit).
 
 ## Next iteration — remaining checks and limitations
 
@@ -126,3 +126,5 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 - Separate database connections cover concurrent manual edits, task/project/time/duration changes with identical write timestamps, repeated conflict review, empty notes, deletion, restore, manual saves racing AI acceptance, and rollback if recording acceptance fails. AI application preserves the latest entry metadata and exact tracked duration.
 - `scripts/ui/entry-conflicts.html` visually verified both new notices in dark-studio, old-money, retro-console, color-blind, and a 360-pixel frame; the real dialog component and both explicit choice callbacks were exercised using synthetic props. Database race behavior is covered by repository tests, not a native multi-window UI automation test.
 - Live-overlay repository slice: 152 normal tests passed (three live-model checks skipped); TypeScript and whitespace checks passed. Twelve new regressions cover session-scoped suggestions, unchanged/empty/whitespace source notes, pause-duration preservation, legacy suggestions, stop/restart/restore, both write failures, concurrent autosave, and stop races. The existing overlay UI is not yet switched to these APIs in this slice.
+- Live-overlay integration: 163 normal tests passed across 30 files (three opt-in live-model checks skipped). TypeScript, production build, and whitespace checks passed; lint reports zero errors and the same four existing warnings. Additional tests exercise the actual autosave controller with atomic acceptance: clean editor updates, local changes before acceptance, typing during acceptance, retained recovery text, flush conflicts, and failed AI writes without autosave retries.
+- `scripts/ui/live-ai-preview.html` verified the actual preview component with synthetic props: stale Accept disabled, copy feedback, regeneration enabling Accept, busy-state action locking while typing remains available, and rejecting without changing editor text. All four themes and a 360-pixel frame were visually checked. This pass did not automate the native multi-window focus matrix or re-evaluate live model quality.

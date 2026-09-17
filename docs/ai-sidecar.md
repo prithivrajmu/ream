@@ -21,7 +21,8 @@ Ream uses a local HTTP sidecar for AI note improvement. The renderer never talks
 - The raw note is preserved. The AI suggestion is stored separately.
 - A user must explicitly accept the suggestion before any note replacement happens.
 - For completed entries, acceptance compares the currently saved note with the original source and commits the note and acceptance record atomically. If the note changed, copy the suggestion for a manual merge or regenerate it from the current note. Task, projects, time range, and tracked duration are preserved. Results from before a workspace restore cannot be applied.
-- The live overlay currently uses its autosave path for acceptance; extending the completed-entry AI guards to live notes is tracked in TODO.md.
+- Live-overlay suggestions are scoped to the timer's start timestamp and workspace restore revision. Acceptance flushes pending local edits, checks both local and saved source text, then atomically updates the timer note and acceptance record. Stopping/restarting a timer or restoring a workspace invalidates older results. Paused time is preserved; failed acceptance never retries the rewrite as an ordinary autosave. New typing during acceptance remains a recoverable local edit.
+- Stale live previews remain visible for copying or regeneration, with Accept disabled. Legacy suggestions stored against the shared `active` ID remain in history, but are not offered for new timer sessions.
 - The UI shows request duration and the final outcome in the AI Stats section.
 
 ## Endpoints

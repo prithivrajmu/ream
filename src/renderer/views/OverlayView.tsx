@@ -1,7 +1,8 @@
 import { type CSSProperties, type MouseEvent, type ReactNode, type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { liveQuery } from "dexie";
 import { DEFAULT_OLLAMA_MODEL, formatImprovedNoteMarkdown, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
-import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { acceptActiveTimerAiSuggestion, createActiveTimerAiSuggestion, listNoteAiSuggestions, timerAiNoteId, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { readWorkspaceRevision } from "../../shared/workspaceRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
 import { listActiveProjects } from "../../shared/projectRepository";
@@ -22,6 +23,8 @@ import { formatEntryDateTime } from "../rendererUtils";
 import { MarkdownNoteEditor, type MarkdownNoteEditorHandle } from "../notes/MarkdownNoteEditor";
 import { useAutosavedNote } from "../notes/useAutosavedNote";
 import { NoteConflictNotice } from "../notes/NoteConflictNotice";
+import { LiveAiNotePreview } from "../notes/LiveAiNotePreview";
+import { applyLiveAiNote } from "../notes/applyLiveAiNote";
 import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft } from "../notes/noteDrafts";
 import { RichNoteView } from "../richNotes";
 import type { ThemeId } from "../themeOptions";
@@ -37,6 +40,7 @@ interface OverlayViewProps {
 interface OverlayAiPreview {
   suggestionId: string;
   activeTimerId: string;
+  workspaceRevision: number;
   model: string;
   rawNote: string;
   output: ImprovedNoteOutput;
@@ -115,6 +119,9 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const [taskSearch, setTaskSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiActionBusy, setAiActionBusy] = useState(false);
+  const aiActionBusyRef = useRef(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [aiPreview, setAiPreview] = useState<OverlayAiPreview | null>(null);
   const [overlayViewportWidth, setOverlayViewportWidth] = useState(() => window.innerWidth);
   const [interactionState, dispatchInteraction] = useReducer(overlayInteractionReducer, {
@@ -203,14 +210,16 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }, []);
 
   const refreshOverlayState = useCallback(async () => {
-    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextAiSuggestions] = await Promise.all([
+    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextAiSuggestions, nextRevision] = await db.transaction("r", db.tables, () => Promise.all([
       listActiveTasks(db),
       listActiveProjects(db),
       getActiveTimer(db),
       db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray(),
-      listNoteAiSuggestions(db)
-    ]);
+      listNoteAiSuggestions(db),
+      readWorkspaceRevision(db)
+    ]));
 
+    setWorkspaceRevision(nextRevision);
     setTasks(nextTasks);
     setProjects(nextProjects);
     setActiveTimer(nextActiveTimer);
@@ -637,7 +646,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setPendingNote(nextNote);
       if (selectedTaskId) writeNoteRecoveryDraft(window.localStorage, `pending-${selectedTaskId}`, nextNote);
     }
-    setAiPreview(null);
+    // Keep the preview available to copy; changed source text disables Accept.
   }
 
   function handleSelectedTaskChange(nextTaskId: string) {
@@ -811,6 +820,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }
 
   async function handleImproveOverlayNote() {
+    if (aiActionBusyRef.current) return;
     if (!activeTimer || !activeTask) {
       setError("Start a task before improving its note with AI.");
       return;
@@ -827,46 +837,54 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setNotesExpanded(true);
     }
     setAiLoading(true);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
 
     try {
       if (!window.reamDesktop?.improveNoteWithAi) {
         throw new Error("AI is only available in the desktop app.");
       }
+      await timerDraft.flush();
+      const sourceNote = timerDraft.getSnapshot().value;
+      if (!sourceNote.trim()) throw new Error("Write a note before using AI.");
 
       const projectName = activeTask.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
       const model = window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() || DEFAULT_OLLAMA_MODEL;
       const requestStartedAt = readClockMs();
       const result = await window.reamDesktop.improveNoteWithAi({
-        noteText,
+        noteText: sourceNote,
         taskTitle: activeTask.title,
         projectName,
         tags: activeTask.tags,
         model
       });
       const durationMs = readClockMs() - requestStartedAt;
-      const savedSuggestion = await createNoteAiSuggestion(db, {
-        noteId: activeTimer.id,
+      const savedSuggestion = await createActiveTimerAiSuggestion(db, {
         model: result.model,
-        inputText: noteText,
+        inputText: sourceNote,
         outputJson: result.output,
         durationMs
-      });
+      }, { startedAt: activeTimer.startedAt, workspaceRevision });
 
       setAiPreview({
         suggestionId: savedSuggestion.id,
         activeTimerId: activeTimer.startedAt,
+        workspaceRevision,
         model: result.model,
-        rawNote: noteText,
+        rawNote: sourceNote,
         output: result.output
       });
     } catch (improveError) {
       setError(improveError instanceof Error ? improveError.message : "Unable to improve note with AI.");
     } finally {
       setAiLoading(false);
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleAcceptAiSuggestion(preview: OverlayAiPreview) {
+    if (aiActionBusyRef.current) return;
     if (!activeTimer || activeTimer.startedAt !== preview.activeTimerId) {
       setError("The active timer changed. Reject this suggestion and run AI again.");
       return;
@@ -877,18 +895,25 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     }
 
     setError(null);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     try {
-      timerDraft.change(formatImprovedNoteMarkdown(preview.output));
-      await timerDraft.flush();
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      const { suggestion: updatedSuggestion } = await applyLiveAiNote(timerDraft, preview.rawNote, formatImprovedNoteMarkdown(preview.output), () => acceptActiveTimerAiSuggestion(db, preview.suggestionId, { startedAt: preview.activeTimerId, workspaceRevision: preview.workspaceRevision }));
       setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
       setAiPreview(null);
+      await refreshOverlayState();
     } catch (acceptError) {
       setError(acceptError instanceof Error ? acceptError.message : "Unable to accept AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleRejectAiSuggestion(preview: OverlayAiPreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setError(null);
     try {
       const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
@@ -896,16 +921,24 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setAiPreview(null);
     } catch (rejectError) {
       setError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleCopyAiSuggestion(preview: OverlayAiPreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setError(null);
     try {
       await window.reamDesktop?.focusOverlayWindow?.();
       await navigator.clipboard.writeText(formatImprovedNoteMarkdown(preview.output));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
       return;
     }
     try {
@@ -913,6 +946,9 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
     } catch (statusError) {
       console.error("Failed to record AI suggestion copy status", statusError);
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
@@ -927,11 +963,12 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     }
 
     const noteText = note.trim();
-    const savedSuggestion = aiSuggestionByNoteId.get(activeTimer.id);
-    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === noteText)) {
-      return <button className="reference-ai-button is-muted" onClick={() => void handleOpenSavedAiSuggestion({
+    const savedSuggestion = aiSuggestionByNoteId.get(timerAiNoteId({ startedAt: activeTimer.startedAt, workspaceRevision }));
+    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === note)) {
+      return <button className="reference-ai-button is-muted" disabled={aiActionBusy} onClick={() => void handleOpenSavedAiSuggestion({
         suggestionId: savedSuggestion.id,
         activeTimerId: activeTimer.startedAt,
+        workspaceRevision,
         model: savedSuggestion.model,
         rawNote: savedSuggestion.inputText,
         output: validateImprovedNoteOutput(savedSuggestion.outputJson)
@@ -941,7 +978,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     return (
       <button
         className="reference-ai-button"
-        disabled={!noteText || aiLoading}
+        disabled={!noteText || aiActionBusy}
         onClick={handleImproveOverlayNote}
       >
         {aiLoading ? "Improving..." : "Improve with AI"}
@@ -1069,7 +1106,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               <MarkdownNoteEditor
                 key={noteContextId}
                 aiAction={renderImproveNoteButton()}
-                disabledAi={!activeTimer || aiLoading || !note.trim()}
+                disabledAi={!activeTimer || aiActionBusy || !note.trim()}
                 metadata={[
                   projectTagLabels.join(", ") || "No project",
                   activeTimer ? formatDuration(elapsed) : "No active timer",
@@ -1085,34 +1122,19 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
               />
               {noteSaveStatus === "failed" ? <p className="reference-error" role="alert">Note not saved. <button onClick={() => void timerDraft.flush().catch(() => undefined)} type="button">Retry save</button></p> : null}
               <NoteConflictNotice localValue={timerDraft.value} savedValue={timerDraft.conflictValue} onResolve={timerDraft.resolveConflict} />
-              {aiPreview ? (
-                <div className="reference-ai-preview">
-                  <section className="reference-ai-preview-panel">
-                    <h3>Raw note</h3>
-                    <div className="reference-ai-preview-body">
-                      <RichNoteView text={aiPreview.rawNote} />
-                    </div>
-                  </section>
-                  <section className="reference-ai-preview-panel is-suggestion">
-                    <h3>AI suggestion</h3>
-                    <div className="reference-ai-preview-body">
-                      <RichNoteView text={aiPreview.output.clean_note} />
-                      <dl>
-                        <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
-                        <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
-                        <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
-                        <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
-                      </dl>
-                      <small>Model: {aiPreview.model}</small>
-                    </div>
-                    <div className="reference-ai-actions">
-                      <button onClick={() => void handleAcceptAiSuggestion(aiPreview)}>Accept</button>
-                      <button onClick={() => void handleCopyAiSuggestion(aiPreview)}>Copy suggestion</button>
-                      <button onClick={() => void handleRejectAiSuggestion(aiPreview)}>Reject</button>
-                    </div>
-                  </section>
-                </div>
-              ) : null}
+              {aiPreview ? <LiveAiNotePreview
+                rawNote={aiPreview.rawNote}
+                output={aiPreview.output}
+                model={aiPreview.model}
+                localNote={note}
+                savedNote={activeTimer?.note ?? ""}
+                sessionChanged={aiPreview.activeTimerId !== activeTimer?.startedAt || aiPreview.workspaceRevision !== workspaceRevision}
+                busy={aiActionBusy}
+                onAccept={() => void handleAcceptAiSuggestion(aiPreview)}
+                onCopy={() => void handleCopyAiSuggestion(aiPreview)}
+                onReject={() => void handleRejectAiSuggestion(aiPreview)}
+                onRegenerate={() => void handleImproveOverlayNote()}
+              /> : null}
             </section>
           </div>
 

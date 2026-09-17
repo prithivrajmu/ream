@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ream live AI — synthetic preview</title></head>
+<body><div id="root"></div><script type="module">
+  // Real preview component, synthetic props only: no database, AI service, or draft storage access.
+  import React, { useState } from "react";
+  import { createRoot } from "react-dom/client";
+  import { LiveAiNotePreview } from "/src/renderer/notes/LiveAiNotePreview.tsx";
+  import { formatImprovedNoteMarkdown } from "/src/shared/ai.ts";
+  import "/src/renderer/styles.css";
+  const output = { clean_note: "Completed the export check.", summary: "The export check passed.", next_steps: [], blockers: [], tags: ["review"] };
+  function Example({ theme }) {
+    const [rawNote, setRawNote] = useState("Completed the export check.");
+    const [localNote, setLocalNote] = useState("Completed the export check. Also verified the CSV contents.");
+    const [savedNote, setSavedNote] = useState("Completed the export check. Retain https://example.com/a-long-reference-for-wrapping-checks");
+    const [busy, setBusy] = useState(false);
+    const [message, setMessage] = useState("");
+    return React.createElement("section", { className: `overlay-shell reference-overlay-shell theme-${theme}`, style: { display: "block", height: "auto", minWidth: 0, width: "100%", padding: 16, margin: 0, background: "var(--theme-bg)" } },
+      React.createElement("h2", null, theme),
+      React.createElement("label", null, "Current editor text", React.createElement("textarea", { value: localNote, onChange: (event) => setLocalNote(event.target.value), style: { display: "block", width: "100%", color: "var(--theme-ink)", background: "var(--theme-panel-alt)" } })),
+      React.createElement("label", null, React.createElement("input", { type: "checkbox", checked: busy, onChange: (event) => setBusy(event.target.checked) }), " Simulate pending action"),
+      React.createElement(LiveAiNotePreview, { rawNote, output, model: "synthetic fixture", localNote, savedNote, sessionChanged: false, busy,
+        onAccept: () => { const text = formatImprovedNoteMarkdown(output); setLocalNote(text); setSavedNote(text); setMessage("Accepted synthetic suggestion"); },
+        onCopy: async () => { await navigator.clipboard.writeText(formatImprovedNoteMarkdown(output)); setMessage("Copied synthetic suggestion"); },
+        onReject: () => setMessage("Rejected synthetic suggestion; text retained"),
+        onRegenerate: () => { setRawNote(localNote); setSavedNote(localNote); setMessage("Synthetic source updated; Accept enabled"); }
+      }), React.createElement("p", { role: "status" }, message));
+  }
+  const single = new URLSearchParams(location.search).get("theme");
+  const themes = ["dark-studio", "old-money", "retro-console", "color-blind"];
+  createRoot(document.getElementById("root")).render(React.createElement("main", { style: { maxWidth: 860, margin: "0 auto", height: "100dvh", overflow: "auto" } },
+    ...(single ? themes.filter((theme) => theme === single) : themes).map((theme) => React.createElement(Example, { key: theme, theme })),
+    !single && React.createElement("iframe", { title: "Narrow live AI layout", src: "?theme=dark-studio", width: 360, height: 960, style: { maxWidth: "100%", border: 0 } })));
+</script></body></html>
