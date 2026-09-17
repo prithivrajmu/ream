@@ -1,5 +1,8 @@
 import type { ActiveTimer, TimeEntry, UpdateTimeEntryInput } from "./domain";
 import type { ReamDatabase } from "./db";
+import { assertNoteUnchanged } from "./noteConflict";
+import { assertEntryUnchanged } from "./entryConflict";
+import { assertWorkspaceRevision } from "./workspaceRepository";
 import { createId } from "./id";
 
 const ACTIVE_TIMER_ID = "active";
@@ -18,163 +21,195 @@ export async function startTimer(
   input: StartTimerInput,
   now = new Date()
 ): Promise<ActiveTimer> {
-  const task = await database.tasks.get(input.taskId);
-  if (!task || task.archived) {
-    throw new Error("Choose an active task before starting the timer.");
-  }
+  return database.transaction("rw", database.tasks, database.activeTimers, async () => {
+    const task = await database.tasks.get(input.taskId);
+    if (!task || task.archived) {
+      throw new Error("Choose an active task before starting the timer.");
+    }
 
-  const existing = await getActiveTimer(database);
-  if (existing) {
-    throw new Error("A timer is already running.");
-  }
+    const existing = await getActiveTimer(database);
+    if (existing) {
+      throw new Error("A timer is already running.");
+    }
 
-  const timestamp = now.toISOString();
-  const activeTimer: ActiveTimer = {
-    id: ACTIVE_TIMER_ID,
-    taskId: input.taskId,
-    startedAt: timestamp,
-    note: input.note?.trim() ?? "",
-    pausedAt: "",
-    totalPausedSeconds: 0,
-    createdAt: timestamp,
-    updatedAt: timestamp
-  };
+    const timestamp = now.toISOString();
+    const activeTimer: ActiveTimer = {
+      id: ACTIVE_TIMER_ID,
+      taskId: input.taskId,
+      startedAt: timestamp,
+      note: input.note ?? task.defaultNote ?? "",
+      pausedAt: "",
+      totalPausedSeconds: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
 
-  await database.activeTimers.add(activeTimer);
-  return activeTimer;
+    await database.activeTimers.add(activeTimer);
+    return activeTimer;
+  });
 }
 
 export async function updateActiveTimerNote(
   database: ReamDatabase,
   note: string,
-  now = new Date()
+  now = new Date(),
+  expectedStartedAt?: string,
+  expectedNote?: string
 ): Promise<ActiveTimer> {
-  const activeTimer = await getActiveTimer(database);
-  if (!activeTimer) {
-    throw new Error("No timer is running.");
-  }
+  return database.transaction("rw", database.activeTimers, async () => {
+    const activeTimer = await getActiveTimer(database);
+    if (!activeTimer) {
+      throw new Error("No timer is running.");
+    }
+    assertTimerSession(activeTimer, expectedStartedAt);
+    assertNoteUnchanged(activeTimer.note, expectedNote, note);
 
-  const updated: ActiveTimer = {
-    ...activeTimer,
-    note: note.trim(),
-    updatedAt: now.toISOString()
-  };
+    const updated: ActiveTimer = {
+      ...activeTimer,
+      note,
+      updatedAt: now.toISOString()
+    };
 
-  await database.activeTimers.put(updated);
-  return updated;
+    await database.activeTimers.put(updated);
+    return updated;
+  });
 }
 
 export async function pauseTimer(database: ReamDatabase, now = new Date()): Promise<ActiveTimer> {
-  const activeTimer = await getActiveTimer(database);
-  if (!activeTimer) {
-    throw new Error("No timer is running.");
-  }
+  return database.transaction("rw", database.activeTimers, async () => {
+    const activeTimer = await getActiveTimer(database);
+    if (!activeTimer) {
+      throw new Error("No timer is running.");
+    }
 
-  if (activeTimer.pausedAt) {
-    return activeTimer;
-  }
+    if (activeTimer.pausedAt) {
+      return activeTimer;
+    }
 
-  const updated: ActiveTimer = {
-    ...activeTimer,
-    pausedAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  };
+    const updated: ActiveTimer = {
+      ...activeTimer,
+      pausedAt: now.toISOString(),
+      updatedAt: now.toISOString()
+    };
 
-  await database.activeTimers.put(updated);
-  return updated;
+    await database.activeTimers.put(updated);
+    return updated;
+  });
 }
 
 export async function resumeTimer(database: ReamDatabase, now = new Date()): Promise<ActiveTimer> {
-  const activeTimer = await getActiveTimer(database);
-  if (!activeTimer) {
-    throw new Error("No timer is running.");
-  }
+  return database.transaction("rw", database.activeTimers, async () => {
+    const activeTimer = await getActiveTimer(database);
+    if (!activeTimer) {
+      throw new Error("No timer is running.");
+    }
 
-  if (!activeTimer.pausedAt) {
-    return activeTimer;
-  }
+    if (!activeTimer.pausedAt) {
+      return activeTimer;
+    }
 
-  const pausedSeconds = secondsBetween(activeTimer.pausedAt, now);
-  const updated: ActiveTimer = {
-    ...activeTimer,
-    pausedAt: "",
-    totalPausedSeconds: activeTimer.totalPausedSeconds + pausedSeconds,
-    updatedAt: now.toISOString()
-  };
+    const pausedSeconds = secondsBetween(activeTimer.pausedAt, now);
+    const updated: ActiveTimer = {
+      ...activeTimer,
+      pausedAt: "",
+      totalPausedSeconds: activeTimer.totalPausedSeconds + pausedSeconds,
+      updatedAt: now.toISOString()
+    };
 
-  await database.activeTimers.put(updated);
-  return updated;
+    await database.activeTimers.put(updated);
+    return updated;
+  });
 }
 
-export async function stopTimer(database: ReamDatabase, now = new Date()): Promise<TimeEntry> {
-  const activeTimer = await getActiveTimer(database);
-  if (!activeTimer) {
-    throw new Error("No timer is running.");
-  }
+export async function stopTimer(database: ReamDatabase, now = new Date(), expectedStartedAt?: string): Promise<TimeEntry> {
+  return database.transaction("rw", database.activeTimers, database.timeEntries, database.tasks, async () => {
+    const activeTimer = await getActiveTimer(database);
+    if (!activeTimer) {
+      throw new Error("No timer is running.");
+    }
+    assertTimerSession(activeTimer, expectedStartedAt);
 
-  const endedAt = now.toISOString();
-  const timestamp = endedAt;
-  const task = await database.tasks.get(activeTimer.taskId);
-  const entry: TimeEntry = {
-    id: createId("entry"),
-    taskId: activeTimer.taskId,
-    projectIds: task?.projectIds ?? [],
-    startedAt: activeTimer.startedAt,
-    endedAt,
-    durationSeconds: activeTimerElapsedSeconds(activeTimer, now),
-    note: activeTimer.note,
-    createdAt: timestamp,
-    updatedAt: timestamp
-  };
+    const endedAt = now.toISOString();
+    const timestamp = endedAt;
+    const task = await database.tasks.get(activeTimer.taskId);
+    const entry: TimeEntry = {
+      id: createId("entry"),
+      taskId: activeTimer.taskId,
+      projectIds: task?.projectIds ?? [],
+      startedAt: activeTimer.startedAt,
+      endedAt,
+      durationSeconds: activeTimerElapsedSeconds(activeTimer, now),
+      note: activeTimer.note,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
 
-  await database.transaction("rw", database.activeTimers, database.timeEntries, async () => {
     await database.timeEntries.add(entry);
     await database.activeTimers.delete(ACTIVE_TIMER_ID);
-  });
 
-  return entry;
+    return entry;
+  });
+}
+
+function assertTimerSession(timer: ActiveTimer, expectedStartedAt?: string) {
+  if (expectedStartedAt && timer.startedAt !== expectedStartedAt) {
+    throw new Error("The timer changed in another window. Your note is kept as a recovery draft.");
+  }
 }
 
 export async function createTimeEntry(
   database: ReamDatabase,
   input: UpdateTimeEntryInput,
-  now = new Date()
+  now = new Date(),
+  expectedWorkspaceRevision?: number
 ): Promise<TimeEntry> {
-  const task = await database.tasks.get(input.taskId);
-  if (!task || task.archived) {
-    throw new Error("Choose an active task for this entry.");
-  }
+  return database.transaction("rw", database.tasks, database.timeEntries, database.workspaceState, async () => {
+    await assertWorkspaceRevision(database, expectedWorkspaceRevision);
+    const task = await database.tasks.get(input.taskId);
+    if (!task || task.archived) {
+      throw new Error("Choose an active task for this entry.");
+    }
 
-  const entry = buildTimeEntry(createId("entry"), input, now, input.projectIds ?? task.projectIds);
-  await database.timeEntries.add(entry);
-  return entry;
+    const entry = buildTimeEntry(createId("entry"), input, now, input.projectIds ?? task.projectIds);
+    await database.timeEntries.add(entry);
+    return entry;
+  });
 }
 
 export async function updateTimeEntry(
   database: ReamDatabase,
   entryId: string,
   input: UpdateTimeEntryInput,
-  now = new Date()
+  now = new Date(),
+  guard?: { expectedEntry: TimeEntry; expectedWorkspaceRevision: number }
 ): Promise<TimeEntry> {
-  const [existing, task] = await Promise.all([
-    database.timeEntries.get(entryId),
-    database.tasks.get(input.taskId)
-  ]);
+  return database.transaction("rw", database.timeEntries, database.tasks, database.workspaceState, async () => {
+    await assertWorkspaceRevision(database, guard?.expectedWorkspaceRevision);
+    const [existing, task] = await Promise.all([
+      database.timeEntries.get(entryId),
+      database.tasks.get(input.taskId)
+    ]);
 
-  if (!existing) {
-    throw new Error("Time entry not found.");
-  }
+    if (!existing) {
+      throw new Error("Time entry not found. It may have been deleted; your changes remain in the editor.");
+    }
+    assertEntryUnchanged(existing, guard?.expectedEntry);
 
-  if (!task) {
-    throw new Error("Choose a valid task for this entry.");
-  }
+    if (!task) {
+      throw new Error("Choose a valid task for this entry.");
+    }
 
-  const updated = {
-    ...buildTimeEntry(existing.id, input, now, input.projectIds === undefined ? existing.projectIds : undefined),
-    createdAt: existing.createdAt
-  };
-  await database.timeEntries.put(updated);
-  return updated;
+    const updated = {
+      ...buildTimeEntry(existing.id, input, now, input.projectIds === undefined ? existing.projectIds : undefined),
+      createdAt: existing.createdAt
+    };
+    if (updated.startedAt === existing.startedAt && updated.endedAt === existing.endedAt) {
+      // Editing notes or projects must not turn paused time into tracked time.
+      updated.durationSeconds = existing.durationSeconds;
+    }
+    await database.timeEntries.put(updated);
+    return updated;
+  });
 }
 
 function buildTimeEntry(entryId: string, input: UpdateTimeEntryInput, now = new Date(), fallbackProjectIds: string[] = []): TimeEntry {

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ream conflict UI check — synthetic data</title></head>
+<body><div id="root"></div><script type="module">
+  // Standalone visual check. No IndexedDB or real workspace data is accessed.
+  // Run `npx vite --host 127.0.0.1 --port 5174` from the repo root, then open this path.
+  import React, { useState } from "react";
+  import { createRoot } from "react-dom/client";
+  import { NoteConflictNotice } from "/src/renderer/notes/NoteConflictNotice.tsx";
+  import "/src/renderer/styles.css";
+  function Example({ theme }) {
+    const [choice, setChoice] = useState(null);
+    return React.createElement("section", { className: `dashboard-shell theme-${theme}`, style: { display: "block", height: "auto", minWidth: 0, padding: 16, margin: 0 } },
+      React.createElement("h2", { style: { color: "var(--theme-ink)", margin: "0 0 12px" } }, theme),
+      choice ? React.createElement("p", { role: "status", style: { color: "var(--theme-ink)" } }, `Selected: ${choice}`) : React.createElement(NoteConflictNotice, {
+        localValue: "Reviewed the draft in the workspace.\nNext: send the corrected version.",
+        savedValue: "Updated in the overlay.\nKeep the link: https://example.com/a-long-document-name-for-wrapping-checks",
+        onResolve: async (next) => { setChoice(next); }
+      }));
+  }
+  const singleTheme = new URLSearchParams(location.search).get("theme");
+  const themes = ["dark-studio", "old-money", "retro-console", "color-blind"];
+  createRoot(document.getElementById("root")).render(React.createElement("main", { style: { maxWidth: 860, margin: "0 auto", height: "100dvh", overflow: "auto" } },
+    ...(singleTheme ? themes.filter((theme) => theme === singleTheme) : themes).map((theme) => React.createElement(Example, { key: theme, theme })),
+    !singleTheme && React.createElement("iframe", { title: "Narrow conflict layout", src: "?theme=dark-studio", width: 360, height: 640, style: { maxWidth: "100%", border: 0 } })));
+</script></body></html>

@@ -1,14 +1,16 @@
 import { Fragment, type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { liveQuery } from "dexie";
 import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, formatGeneratedRecapMarkdown, formatImprovedNoteMarkdown, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
-import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { acceptNoteAiSuggestion, createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { EntryConflictError } from "../../shared/entryConflict";
 import { db } from "../../shared/db";
 import type { ActiveTimer, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
-import { importReamData, readAllExportData } from "../../shared/exportRepository";
+import { readAllExportData } from "../../shared/exportRepository";
+import { journalDraftContext, readWorkspaceRevision } from "../../shared/workspaceRepository";
 import {
   buildDailySummaries,
   createReamExport,
   entriesToCsv,
-  parseReamExport,
   serializeReamExport
 } from "../../shared/reporting";
 import { archiveProject, createProject, listActiveProjects, updateProject } from "../../shared/projectRepository";
@@ -17,17 +19,25 @@ import { parseTags } from "../../shared/taskValidation";
 import { formatDuration } from "../../shared/time";
 import { addLocalDays, formatRangeLabel, fromLocalDateKey, parseJournalCommand, RECAP_HELP_MARKDOWN, toLocalDateKey as toJournalDateKey } from "../../shared/journalCommands";
 import { createJournalRecap, findMatchingJournalRecaps, replaceJournalRecap, saveJournalPage } from "../../shared/journalRepository";
-import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
+import { activeTimerElapsedSeconds, createTimeEntry, deleteTimeEntry, getActiveTimer, pauseTimer, resumeTimer, startTimer, stopTimer, updateActiveTimerNote, updateTimeEntry } from "../../shared/timerRepository";
 import { type AppSettings } from "../appSettings";
 import { downloadTextFile, formatEntryDateTime, totalDuration } from "../rendererUtils";
 import { noteMatchesQuery, RichNoteView } from "../richNotes";
-import { MarkdownNoteEditor, type NoteSaveStatus } from "../notes/MarkdownNoteEditor";
-import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft } from "../notes/noteDrafts";
+import { MarkdownNoteEditor } from "../notes/MarkdownNoteEditor";
+import { useAutosavedNote } from "../notes/useAutosavedNote";
+import { NoteConflictNotice } from "../notes/NoteConflictNotice";
+import { RecoveryDraftsPanel } from "../notes/RecoveryDraftsPanel";
+import { useRecoveryDrafts } from "../notes/useRecoveryDrafts";
+import { isRetainedTimerDraft } from "../notes/noteDrafts";
 import { themeOptions, type ThemeId } from "../themeOptions";
-import { autoHideVisibleSidebar, JOURNAL_SIDEBAR_AUTO_HIDE_MS, restoreSidebarOutsideJournal, type SidebarVisibility } from "../sidebarVisibility";
+import { type SidebarVisibility } from "../sidebarVisibility";
+import { EditorDialog } from "../EditorDialog";
+import { EntryConflictNotice } from "../EntryConflictNotice";
+import { AiNoteApplyNotice } from "../notes/AiNoteApplyNotice";
+import { useWorkspaceNavigation, type ActiveSection } from "../workspaceNavigation";
+import { restoreBackup } from "../restoreBackup";
 import reamIcon from "../assets/ream-icon.png";
 
-type ActiveSection = "home" | "insights" | "timesheet" | "entries" | "tasks" | "notes" | "journal" | "projects" | "backup" | "dev" | "profile";
 type TimeViewMode = "day" | "week" | "month";
 
 interface MainViewProps {
@@ -44,9 +54,7 @@ interface ReamDataLocationInfo {
 
 interface AiNotePreview {
   entryId: string;
-  taskId: string;
-  startedAt: string;
-  endedAt: string;
+  workspaceRevision: number;
   suggestionId: string;
   model: string;
   rawNote: string;
@@ -148,51 +156,84 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [, setSelectedTaskId] = useState("");
-  const [timerNote, setTimerNote] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [title, setTitle] = useState("");
   const [taskProjectIds, setTaskProjectIds] = useState<string[]>([]);
   const [tags, setTags] = useState("");
   const [defaultNote, setDefaultNote] = useState("");
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [entryConflict, setEntryConflict] = useState<TimeEntry | null>(null);
+  const [entryRevision, setEntryRevision] = useState(0);
   const [isEntryComposerOpen, setIsEntryComposerOpen] = useState(false);
   const [entryTaskId, setEntryTaskId] = useState("");
   const [entryStartedAt, setEntryStartedAt] = useState("");
   const [entryEndedAt, setEntryEndedAt] = useState("");
   const [entryNote, setEntryNote] = useState("");
   const [entryProjectIds, setEntryProjectIds] = useState<string[]>([]);
+  const entryInitialRef = useRef("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<ActiveSection>("home");
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  const [importBusy, setImportBusy] = useState(false);
+  const importBusyRef = useRef(false);
+  const [backupFeedback, setBackupFeedback] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useWorkspaceNavigation();
+  const recovery = useRecoveryDrafts();
+  const focusRecoveryRef = useRef(false);
+  const [dismissedRecoveryNotice, setDismissedRecoveryNotice] = useState("");
+  const retainedTimerDrafts = recovery.drafts.filter((draft) => isRetainedTimerDraft(draft, activeTimer?.startedAt));
+  const recoveryNoticeKey = JSON.stringify(retainedTimerDrafts);
+  useEffect(() => {
+    if (activeSection === "backup" && focusRecoveryRef.current) {
+      focusRecoveryRef.current = false;
+      document.querySelector<HTMLInputElement>("#recovery-drafts input")?.focus();
+    }
+  }, [activeSection]);
   const [isTaskComposerOpen, setIsTaskComposerOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isProjectComposerOpen, setIsProjectComposerOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const editorBusyRef = useRef(false);
+  const [taskSearch, setTaskSearch] = useState("");
   const [quickCapture, setQuickCapture] = useState("");
+  const [quickCaptureBusy, setQuickCaptureBusy] = useState(false);
+  const quickCaptureBusyRef = useRef(false);
   const [ollamaModel, setOllamaModel] = useState(() => readStoredOllamaModel());
   const [aiLoadingNoteId, setAiLoadingNoteId] = useState<string | null>(null);
   const [aiPreview, setAiPreview] = useState<AiNotePreview | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiActionBusy, setAiActionBusy] = useState(false);
+  const aiActionBusyRef = useRef(false);
   const [dataLocation, setDataLocation] = useState<ReamDataLocationInfo | null>(null);
   const [dataLocationBusy, setDataLocationBusy] = useState(false);
   const [settingsAiStatus, setSettingsAiStatus] = useState<string | null>(null);
   const [settingsAiBusy, setSettingsAiBusy] = useState(false);
   const [timeViewMode, setTimeViewMode] = useState<TimeViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [insightOffset, setInsightOffset] = useState(0);
   const [entriesSearch, setEntriesSearch] = useState("");
   const [notesSearch, setNotesSearch] = useState("");
   const [selectedTimesheetDateKey, setSelectedTimesheetDateKey] = useState("");
   const [selectedTimesheetTaskId, setSelectedTimesheetTaskId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   const [journalDateKey, setJournalDateKey] = useState(() => toJournalDateKey(new Date()));
-  const [journalMarkdown, setJournalMarkdown] = useState("");
-  const [journalSaveStatus, setJournalSaveStatus] = useState<NoteSaveStatus>("idle");
   const [journalCommandFeedback, setJournalCommandFeedback] = useState<string | null>(null);
   const [journalSearch, setJournalSearch] = useState("");
   const [homeCommandFeedback, setHomeCommandFeedback] = useState<string | null>(null);
   const [recapBusy, setRecapBusy] = useState(false);
+  const recapBusyRef = useRef(false);
   const [sidebarVisibility, setSidebarVisibility] = useState<SidebarVisibility>("visible");
-  const journalLoadedDateKeyRef = useRef<string | null>(null);
+  const timerActionRef = useRef(false);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const timerStartedAt = activeTimer?.startedAt ?? "";
+  const saveTimerNote = useCallback((value: string, expectedValue: string) => updateActiveTimerNote(db, value, new Date(), timerStartedAt, expectedValue), [timerStartedAt]);
+  const timerDraft = useAutosavedNote(`timer:${timerStartedAt}`, activeTimer?.note ?? "", saveTimerNote, Boolean(activeTimer));
+  const saveJournalNote = useCallback((value: string, expectedValue: string) => saveJournalPage(db, journalDateKey, value, new Date(), workspaceRevision, expectedValue), [journalDateKey, workspaceRevision]);
+  const journalDraft = useAutosavedNote(journalDraftContext(journalDateKey, workspaceRevision), journalPages.find((page) => page.dateKey === journalDateKey)?.markdown ?? "", saveJournalNote, !loading);
+  const journalMarkdown = journalDraft.value;
+  const journalSaveStatus = journalDraft.status;
 
   const taskById = useMemo(() => new Map(allTasks.map((task) => [task.id, task])), [allTasks]);
   const projectById = useMemo(() => new Map(allProjects.map((project) => [project.id, project])), [allProjects]);
@@ -210,15 +251,25 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   const activeTask = activeTimer ? taskById.get(activeTimer.taskId) : null;
   const dailySummaries = useMemo(() => buildDailySummaries(allEntries), [allEntries]);
   const referenceDate = useMemo(() => addDays(new Date(), weekOffset * 7), [weekOffset]);
-  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, referenceDate), [allEntries, allProjects, allTasks, timeViewMode, referenceDate]);
+  const insightDate = useMemo(() => {
+    const date = new Date();
+    if (timeViewMode === "month") {
+      date.setDate(1);
+      date.setMonth(date.getMonth() + insightOffset);
+    } else date.setDate(date.getDate() + insightOffset * (timeViewMode === "week" ? 7 : 1));
+    return date;
+  }, [insightOffset, timeViewMode]);
+  const timeInsights = useMemo(() => buildTimeInsights(allEntries, allTasks, allProjects, timeViewMode, insightDate), [allEntries, allProjects, allTasks, timeViewMode, insightDate]);
+  const filteredTasks = useMemo(() => tasks.filter((task) => noteMatchesQuery([task.title, task.tags.join(" "), ...task.projectIds.map((id) => projectById.get(id)?.title ?? "")].join(" "), taskSearch)), [tasks, taskSearch, projectById]);
+  const filteredArchivedTasks = useMemo(() => archivedTasks.filter((task) => noteMatchesQuery([task.title, task.tags.join(" "), ...task.projectIds.map((id) => projectById.get(id)?.title ?? "")].join(" "), taskSearch)), [archivedTasks, taskSearch, projectById]);
   const weeklyTimesheet = useMemo(() => buildWeeklyTimesheet(allEntries, allTasks, allProjects, referenceDate), [allEntries, allProjects, allTasks, referenceDate]);
   const recentEntries = useMemo(
     () => [...allEntries].sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
     [allEntries]
   );
   const filteredRecentEntries = useMemo(
-    () => recentEntries.filter((entry) => noteMatchesQuery(entry.note, entriesSearch)),
-    [entriesSearch, recentEntries]
+    () => recentEntries.filter((entry) => noteMatchesQuery(buildNoteSearchText(entry, taskById, projectById), entriesSearch)),
+    [entriesSearch, recentEntries, taskById, projectById]
   );
   const noteEntries = useMemo(() => recentEntries.filter((entry) => entry.note.trim()), [recentEntries]);
   const filteredNoteEntries = useMemo(
@@ -294,24 +345,25 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }, [allEntries, today]);
 
   const refreshAppState = useCallback(async () => {
-    const [nextTasks, nextProjects, nextActiveTimer, exportData, nextAiSuggestions] = await Promise.all([
+    const [nextTasks, nextProjects, nextActiveTimer, exportData, nextAiSuggestions, nextRevision] = await db.transaction("r", db.tables, () => Promise.all([
       listActiveTasks(db),
       listActiveProjects(db),
       getActiveTimer(db),
       readAllExportData(db),
-      listNoteAiSuggestions(db)
-    ]);
+      listNoteAiSuggestions(db),
+      readWorkspaceRevision(db)
+    ]));
 
+    setWorkspaceRevision(nextRevision);
     setTasks(nextTasks);
     setProjects(nextProjects);
     setAllProjects(exportData.projects);
     setAllTasks(exportData.tasks);
     setAllEntries(exportData.timeEntries);
-    setJournalPages(exportData.journalPages);
+    setJournalPages(exportData.journalPages.sort((left, right) => right.dateKey.localeCompare(left.dateKey)));
     setJournalRecaps(exportData.journalRecaps);
     setAiSuggestions(nextAiSuggestions);
     setActiveTimer(nextActiveTimer);
-    setTimerNote(nextActiveTimer?.note ?? "");
 
     if (nextActiveTimer) {
       setSelectedTaskId(nextActiveTimer.taskId);
@@ -329,56 +381,22 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }, []);
 
   useEffect(() => {
-    refreshAppState()
-      .catch((refreshError: unknown) => {
+    const subscription = liveQuery(refreshAppState).subscribe({
+      next: () => setLoading(false),
+      error: (refreshError: unknown) => {
         setError(refreshError instanceof Error ? refreshError.message : "Unable to load app data.");
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      }
+    });
 
-    const intervalId = window.setInterval(() => {
-      refreshAppState().catch(() => undefined);
-    }, 3000);
-
-    window.addEventListener("focus", refreshAppState);
+    const handleFocus = () => { void refreshAppState().catch(() => undefined); };
+    window.addEventListener("focus", handleFocus);
 
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshAppState);
+      subscription.unsubscribe();
+      window.removeEventListener("focus", handleFocus);
     };
   }, [refreshAppState]);
-
-  useEffect(() => {
-    if (loading || journalLoadedDateKeyRef.current === journalDateKey) {
-      return;
-    }
-    const page = journalPages.find((candidate) => candidate.dateKey === journalDateKey);
-    const recovery = readNoteRecoveryDraft(window.localStorage, `journal:${journalDateKey}`);
-    setJournalMarkdown(recovery?.markdown ?? page?.markdown ?? "");
-    setJournalSaveStatus(recovery ? "offline" : "idle");
-    setJournalCommandFeedback(null);
-    journalLoadedDateKeyRef.current = journalDateKey;
-  }, [activeSection, journalDateKey, journalPages, loading]);
-
-  useEffect(() => {
-    if (loading || journalLoadedDateKeyRef.current !== journalDateKey || journalMarkdown.trim().startsWith("/")) {
-      return;
-    }
-    const contextId = `journal:${journalDateKey}`;
-    writeNoteRecoveryDraft(window.localStorage, contextId, journalMarkdown);
-    setJournalSaveStatus("saving");
-    const timeoutId = window.setTimeout(() => {
-      saveJournalPage(db, journalDateKey, journalMarkdown)
-        .then((page) => {
-          clearNoteRecoveryDraft(window.localStorage, contextId);
-          setJournalSaveStatus("saved");
-          if (page) {
-            setJournalPages((current) => [page, ...current.filter((candidate) => candidate.id !== page.id)].sort((left, right) => right.dateKey.localeCompare(left.dateKey)));
-          }
-        })
-        .catch(() => setJournalSaveStatus("failed"));
-    }, 650);
-    return () => window.clearTimeout(timeoutId);
-  }, [journalDateKey, journalMarkdown, loading]);
 
   useEffect(() => {
     if (!activeTimer) {
@@ -391,18 +409,6 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
     return () => window.clearInterval(intervalId);
   }, [activeTimer]);
-
-  useEffect(() => {
-    if (activeSection !== "journal") {
-      setSidebarVisibility(restoreSidebarOutsideJournal);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setSidebarVisibility(autoHideVisibleSidebar);
-    }, JOURNAL_SIDEBAR_AUTO_HIDE_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [activeSection]);
 
   useEffect(() => {
     window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, ollamaModel.trim() || DEFAULT_OLLAMA_MODEL);
@@ -430,8 +436,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }, [reviewPageCount]);
 
   useEffect(() => {
-    return window.reamDesktop?.onOpenSettingsRequested?.(() => setActiveSection("profile"));
-  }, []);
+    return window.reamDesktop?.onOpenSettingsRequested?.(() => setActiveSection("backup"));
+  }, [setActiveSection]);
 
   function updateAppSettings(patch: Partial<AppSettings>) {
     onAppSettingsChange({ ...appSettings, ...patch });
@@ -544,13 +550,17 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setIsTaskComposerOpen(true);
   }
 
-  function handleCloseTaskComposer() {
+  function handleCloseTaskComposer(saved = false) {
+    if (!saved && (title !== (editingTask?.title ?? "") || tags !== (editingTask?.tags.join(", ") ?? "") || defaultNote !== (editingTask?.defaultNote ?? "") || taskProjectIds.join() !== (editingTask?.projectIds.join() ?? "")) && !window.confirm("Discard unsaved task changes?")) return;
     setIsTaskComposerOpen(false);
     resetTaskComposer();
   }
 
   async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editorBusyRef.current) return;
+    editorBusyRef.current = true;
+    setEditorBusy(true);
     setError(null);
 
     try {
@@ -563,26 +573,37 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       const task = editingTask
         ? await updateTask(db, editingTask.id, input)
         : await createTask(db, input);
-      await refreshAppState();
       if (!editingTask) {
         setSelectedTaskId(task.id);
       }
-      handleCloseTaskComposer();
+      handleCloseTaskComposer(true);
+      await refreshAppState();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save task.");
+    } finally {
+      editorBusyRef.current = false;
+      setEditorBusy(false);
     }
   }
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (editorBusyRef.current) return;
+    editorBusyRef.current = true;
+    setEditorBusy(true);
     setError(null);
     try {
-      await createProject(db, { title: newProjectTitle });
+      if (editingProject) await updateProject(db, editingProject.id, { title: newProjectTitle });
+      else await createProject(db, { title: newProjectTitle });
       setNewProjectTitle("");
       setIsProjectComposerOpen(false);
+      setEditingProject(null);
       await refreshAppState();
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create project.");
+    } finally {
+      editorBusyRef.current = false;
+      setEditorBusy(false);
     }
   }
 
@@ -606,18 +627,18 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     }
   }
 
-  async function handleRenameProject(project: Project) {
-    const title = window.prompt("Project name", project.title);
-    if (title === null || title.trim() === project.title) {
-      return;
-    }
+  function handleRenameProject(project: Project) {
     setError(null);
-    try {
-      await updateProject(db, project.id, { title });
-      await refreshAppState();
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Unable to rename project.");
-    }
+    setEditingProject(project);
+    setNewProjectTitle(project.title);
+    setIsProjectComposerOpen(true);
+  }
+
+  function handleCloseProjectComposer() {
+    if (newProjectTitle !== (editingProject?.title ?? "") && !window.confirm("Discard unsaved project changes?")) return;
+    setIsProjectComposerOpen(false);
+    setEditingProject(null);
+    setNewProjectTitle("");
   }
 
   async function handleArchiveTask(task: Task) {
@@ -658,16 +679,21 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }
 
   async function handleStartTask(taskId: string) {
+    if (timerActionRef.current) return;
+    timerActionRef.current = true;
+    setTimerBusy(true);
     setSelectedTaskId(taskId);
     setError(null);
 
     try {
-      const nextActiveTimer = await startTimer(db, { taskId, note: "" });
+      const nextActiveTimer = await startTimer(db, { taskId });
       setActiveTimer(nextActiveTimer);
       setElapsed(0);
-      await window.reamDesktop?.showOverlayWindow?.({ hideMain: false });
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Unable to start timer.");
+    } finally {
+      timerActionRef.current = false;
+      setTimerBusy(false);
     }
   }
 
@@ -690,29 +716,36 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return false;
     }
 
-    const sourceEntries = allEntries.filter((entry) => {
-      const dateKey = toJournalDateKey(new Date(entry.startedAt));
-      return dateKey >= parsed.range.startDateKey && dateKey <= parsed.range.endDateKey;
-    });
-    const sourcePages = journalPages.filter((page) => page.dateKey >= parsed.range.startDateKey && page.dateKey <= parsed.range.endDateKey && page.markdown.trim());
-    if (!sourceEntries.length && !sourcePages.length) {
-      setFeedback(`**Nothing to recap for ${parsed.range.label}.** Add a journal note or track an entry, then try again.`);
+    if (recapBusyRef.current) {
+      setFeedback("A recap is already running. Please wait for it to finish.");
       return false;
     }
-
-    const matchingRecaps = await findMatchingJournalRecaps(db, parsed.range.startDateKey, parsed.range.endDateKey);
-    let conflictChoice: "replace" | "append" | "cancel" = "append";
-    if (matchingRecaps.length) {
-      conflictChoice = await window.reamDesktop?.confirmRecapConflict?.(parsed.range.label) ?? "cancel";
-      if (conflictChoice === "cancel") {
-        setFeedback("Recap generation cancelled. Your command was preserved.");
-        return false;
-      }
-    }
-
+    recapBusyRef.current = true;
     setRecapBusy(true);
     setFeedback(null);
     try {
+      await journalDraft.flush();
+      const sourceData = await readAllExportData(db);
+      const sourceEntries = sourceData.timeEntries.filter((entry) => {
+        const dateKey = toJournalDateKey(new Date(entry.startedAt));
+        return dateKey >= parsed.range.startDateKey && dateKey <= parsed.range.endDateKey;
+      });
+      const sourcePages = sourceData.journalPages.filter((page) => page.dateKey >= parsed.range.startDateKey && page.dateKey <= parsed.range.endDateKey && page.markdown.trim());
+      if (!sourceEntries.length && !sourcePages.length) {
+        setFeedback(`**Nothing to recap for ${parsed.range.label}.** Add a journal note or track an entry, then try again.`);
+        return false;
+      }
+
+      const matchingRecaps = await findMatchingJournalRecaps(db, parsed.range.startDateKey, parsed.range.endDateKey);
+      let conflictChoice: "replace" | "append" | "cancel" = "append";
+      if (matchingRecaps.length) {
+        conflictChoice = await window.reamDesktop?.confirmRecapConflict?.(parsed.range.label) ?? "cancel";
+        if (conflictChoice === "cancel") {
+          setFeedback("Recap generation cancelled. Your command was preserved.");
+          return false;
+        }
+      }
+
       const generateRecap = window.reamDesktop?.generateRecapWithAi;
       if (!generateRecap) {
         throw new Error("Local AI recaps are only available in the desktop app.");
@@ -737,7 +770,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       });
       const markdown = formatGeneratedRecapMarkdown(result.output, parsed.range.label);
       if (conflictChoice === "replace" && matchingRecaps[0]) {
-        await replaceJournalRecap(db, matchingRecaps[0].id, markdown, result.model);
+        await replaceJournalRecap(db, matchingRecaps[0].id, markdown, result.model, new Date(), workspaceRevision);
       } else {
         await createJournalRecap(db, {
           journalDateKey: todayJournalKey,
@@ -745,12 +778,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           sourceEndDateKey: parsed.range.endDateKey,
           markdown,
           model: result.model
-        });
+        }, new Date(), workspaceRevision);
       }
       await refreshAppState();
-      journalLoadedDateKeyRef.current = null;
       setJournalDateKey(todayJournalKey);
-      setJournalMarkdown(journalPages.find((page) => page.dateKey === todayJournalKey)?.markdown ?? "");
       setActiveSection("journal");
       setJournalCommandFeedback(`Recap saved for **${parsed.range.label}** using \`${result.model}\`.`);
       setHomeCommandFeedback(null);
@@ -759,12 +790,14 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       setFeedback(recapError instanceof Error ? `**Unable to generate recap.** ${recapError.message}` : "Unable to generate recap with Local AI.");
       return false;
     } finally {
+      recapBusyRef.current = false;
       setRecapBusy(false);
     }
   }
 
   async function handleQuickCapture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (quickCaptureBusyRef.current) return;
     const capturedTitle = quickCapture.trim();
     if (!capturedTitle) {
       handleOpenNewTaskComposer();
@@ -777,53 +810,77 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       }
       return;
     }
-    setQuickCapture("");
-    handleOpenNewTaskComposer(capturedTitle);
+    quickCaptureBusyRef.current = true;
+    setQuickCaptureBusy(true);
+    setError(null);
+    try {
+      await createTask(db, { title: capturedTitle });
+      setQuickCapture((current) => current.trim() === capturedTitle ? "" : current);
+      await refreshAppState();
+    } catch (captureError) {
+      setError(captureError instanceof Error ? captureError.message : "Unable to create task.");
+    } finally {
+      quickCaptureBusyRef.current = false;
+      setQuickCaptureBusy(false);
+    }
   }
 
   async function handleStopTimer() {
+    if (!activeTimer || timerActionRef.current) return;
+    timerActionRef.current = true;
+    setTimerBusy(true);
     setError(null);
 
     try {
-      await updateActiveTimerNote(db, timerNote);
-      await stopTimer(db);
-      setTimerNote("");
+      await timerDraft.flush();
+      await stopTimer(db, new Date(), activeTimer.startedAt);
       await refreshAppState();
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
+    } finally {
+      timerActionRef.current = false;
+      setTimerBusy(false);
     }
   }
 
-  async function handleSaveTimerNote() {
-    if (!activeTimer) {
-      return;
-    }
-
+  async function handlePauseResumeTimer() {
+    if (!activeTimer || timerActionRef.current) return;
+    timerActionRef.current = true;
+    setTimerBusy(true);
     setError(null);
-
     try {
-      const updated = await updateActiveTimerNote(db, timerNote);
+      await timerDraft.flush();
+      const updated = activeTimer.pausedAt ? await resumeTimer(db) : await pauseTimer(db);
       setActiveTimer(updated);
-    } catch (noteError) {
-      setError(noteError instanceof Error ? noteError.message : "Unable to save timer note.");
+    } catch (timerError) {
+      setError(timerError instanceof Error ? timerError.message : "Unable to update timer.");
+    } finally {
+      timerActionRef.current = false;
+      setTimerBusy(false);
     }
   }
 
-  function handleEditEntry(entry: TimeEntry) {
+  function handleEditEntry(entry: TimeEntry, revision = workspaceRevision) {
+    entryInitialRef.current = JSON.stringify([entry.taskId, toDateTimeLocalValue(entry.startedAt), toDateTimeLocalValue(entry.endedAt), entry.note, entry.projectIds]);
     setError(null);
+    setEntryConflict(null);
+    setEntryRevision(revision);
     setIsEntryComposerOpen(true);
     setEditingEntry(entry);
     setEntryTaskId(entry.taskId);
     setEntryStartedAt(toDateTimeLocalValue(entry.startedAt));
     setEntryEndedAt(toDateTimeLocalValue(entry.endedAt));
     setEntryNote(entry.note);
-    setEntryProjectIds(entry.projectIds.length ? entry.projectIds : taskById.get(entry.taskId)?.projectIds ?? []);
+    setEntryProjectIds(entry.projectIds);
   }
 
   function handleNewEntry() {
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - 30 * 60_000);
+    entryInitialRef.current = JSON.stringify([tasks[0]?.id ?? "", toDateTimeLocalValue(startedAt.toISOString()), toDateTimeLocalValue(endedAt.toISOString()), "", tasks[0]?.projectIds ?? []]);
     setError(null);
+    setEntryConflict(null);
+    setEntryRevision(workspaceRevision);
     setEditingEntry(null);
     setEntryTaskId(tasks[0]?.id ?? "");
     setEntryStartedAt(toDateTimeLocalValue(startedAt.toISOString()));
@@ -833,9 +890,11 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setIsEntryComposerOpen(true);
   }
 
-  function handleCloseEntryEditor() {
+  function handleCloseEntryEditor(saved = false) {
+    if (!saved && JSON.stringify([entryTaskId, entryStartedAt, entryEndedAt, entryNote, entryProjectIds]) !== entryInitialRef.current && !window.confirm("Discard this entry's unsaved changes?")) return;
     setIsEntryComposerOpen(false);
     setEditingEntry(null);
+    setEntryConflict(null);
     setEntryTaskId("");
     setEntryStartedAt("");
     setEntryEndedAt("");
@@ -848,31 +907,41 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setEntryProjectIds(taskById.get(taskId)?.projectIds ?? []);
   }
 
-  async function handleSaveEntry(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function entryInput() {
+    return {
+      taskId: entryTaskId,
+      projectIds: entryProjectIds,
+      startedAt: editingEntry && entryStartedAt === toDateTimeLocalValue(editingEntry.startedAt) ? editingEntry.startedAt : entryStartedAt,
+      endedAt: editingEntry && entryEndedAt === toDateTimeLocalValue(editingEntry.endedAt) ? editingEntry.endedAt : entryEndedAt,
+      note: entryNote
+    };
+  }
+
+  async function handleSaveEntry(expectedEntry = editingEntry) {
     if (!entryTaskId) {
       setError("Choose a task for this entry.");
       return;
     }
 
+    if (editorBusyRef.current) return;
+    editorBusyRef.current = true;
+    setEditorBusy(true);
     setError(null);
     try {
-      const input = {
-        taskId: entryTaskId,
-        projectIds: entryProjectIds,
-        startedAt: entryStartedAt,
-        endedAt: entryEndedAt,
-        note: entryNote
-      };
-      if (editingEntry) {
-        await updateTimeEntry(db, editingEntry.id, input);
+      const input = entryInput();
+      if (editingEntry && expectedEntry) {
+        await updateTimeEntry(db, editingEntry.id, input, new Date(), { expectedEntry, expectedWorkspaceRevision: entryRevision });
       } else {
-        await createTimeEntry(db, input);
+        await createTimeEntry(db, input, new Date(), entryRevision);
       }
-      handleCloseEntryEditor();
+      handleCloseEntryEditor(true);
       await refreshAppState();
     } catch (saveError) {
+      if (saveError instanceof EntryConflictError) setEntryConflict(saveError.savedEntry);
       setError(saveError instanceof Error ? saveError.message : "Unable to save time entry.");
+    } finally {
+      editorBusyRef.current = false;
+      setEditorBusy(false);
     }
   }
 
@@ -885,7 +954,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     try {
       await deleteTimeEntry(db, entry.id);
       if (editingEntry?.id === entry.id) {
-        handleCloseEntryEditor();
+        handleCloseEntryEditor(true);
       }
       await refreshAppState();
     } catch (deleteError) {
@@ -894,6 +963,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
   }
 
   async function handleImproveNote(entry: TimeEntry) {
+    if (aiActionBusyRef.current) return;
     const task = taskById.get(entry.taskId);
     if (!task) {
       setAiError("Task context is missing for this note.");
@@ -908,6 +978,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
     setAiError(null);
     setAiLoadingNoteId(entry.id);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
 
     try {
       if (!window.reamDesktop?.improveNoteWithAi) {
@@ -927,50 +999,53 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       const savedSuggestion = await createNoteAiSuggestion(db, {
         noteId: entry.id,
         model: result.model,
-        inputText: noteText,
+        inputText: entry.note,
         outputJson: result.output,
         durationMs
-      });
+      }, new Date(), workspaceRevision);
 
       setAiPreview({
         entryId: entry.id,
-        taskId: entry.taskId,
-        startedAt: entry.startedAt,
-        endedAt: entry.endedAt,
+        workspaceRevision,
         suggestionId: savedSuggestion.id,
         model: result.model,
-        rawNote: noteText,
+        rawNote: entry.note,
         output: result.output
       });
     } catch (improveError) {
       setAiError(improveError instanceof Error ? improveError.message : "Unable to improve note with AI.");
     } finally {
       setAiLoadingNoteId(null);
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleAcceptAiSuggestion(preview: AiNotePreview) {
+    if (aiActionBusyRef.current) return;
     if (!window.confirm("Replace this note with the full formatted AI rewrite? The original raw note will remain stored with the AI record.")) {
       return;
     }
 
     setAiError(null);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     try {
-      await updateTimeEntry(db, preview.entryId, {
-        taskId: preview.taskId,
-        startedAt: preview.startedAt,
-        endedAt: preview.endedAt,
-        note: formatImprovedNoteMarkdown(preview.output)
-      });
-      await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      await acceptNoteAiSuggestion(db, preview.suggestionId, preview.workspaceRevision);
       setAiPreview(null);
       await refreshAppState();
     } catch (acceptError) {
       setAiError(acceptError instanceof Error ? acceptError.message : "Unable to accept AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleRejectAiSuggestion(preview: AiNotePreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setAiError(null);
     try {
       const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
@@ -978,15 +1053,23 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       setAiPreview(null);
     } catch (rejectError) {
       setAiError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleCopyAiSuggestion(preview: AiNotePreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setAiError(null);
     try {
       await navigator.clipboard.writeText(formatImprovedNoteMarkdown(preview.output));
     } catch (copyError) {
       setAiError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
       return;
     }
     try {
@@ -994,6 +1077,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       applyLocalAiSuggestionUpdate(updatedSuggestion);
     } catch (statusError) {
       console.error("Failed to record AI suggestion copy status", statusError);
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
@@ -1005,10 +1091,10 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     const noteText = entry.note.trim();
     const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
     if (aiSuggestion && (aiSuggestion.status === "accepted" || aiSuggestion.inputText === noteText)) {
-      return <button className="ai-note-button is-muted" onClick={() => void handleOpenSavedAiSuggestion(entry, aiSuggestion)}>{getAiSuggestionButtonLabel(aiSuggestion)}</button>;
+      return <button className="ai-note-button is-muted" disabled={aiActionBusy} onClick={() => void handleOpenSavedAiSuggestion(entry, aiSuggestion)}>{getAiSuggestionButtonLabel(aiSuggestion)}</button>;
     }
 
-    return <button className="ai-note-button" disabled={aiLoadingNoteId === entry.id} onClick={() => void handleImproveNote(entry)}>{aiLoadingNoteId === entry.id ? "Improving..." : "Improve with AI"}</button>;
+    return <button className="ai-note-button" disabled={aiActionBusy} onClick={() => void handleImproveNote(entry)}>{aiLoadingNoteId === entry.id ? "Improving..." : "Improve with AI"}</button>;
   }
 
   function renderAiPreview(entry: TimeEntry): ReactNode {
@@ -1017,7 +1103,9 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return null;
     }
 
-    return <div className="ai-note-preview"><section className="ai-note-preview-panel"><h3>Raw note</h3><div className="ai-note-preview-body"><RichNoteView text={preview.rawNote} /></div></section><section className="ai-note-preview-panel is-suggestion"><h3>AI suggestion</h3><div className="ai-note-preview-body"><RichNoteView text={preview.output.clean_note} /><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small></div><div className="ai-note-actions"><button onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button></div></section></div>;
+    const restored = preview.workspaceRevision !== workspaceRevision;
+    const stale = restored || (entry.note !== preview.rawNote && entry.note !== formatImprovedNoteMarkdown(preview.output));
+    return <><div className="ai-note-preview"><section className="ai-note-preview-panel"><h3>Raw note</h3><div className="ai-note-preview-body"><RichNoteView text={preview.rawNote} /></div></section><section className="ai-note-preview-panel is-suggestion"><h3>AI suggestion</h3><div className="ai-note-preview-body"><RichNoteView text={preview.output.clean_note} /><dl><div><dt>Summary</dt><dd>{preview.output.summary}</dd></div><div><dt>Next steps</dt><dd>{preview.output.next_steps.length ? preview.output.next_steps.join("; ") : "None"}</dd></div><div><dt>Blockers</dt><dd>{preview.output.blockers.length ? preview.output.blockers.join("; ") : "None"}</dd></div><div><dt>Tags</dt><dd>{preview.output.tags.length ? preview.output.tags.join(", ") : "None"}</dd></div></dl><small>Model: {preview.model}</small></div><div className="ai-note-actions"><button disabled={aiActionBusy || stale} onClick={() => void handleAcceptAiSuggestion(preview)}>Accept</button><button disabled={aiActionBusy} onClick={() => void handleCopyAiSuggestion(preview)}>Copy suggestion</button><button disabled={aiActionBusy} onClick={() => void handleRejectAiSuggestion(preview)}>Reject</button>{stale && entry.note.trim() ? <button disabled={aiActionBusy} onClick={() => void handleImproveNote(entry)}>Regenerate from current note</button> : null}</div></section></div>{stale ? <AiNoteApplyNotice currentNote={entry.note} restored={restored} /> : null}</>;
   }
 
   async function handleOpenSavedAiSuggestion(entry: TimeEntry, suggestion: NoteAiSuggestion) {
@@ -1030,9 +1118,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
     setAiPreview({
       entryId: entry.id,
-      taskId: entry.taskId,
-      startedAt: entry.startedAt,
-      endedAt: entry.endedAt,
+      workspaceRevision,
       suggestionId: suggestion.id,
       model: suggestion.model,
       rawNote: suggestion.inputText,
@@ -1044,6 +1130,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     setError(null);
 
     try {
+      await Promise.all([journalDraft.flush(), timerDraft.flush()]);
       const exportData = await readAllExportData(db);
       downloadTextFile(
         `ream-export-${new Date().toISOString().slice(0, 10)}.json`,
@@ -1075,23 +1162,26 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
 
-    if (!file) {
+    if (!file || importBusyRef.current) {
       return;
     }
 
+    importBusyRef.current = true;
+    setImportBusy(true);
+    setBackupFeedback(null);
     try {
-      const text = await file.text();
-      const exportData = parseReamExport(text);
-      const shouldRestore = window.confirm(
-        `Import ${exportData.tasks.length} tasks and ${exportData.timeEntries.length} time entries? This replaces local data.`
-      );
-      if (!shouldRestore) {
-        return;
-      }
-      await importReamData(db, exportData);
+      const restored = await restoreBackup(db, await file.text(), {
+        confirmRestore: (message) => window.confirm(message),
+        flushPendingNotes: () => Promise.all([journalDraft.flush(), timerDraft.flush()])
+      });
+      if (!restored) return;
+      setBackupFeedback("Backup imported successfully.");
       await refreshAppState();
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Unable to import JSON.");
+    } finally {
+      importBusyRef.current = false;
+      setImportBusy(false);
     }
   }
 
@@ -1128,13 +1218,13 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       return <button className="new-project-button" disabled={tasks.length === 0} onClick={handleNewEntry}><MainIcon name="plus" />New Entry</button>;
     }
     if (activeSection === "projects") {
-      return <button className="new-project-button" onClick={() => setIsProjectComposerOpen(true)}><MainIcon name="plus" />New Project</button>;
+      return <button className="new-project-button" onClick={() => { setEditingProject(null); setNewProjectTitle(""); setError(null); setIsProjectComposerOpen(true); }}><MainIcon name="plus" />New Project</button>;
     }
     if (activeSection === "insights") {
       return <div className="time-header-actions">
-        <button className="time-icon-button" aria-label={`Previous ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
-        <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{timeInsights.range.label}</button>
-        <button className="time-icon-button" aria-label={`Next ${timeViewMode}`} disabled={timeViewMode !== "week"} onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+        <button className="time-icon-button" aria-label={`Previous ${timeViewMode}`} onClick={() => setInsightOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+        <button className="time-range-button" type="button" title="Return to the current period" onClick={() => setInsightOffset(0)}><MainIcon name="calendar" />{timeInsights.range.label}</button>
+        <button className="time-icon-button" aria-label={`Next ${timeViewMode}`} onClick={() => setInsightOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
       </div>;
     }
     if (activeSection === "timesheet") {
@@ -1142,7 +1232,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         <button className="time-icon-button" aria-label="Previous week" onClick={() => setWeekOffset((offset) => offset - 1)} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
         <button className="time-range-button" type="button" onClick={() => setWeekOffset(0)}><MainIcon name="calendar" />{weeklyTimesheet.range.label}</button>
         <button className="time-icon-button" aria-label="Next week" onClick={() => setWeekOffset((offset) => offset + 1)} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
-        <button aria-label="Timesheet actions" className="time-icon-button" type="button"><MainIcon name="more" /></button>
+        <button className="time-range-button" onClick={() => downloadTextFile(`ream-week-${toLocalDateKey(weeklyTimesheet.range.start)}.csv`, "text/csv", entriesToCsv(allEntries.filter((entry) => new Date(entry.startedAt) >= weeklyTimesheet.range.start && new Date(entry.startedAt) < weeklyTimesheet.range.end), allTasks, allProjects))} type="button"><MainIcon name="list" />Export week</button>
       </div>;
     }
     return null;
@@ -1182,7 +1272,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           {navigationGroups.map((group) => <details className="nav-group" key={group.label} open>
             <summary><span>{group.label}</span><MainIcon name="chevron" /></summary>
             <div className="nav-group-items">
-              {group.items.map((item) => <button className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
+              {group.items.map((item) => <button aria-current={activeSection === item.id ? "page" : undefined} className={activeSection === item.id ? "is-active" : ""} key={item.id} onClick={() => setActiveSection(item.id)}><MainIcon name={item.icon} />{item.label}</button>)}
             </div>
           </details>)}
         </nav>
@@ -1200,21 +1290,36 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
 
         {error ? <p className="dashboard-error" role="alert">{error}</p> : null}
 
+        {!loading && activeSection !== "backup" && retainedTimerDrafts.length > 0 && dismissedRecoveryNotice !== recoveryNoticeKey ? <aside className="recovery-drafts-notice" aria-label="Retained note drafts">
+          <p>{retainedTimerDrafts.length} retained timer {retainedTimerDrafts.length === 1 ? "draft is" : "drafts are"} available in Settings.</p>
+          <button type="button" onClick={() => { focusRecoveryRef.current = true; setActiveSection("backup"); }}>Review recovery drafts</button>
+          <button type="button" onClick={() => setDismissedRecoveryNotice(recoveryNoticeKey)}>Hide notice</button>
+        </aside> : null}
+
+        {activeTimer ? <section className={`active-timer-banner ${activeTimer.pausedAt ? "is-paused" : ""}`} aria-label="Active timer">
+          <div><span className="timer-pulse" />{activeTimer.pausedAt ? "Paused" : "Tracking"} <strong>{activeTask?.title ?? "Task"}</strong><small>{formatDuration(elapsed)}</small></div>
+          <label className="timer-note-field"><input aria-label="Timer note" value={timerDraft.value} onBlur={() => void timerDraft.flush().catch(() => undefined)} onChange={(event) => timerDraft.change(event.target.value)} placeholder="Add a timer note…" /><span role="status">{timerDraft.status === "saving" ? "Saving…" : timerDraft.status === "conflict" ? "Needs review" : timerDraft.status === "failed" ? "Not saved — retry" : "Saved locally"}</span></label>
+          {timerDraft.status === "failed" ? <button onClick={() => void timerDraft.flush().catch(() => undefined)} type="button">Retry save</button> : null}
+          <button disabled={timerBusy} onClick={() => void handlePauseResumeTimer()} type="button">{activeTimer.pausedAt ? "Resume" : "Pause"}</button>
+          <button className="timer-stop-button" disabled={timerBusy} onClick={() => void handleStopTimer()} type="button">Stop timer</button>
+          <NoteConflictNotice localValue={timerDraft.value} savedValue={timerDraft.conflictValue} onResolve={timerDraft.resolveConflict} />
+        </section> : null}
+
         {activeSection === "home" ? <>
-          <form className="quick-capture journal-omnibox" onSubmit={(event) => void handleQuickCapture(event)}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} placeholder="Capture a task or run /recap @yesterday" /><kbd>/recap</kbd><button aria-label="Create task or run command" disabled={recapBusy} type="submit">{recapBusy ? <MainIcon name="sparkle" /> : <MainIcon name="plus" />}</button></form>
+          <form className="quick-capture journal-omnibox" onSubmit={(event) => void handleQuickCapture(event)}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} aria-label="Quick task capture" placeholder="Add a task and press Enter, or run /recap @yesterday" /><kbd>/recap</kbd><button aria-label="Create task or run command" disabled={recapBusy || quickCaptureBusy} type="submit">{recapBusy ? <MainIcon name="sparkle" /> : <MainIcon name="plus" />}</button></form>
           {homeCommandFeedback ? <section className="journal-command-feedback" role="status"><RichNoteView text={homeCommandFeedback} />{homeCommandFeedback.includes("Local AI") ? <button onClick={() => setActiveSection("backup")} type="button">Open Local AI settings</button> : null}</section> : null}
-          {activeTimer ? <section className="active-timer-banner"><div><span className="timer-pulse" />Tracking <strong>{activeTask?.title ?? "Task"}</strong><small>{formatDuration(elapsed)}</small></div><input value={timerNote} onBlur={handleSaveTimerNote} onChange={(event) => setTimerNote(event.target.value)} placeholder="Add a timer note..." /><button onClick={handleStopTimer}>Stop timer</button></section> : null}
           <section className="home-journal-card">
             <div><span className="home-journal-icon"><MainIcon name="book" /></span><div><p className="panel-kicker">Today's journal</p><h2>{formatRangeLabel(todayJournalKey, todayJournalKey)}</h2></div></div>
             <div className="home-journal-preview">{todayJournalPage?.markdown.trim() ? <RichNoteView text={todayJournalPage.markdown} /> : <p>Start with a thought, paste a link, or capture what matters today.</p>}</div>
-            <footer><span>{todayJournalRecaps.length} {todayJournalRecaps.length === 1 ? "recap" : "recaps"}</span><button onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(todayJournalKey); setActiveSection("journal"); }} type="button">Open journal <MainIcon name="chevron" /></button></footer>
+            <footer><span>{todayJournalRecaps.length} {todayJournalRecaps.length === 1 ? "recap" : "recaps"}</span><button onClick={() => { setJournalDateKey(todayJournalKey); setActiveSection("journal"); }} type="button">Open journal <MainIcon name="chevron" /></button></footer>
           </section>
-          <section className="projects-section"><div className="section-title"><h2>Your Tasks</h2><span>{tasks.length} active</span></div><div className="project-cards" aria-live="polite">
+          <section className="projects-section"><div className="section-title"><h2>Your Tasks</h2><span>{tasks.length} active</span></div><label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search tasks" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Find a task or project…" /></label><div className="project-cards" aria-live="polite">
             {loading ? <p className="empty-state">Loading your tasks...</p> : null}
             {!loading && tasks.length === 0 ? <p className="empty-state">Create your first task to start tracking time.</p> : null}
-            {tasks.map((task) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
+            {tasks.length > 0 && filteredTasks.length === 0 ? <p className="empty-state">No tasks match “{taskSearch}”. <button onClick={() => setTaskSearch("")} type="button">Clear search</button></p> : null}
+            {filteredTasks.map((task) => { const activity = taskActivity.get(task.id) ?? { durationSeconds: 0, entryCount: 0, noteCount: 0 }; return <article className="project-card" key={task.id}>
               <TaskIdentityIcon className="project-icon task-identity-icon" task={task} /><div className="project-copy"><h3>{task.title}</h3><p>{formatDuration(activity.durationSeconds)} today <i>•</i> {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</p><small>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : task.defaultNote ? `Latest note: ${task.defaultNote}` : activity.entryCount ? `${activity.entryCount} tracked entries` : "No project assigned"}</small></div>
-              {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer)} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
+              {activeTimer?.taskId === task.id ? <button className="card-timer-button is-running" onClick={handleStopTimer}>Stop</button> : <button aria-label={`Start ${task.title}`} className="card-timer-button" disabled={Boolean(activeTimer) || timerBusy} onClick={() => handleStartTask(task.id)}><MainIcon name="play" /></button>}
               <button className="archive-task-button" onClick={() => handleEditTask(task)}>Edit</button>
               <button className="archive-task-button" disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button>
             </article>; })}
@@ -1226,22 +1331,23 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <aside className="journal-history-panel">
             <label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search journal" value={journalSearch} onChange={(event) => setJournalSearch(event.target.value)} placeholder="Search journal and recaps..." /></label>
             <div className="journal-history-list">
-              {filteredJournalPages.length === 0 ? <p className="empty-state">Your daily pages will appear here.</p> : filteredJournalPages.slice(0, 30).map((page) => <button className={page.dateKey === journalDateKey ? "is-active" : ""} key={page.id} onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(page.dateKey); }} type="button"><MainIcon name="document" /><span><strong>{formatRangeLabel(page.dateKey, page.dateKey)}</strong><small>{page.markdown.trim().slice(0, 72) || `${journalRecaps.filter((recap) => recap.journalPageId === page.id).length} saved recap(s)`}</small></span></button>)}
+              {filteredJournalPages.length === 0 ? <p className="empty-state">Your daily pages will appear here.</p> : filteredJournalPages.map((page) => <button className={page.dateKey === journalDateKey ? "is-active" : ""} key={page.id} onClick={() => setJournalDateKey(page.dateKey)} type="button"><MainIcon name="document" /><span><strong>{formatRangeLabel(page.dateKey, page.dateKey)}</strong><small>{page.markdown.trim().slice(0, 72) || `${journalRecaps.filter((recap) => recap.journalPageId === page.id).length} saved recap(s)`}</small></span></button>)}
             </div>
           </aside>
           <div className="journal-workspace">
             <div className="journal-date-toolbar">
-              <button aria-label="Previous day" onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), -1))); }} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
-              <label><MainIcon name="calendar" /><input aria-label="Journal date" type="date" value={journalDateKey} onChange={(event) => { if (event.target.value) { journalLoadedDateKeyRef.current = null; setJournalDateKey(event.target.value); } }} /></label>
-              <button aria-label="Next day" onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), 1))); }} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
-              <button onClick={() => { journalLoadedDateKeyRef.current = null; setJournalDateKey(todayJournalKey); }} type="button">Today</button>
+              <button aria-label="Previous day" onClick={() => setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), -1)))} type="button"><MainIcon name="chevron" className="chevron-left" /></button>
+              <label><MainIcon name="calendar" /><input aria-label="Journal date" type="date" value={journalDateKey} onChange={(event) => { if (event.target.value) setJournalDateKey(event.target.value); }} /></label>
+              <button aria-label="Next day" onClick={() => setJournalDateKey(toJournalDateKey(addLocalDays(fromLocalDateKey(journalDateKey), 1)))} type="button"><MainIcon name="chevron" className="chevron-right" /></button>
+              <button onClick={() => setJournalDateKey(todayJournalKey)} type="button">Today</button>
             </div>
             <section className="journal-editor-card">
               <MarkdownNoteEditor
+                key={journalDraftContext(journalDateKey, workspaceRevision)}
                 aiAction={null}
                 ariaLabel="Journal notes"
                 metadata={["Independent daily page", "Type /recap @help for commands"]}
-                onChange={setJournalMarkdown}
+                onChange={journalDraft.change}
                 onImproveWithAi={() => undefined}
                 onSubmitCommand={(command) => void executeJournalCommand(command, "journal")}
                 placeholder="Write freely. Markdown, links, checklists, and /recap commands are welcome..."
@@ -1251,6 +1357,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
                 taskTitle={formatRangeLabel(journalDateKey, journalDateKey)}
                 value={journalMarkdown}
               />
+              {journalSaveStatus === "failed" ? <p className="dashboard-error" role="alert">Changes haven't been saved. Keep this window open and retry. <button onClick={() => void journalDraft.flush().catch(() => undefined)} type="button">Retry save</button></p> : null}
+              <NoteConflictNotice localValue={journalDraft.value} savedValue={journalDraft.conflictValue} onResolve={journalDraft.resolveConflict} />
               <div className="journal-command-hints"><button disabled={recapBusy} onClick={() => void executeJournalCommand("/recap @yesterday", "journal")} type="button">/recap @yesterday</button><button disabled={recapBusy} onClick={() => setJournalCommandFeedback(RECAP_HELP_MARKDOWN)} type="button">/recap @help</button></div>
             </section>
             {journalCommandFeedback ? <section className="journal-command-feedback" role="status"><RichNoteView text={journalCommandFeedback} />{journalCommandFeedback.includes("Local AI") ? <button onClick={() => setActiveSection("backup")} type="button">Open Local AI settings</button> : null}</section> : null}
@@ -1262,8 +1370,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         </section> : null}
 
         {activeSection === "insights" ? <section className="time-view-section">
-          <div className="time-mode-tabs" role="tablist" aria-label="Time view range">
-            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => { setTimeViewMode(mode); setWeekOffset(0); }} type="button">{capitalize(mode)}</button>)}
+          <div className="time-mode-tabs" role="group" aria-label="Time view range">
+            {(["day", "week", "month"] as TimeViewMode[]).map((mode) => <button aria-pressed={timeViewMode === mode} className={timeViewMode === mode ? "is-active" : ""} key={mode} onClick={() => { setTimeViewMode(mode); setInsightOffset(0); }} type="button">{capitalize(mode)}</button>)}
           </div>
 
           <section className="time-reflection-panel">
@@ -1366,7 +1474,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           </section>
         </section> : null}
 
-        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{filteredRecentEntries.length} of {recentEntries.length} entries</span></div><label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search entries by note" value={entriesSearch} onChange={(event) => setEntriesSearch(event.target.value)} placeholder="Search entry notes..." /></label>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
+        {activeSection === "entries" ? <section className="dashboard-panel"><div className="section-title"><h2>Recent entries</h2><span>{filteredRecentEntries.length} of {recentEntries.length} entries</span></div><label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search entries" value={entriesSearch} onChange={(event) => setEntriesSearch(event.target.value)} placeholder="Search tasks, projects, tags, or notes…" /></label>{aiError ? <p className="ai-note-error" role="alert">{aiError}</p> : null}<div className="dashboard-entry-list">
           {recentEntries.length === 0 ? <p className="empty-state">No completed time entries yet.</p> : filteredRecentEntries.length === 0 ? <p className="empty-state">No entries match this note search.</p> : filteredRecentEntries.map((entry) => {
             const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
             const task = taskById.get(entry.taskId);
@@ -1375,11 +1483,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           })}
         </div></section> : null}
 
-        {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><span>{tasks.length} active</span></div><div className="project-management-list">
+        {activeSection === "tasks" ? <section className="dashboard-panel"><div className="section-title"><h2>All tasks</h2><span>{tasks.length} active</span></div><label className="notes-search-field"><MainIcon name="search" /><input aria-label="Search tasks" value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Find a task or project…" /></label><div className="project-management-list">
           {tasks.length === 0 ? <p className="empty-state">No active tasks.</p> : null}
-          {tasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button onClick={() => handleEditTask(task)}>Edit</button><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
-          {archivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
-          {archivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleEditTask(task)}>Edit</button><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
+          {tasks.length > 0 && filteredTasks.length === 0 && filteredArchivedTasks.length === 0 ? <p className="empty-state">No tasks match “{taskSearch}”. <button onClick={() => setTaskSearch("")} type="button">Clear search</button></p> : null}
+          {filteredTasks.map((task) => <article key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} today</span><button disabled={Boolean(activeTimer) || timerBusy} onClick={() => void handleStartTask(task.id)}>Start</button><button onClick={() => handleEditTask(task)}>Edit</button><button disabled={activeTimer?.taskId === task.id} onClick={() => handleArchiveTask(task)}>Archive</button></article>)}
+          {filteredArchivedTasks.length ? <div className="archived-list-heading">Archived tasks</div> : null}
+          {filteredArchivedTasks.map((task) => <article className="is-archived" key={task.id}><TaskIdentityIcon className="task-list-icon" task={task} /><div><strong>{task.title}</strong><p>{task.projectIds.length ? task.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(" · ") : "No project"}{task.tags.length ? ` · ${task.tags.join(", ")}` : ""}</p></div><span>{formatDuration(taskActivity.get(task.id)?.durationSeconds ?? 0)} total</span><button onClick={() => handleEditTask(task)}>Edit</button><button onClick={() => handleUnarchiveTask(task)}>Unarchive</button><button className="delete-task" onClick={() => handleDeleteTask(task)}>Delete</button></article>)}
         </div></section> : null}
 
         {activeSection === "projects" ? <section className="dashboard-panel"><div className="section-title"><h2>Projects</h2><span>{projects.length + archivedProjects.length} total</span></div><div className="project-management-list">
@@ -1411,9 +1520,12 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           <section className="dashboard-panel backup-panel">
             <PanelKicker icon="shield" label="Backup" />
             <h2>Keep a private copy</h2>
-            <p>Export JSON for a full restore, or CSV for a report. Importing JSON replaces the data stored on this device.</p>
-            <div className="backup-actions"><button className="new-project-button" onClick={handleExportJson}><MainIcon name="plus" />Export JSON</button><button onClick={handleExportCsv}><MainIcon name="list" />Export CSV</button><label><MainIcon name="timer" />Import JSON<input accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div>
+            <p>Export JSON for tasks, projects, saved entries, and journals, or CSV for a report. Stop the timer before backing up its current session. Settings and AI suggestions are not included. Importing JSON replaces this workspace.</p>
+            <div className="backup-actions"><button className="new-project-button" disabled={importBusy} onClick={handleExportJson}><MainIcon name="plus" />Export JSON</button><button disabled={importBusy} onClick={handleExportCsv}><MainIcon name="list" />Export CSV</button><label><MainIcon name="timer" />{importBusy ? "Importing…" : "Import JSON"}<input disabled={importBusy} accept="application/json,.json" type="file" onChange={handleImportJson} /></label></div>
+            {backupFeedback ? <p role="status">{backupFeedback}</p> : null}
           </section>
+
+          <RecoveryDraftsPanel drafts={recovery.drafts} unavailable={recovery.unavailable} />
 
           <section className="dashboard-panel ai-settings-panel">
             <div className="settings-panel-heading">
@@ -1483,11 +1595,11 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         </div></section> : null}
       </section>
 
-      {isTaskComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={handleCloseTaskComposer} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="task-composer-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close task editor" className="modal-close" onClick={handleCloseTaskComposer}>×</button><p className="panel-kicker">{editingTask ? "Edit task" : "New task"}</p><h2 id="task-composer-heading">{editingTask ? "Update the task details." : "What needs your attention?"}</h2><form onSubmit={handleSaveTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><div className="composer-actions"><button className="new-project-button" type="submit"><MainIcon name={editingTask ? "pen" : "plus"} />{editingTask ? "Save changes" : "Create task"}</button><button type="button" onClick={handleCloseTaskComposer}>Cancel</button></div></form></section></div> : null}
+      {isTaskComposerOpen ? <EditorDialog labelledBy="task-composer-heading" onClose={() => handleCloseTaskComposer()} busy={editorBusy} error={error}><button aria-label="Close task editor" className="modal-close" onClick={() => handleCloseTaskComposer()}>×</button><p className="panel-kicker">{editingTask ? "Edit task" : "New task"}</p><h2 id="task-composer-heading">{editingTask ? "Update the task details." : "What needs your attention?"}</h2><form onSubmit={handleSaveTask}><label>Task name<input autoFocus required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Data Pipeline Optimization" /></label><label>Projects <span className="project-options">{projects.length ? projects.map((project) => <label key={project.id}><input checked={taskProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setTaskProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />{project.title}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">Optional — choose one or more projects.</small></label><label>Tags<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="development, research" /></label><label>Starting note<textarea value={defaultNote} onChange={(event) => setDefaultNote(event.target.value)} placeholder="Optional context for this task" /></label><div className="composer-actions"><button className="new-project-button" type="submit"><MainIcon name={editingTask ? "pen" : "plus"} />{editingTask ? "Save changes" : "Create task"}</button><button type="button" onClick={() => handleCloseTaskComposer()}>Cancel</button></div></form></EditorDialog> : null}
 
-      {isProjectComposerOpen ? <div className="dashboard-modal-backdrop" onMouseDown={() => setIsProjectComposerOpen(false)} role="presentation"><section className="project-composer" aria-modal="true" role="dialog" aria-labelledby="new-project-heading" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close new project" className="modal-close" onClick={() => setIsProjectComposerOpen(false)}>×</button><p className="panel-kicker">New project</p><h2 id="new-project-heading">Organize related tasks.</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />Create project</button></form></section></div> : null}
+      {isProjectComposerOpen ? <EditorDialog labelledBy="new-project-heading" onClose={handleCloseProjectComposer} busy={editorBusy} error={error}><button aria-label="Close project editor" className="modal-close" onClick={handleCloseProjectComposer}>×</button><p className="panel-kicker">{editingProject ? "Rename project" : "New project"}</p><h2 id="new-project-heading">{editingProject ? "Update your project name." : "Organize related tasks."}</h2><form onSubmit={handleCreateProject}><label>Project name<input autoFocus required value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Client work" /></label><button className="new-project-button" type="submit"><MainIcon name="plus" />{editingProject ? "Save changes" : "Create project"}</button></form></EditorDialog> : null}
 
-      {isEntryComposerOpen ? <div className="dashboard-modal-backdrop" role="presentation" onMouseDown={handleCloseEntryEditor}><section aria-labelledby="entry-editor-title" aria-modal="true" className="project-composer entry-composer" role="dialog" onMouseDown={(event) => event.stopPropagation()}><button aria-label="Close entry editor" className="modal-close" onClick={handleCloseEntryEditor}>×</button><p className="panel-kicker">{editingEntry ? "Edit entry" : "New entry"}</p><h2 id="entry-editor-title">{editingEntry ? "Correct tracked time." : "Log completed work."}</h2><form onSubmit={handleSaveEntry}><label>Task<select required value={entryTaskId} onChange={(event) => handleChangeEntryTask(event.target.value)}>{(editingEntry ? allTasks : tasks).map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><label>Projects <span className="project-options">{(editingEntry ? allProjects : projects).length ? (editingEntry ? allProjects : projects).map((project) => <label key={project.id}><input checked={entryProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setEntryProjectIds((current) => event.target.checked ? Array.from(new Set([...current, project.id])) : current.filter((id) => id !== project.id))} />{project.title}{project.archived ? " (archived)" : ""}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">These projects apply to this time entry. Changing the task above resets them to that task's projects.</small></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label><div className="composer-actions"><button className="new-project-button" type="submit">{editingEntry ? "Save changes" : "Create entry"}</button><button type="button" onClick={handleCloseEntryEditor}>Cancel</button></div></form></section></div> : null}
+      {isEntryComposerOpen ? <EditorDialog labelledBy="entry-editor-title" onClose={() => handleCloseEntryEditor()} busy={editorBusy} error={error}><button aria-label="Close entry editor" className="modal-close" onClick={() => handleCloseEntryEditor()}>×</button><p className="panel-kicker">{editingEntry ? "Edit entry" : "New entry"}</p><h2 id="entry-editor-title">{editingEntry ? "Correct tracked time." : "Log completed work."}</h2><form onSubmit={(event) => { event.preventDefault(); if (!entryConflict) void handleSaveEntry(); }}><label>Task<select required value={entryTaskId} onChange={(event) => handleChangeEntryTask(event.target.value)}>{(editingEntry ? allTasks : tasks).map((task) => <option key={task.id} value={task.id}>{task.title}{task.archived ? " (archived)" : ""}</option>)}</select></label><label>Projects <span className="project-options">{(editingEntry ? allProjects : projects).length ? (editingEntry ? allProjects : projects).map((project) => <label key={project.id}><input checked={entryProjectIds.includes(project.id)} type="checkbox" onChange={(event) => setEntryProjectIds((current) => event.target.checked ? Array.from(new Set([...current, project.id])) : current.filter((id) => id !== project.id))} />{project.title}{project.archived ? " (archived)" : ""}</label>) : <small className="field-hint">No projects yet. You can add one from Projects.</small>}</span><small className="field-hint">These projects apply to this time entry. Changing the task above resets them to that task's projects.</small></label><div className="composer-row"><label>Start<input required type="datetime-local" value={entryStartedAt} onChange={(event) => setEntryStartedAt(event.target.value)} /></label><label>End<input required type="datetime-local" value={entryEndedAt} onChange={(event) => setEntryEndedAt(event.target.value)} /></label></div><label>Note<textarea value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label>{entryConflict ? <EntryConflictNotice saved={entryConflict} local={entryInput()} tasks={allTasks} projects={allProjects} onUseSaved={() => handleEditEntry(entryConflict, entryRevision)} onSaveMine={() => void handleSaveEntry(entryConflict)} /> : null}<div className="composer-actions"><button className="new-project-button" disabled={entryConflict !== null} type="submit">{editingEntry ? "Save changes" : "Create entry"}</button><button type="button" onClick={() => handleCloseEntryEditor()}>Cancel</button></div></form></EditorDialog> : null}
     </main>
   );
 }

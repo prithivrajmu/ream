@@ -36,6 +36,21 @@ npm install
 npm run dev
 ```
 
+To try changes without opening your existing workspace, run `npm run preview:isolated`.
+It builds the desktop app and starts it with a fresh temporary data folder; the
+folder path is printed in the terminal. Ongoing usability fixes and verification
+results are tracked in [TODO.md](TODO.md).
+
+Optional local-AI checks: with Ollama running and the model installed, run
+`npm run test:ai:live`. These use synthetic notes and do not touch workspace data.
+
+For the conflict-panel visual fixture, run `npx vite --host 127.0.0.1 --port 5174`
+from the repository root and open `/scripts/ui/note-conflicts.html` on that server.
+It shows the four required themes and a narrow layout without accessing app data.
+The recovery-panel fixture is available on the same server at
+`/scripts/ui/note-recovery.html`.
+Completed-entry and stale-AI review surfaces are at `/scripts/ui/entry-conflicts.html`.
+
 ### macOS with Homebrew (not yet available)
 
 Once a signed release is published:

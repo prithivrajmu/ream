@@ -30,21 +30,23 @@ interface OllamaChatResponse {
   };
 }
 
-export async function startAiSidecar(): Promise<AiSidecarHandle> {
+export async function startAiSidecar(port = DEFAULT_PORT): Promise<AiSidecarHandle> {
   const server = createServer((request, response) => {
     void routeRequest(request, response);
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(DEFAULT_PORT, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       server.off("error", reject);
       resolve();
     });
   });
 
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("AI sidecar did not open a local port.");
   return {
-    url: `http://127.0.0.1:${DEFAULT_PORT}`,
+    url: `http://127.0.0.1:${address.port}`,
     close: () => closeServer(server)
   };
 }

@@ -43,10 +43,10 @@ describe("AI note suggestions", () => {
     expect(suggestion.durationMs).toBe(1234);
     expect(suggestion.statusUpdatedAt).toBeNull();
 
-    const accepted = await updateNoteAiSuggestionStatus(db, suggestion.id, "accepted", new Date("2026-01-01T00:00:00.000Z"));
-    expect(accepted.status).toBe("accepted");
-    expect(accepted.statusUpdatedAt).toBe("2026-01-01T00:00:00.000Z");
-    expect(accepted.acceptedAt).toBe("2026-01-01T00:00:00.000Z");
+    const copied = await updateNoteAiSuggestionStatus(db, suggestion.id, "copied", new Date("2026-01-01T00:00:00.000Z"));
+    expect(copied.status).toBe("copied");
+    expect(copied.statusUpdatedAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(copied.acceptedAt).toBeNull();
   });
 
   it("normalizes and validates model output", () => {

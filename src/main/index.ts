@@ -234,14 +234,15 @@ function createMainWindow(): BrowserWindow {
   // appears whenever the user leaves it, either by minimizing or switching apps.
   window.on("minimize", () => {
     if (!suppressMainMinimizeOverlay) {
-      void showOverlayWindow({ hideMain: false });
+      void showOverlayWindow({ hideMain: false, activate: false });
     }
   });
   window.on("blur", () => {
     if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
-      void showOverlayWindow();
+      void showOverlayWindow({ hideMain: false, activate: false });
     }
   });
+  window.on("focus", hideOverlayWindow);
   return window;
 }
 
@@ -512,7 +513,7 @@ function setOverlayExpanded(expanded: boolean) {
   setOverlayMode(expanded ? "expanded" : "default");
 }
 
-async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
+async function showOverlayWindow(options: { hideMain?: boolean; activate?: boolean } = {}) {
   if (options.hideMain ?? true) {
     await minimizeMainWindowToDrawer();
   }
@@ -520,9 +521,13 @@ async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
   setOverlayMode("default");
   setOverlayMousePassthrough(window, false);
   window.setBackgroundColor("#00000000");
-  window.show();
   applyOverlayPinned(window, true);
-  window.focus();
+  if (options.activate === false) {
+    window.showInactive();
+  } else {
+    window.show();
+    window.focus();
+  }
 }
 
 function hideOverlayWindow() {

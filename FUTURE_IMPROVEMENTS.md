@@ -5,7 +5,7 @@ This tracks known gaps and planned work that isn't reflected in the shipped app 
 ## Architecture
 
 - **Split `MainView.tsx` (~1700 lines) and `OverlayView.tsx` (~1000 lines)** into focused components and hooks. Both are currently large, mostly-flat components; this is an accepted near-term risk, not an oversight, but it should not grow further without a decomposition pass.
-- **Replace overlay/main window sync polling with an event-based refresh.** The two windows currently sync by polling rather than reacting to repository writes, so a write in one window isn't always instantly reflected in the other.
+- **Expand automated desktop smoke coverage.** Both windows now subscribe to database changes, and `npm run preview:isolated` supports safe manual desktop testing. Automate the handoff and focus checks recorded in `TODO.md`.
 - **Evaluate a SQLite-backed main-process store** if IndexedDB backup/restore proves unreliable at scale. Not needed today — the repository interface was designed so this could happen without changing call sites.
 
 ## Testing
@@ -23,8 +23,7 @@ This tracks known gaps and planned work that isn't reflected in the shipped app 
 
 ## UI polish (found during this audit, not yet tracked elsewhere)
 
-- The overlay's task-search box shows a decorative `⌘K` badge with no keyboard handler behind it — either wire the shortcut or remove the badge.
-- The Timesheet view's "…" (Timesheet actions) button has no click handler — either implement it or remove it.
+- Overlay task search now supports Cmd/Ctrl+K; the timesheet has an explicit **Export week** action. See `TODO.md` for the saving and navigation fixes and their verification.
 - The overlay can be un-pinned via IPC (`window:set-overlay-pinned`), but there's no UI control that calls it — decide whether pin/unpin should be user-facing and add a toggle, or remove the dead code path.
 - `listTimeEntriesForTask` exists in `timerRepository.ts` and is covered by tests, but nothing in the UI calls it yet — likely intended to back a per-task history view.
 

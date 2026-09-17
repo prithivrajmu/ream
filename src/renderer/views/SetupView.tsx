@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useMemo, useRef, useState } from "react";
 import { DEFAULT_OLLAMA_MODEL, FALLBACK_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY } from "../../shared/ai";
 import { createProject, listActiveProjects } from "../../shared/projectRepository";
 import { createTask, listActiveTasks } from "../../shared/taskRepository";
@@ -31,6 +31,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
   const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const activeTheme = useMemo(() => themeOptions.find((theme) => theme.id === themeId) ?? themeOptions[0], [themeId]);
   const displayName = userName.trim();
 
@@ -61,11 +62,8 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!displayName) {
-      setError("Enter your name to finish setup.");
-      return;
-    }
-
+    if (savingRef.current) return;
+    savingRef.current = true;
     setError(null);
     setSaving(true);
     try {
@@ -100,6 +98,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
     } catch (setupError) {
       setError(setupError instanceof Error ? setupError.message : "Unable to finish setup.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -163,20 +162,14 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
             <h2>Let's set things up</h2>
             <p>Personalize your workspace so it feels just right.</p>
           </div>
-          <ol className="setup-steps" aria-label="Setup progress">
-            <li className="is-active"><b>1</b><span><strong>Profile</strong><small>Your name & identity</small></span></li>
-            <li><b>2</b><span><strong>Theme</strong><small>Choose your vibe</small></span></li>
-            <li><b>3</b><span><strong>Workspace</strong><small>Your starter setup</small></span></li>
-            <li><b>4</b><span><strong>Experience</strong><small>AI & preferences</small></span></li>
-            <li><b>5</b><span><strong>Finish</strong><small>You're all set</small></span></li>
-          </ol>
+          <p className="setup-rail-copy">Everything here is optional. Start with a blank workspace, or personalize it now. You can change these preferences later in Settings and Profile.</p>
           <div className="setup-rail-scene" aria-hidden="true"><span /><i /></div>
         </aside>
 
         <section className="setup-main">
           <header className="setup-hero">
             <h1>Welcome! 👋</h1>
-            <p>Let's personalize your workspace in a few quick steps.</p>
+            <p>Make this workspace yours. All preferences are optional.</p>
           </header>
 
           {error ? <p className="setup-error" role="alert">{error}</p> : null}
@@ -184,7 +177,7 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
           <section className="setup-grid">
             <label className="setup-card setup-name-card">
               <CardTitle icon="user" title="Your name" subtitle="This is how you'll appear in the app." />
-              <span className="setup-input-shell"><SetupIcon name="user" /><input autoFocus required value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="Prithiv Raj" /></span>
+              <span className="setup-input-shell"><SetupIcon name="user" /><input autoFocus value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="Your name (optional)" /></span>
             </label>
 
             <section className="setup-card setup-theme-card">
@@ -235,8 +228,8 @@ export function SetupView({ initialSettings, onComplete, onThemeChange }: SetupV
         </section>
 
         <footer className="setup-actions">
-          <button className="setup-link-button" onClick={() => { setStarterTasks([]); setStarterProjects([]); setAiEnabled(false); }} type="button">Skip all</button>
-          <div><button className="setup-secondary-button" disabled type="button">Back</button><button className="new-project-button" disabled={saving} type="submit">{saving ? "Starting..." : "Next"}<SetupIcon name="arrow" /></button></div>
+          <button className="setup-link-button" disabled={saving} onClick={() => onComplete(completeAppSettings({ ...initialSettings, userName: displayName, themeId, aiSetupPreference: "skipped" }))} type="button">Skip setup</button>
+          <div><button className="new-project-button" disabled={saving} type="submit">{saving ? "Starting..." : "Start using Ream"}<SetupIcon name="arrow" /></button></div>
         </footer>
       </form>
     </main>

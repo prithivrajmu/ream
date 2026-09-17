@@ -32,6 +32,54 @@ afterEach(async () => {
 });
 
 describe("timer repository", () => {
+  it("stops a session only once when two windows stop together", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Concurrent stop" });
+    await startTimer(db, { taskId: task.id });
+    const results = await Promise.allSettled([stopTimer(db), stopTimer(db)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(await db.timeEntries.count()).toBe(1);
+    expect(await getActiveTimer(db)).toBeNull();
+  });
+
+  it("cannot revive a stopped timer with a concurrent note save", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Concurrent note" });
+    const timer = await startTimer(db, { taskId: task.id });
+    await Promise.allSettled([stopTimer(db), updateActiveTimerNote(db, "late edit", new Date(), timer.startedAt)]);
+    expect(await getActiveTimer(db)).toBeNull();
+    expect(await db.timeEntries.count()).toBe(1);
+  });
+
+  it("rejects a previous session's delayed note or stop", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Separate sessions" });
+    const first = await startTimer(db, { taskId: task.id }, new Date("2026-09-14T09:00:00Z"));
+    await stopTimer(db, new Date("2026-09-14T10:00:00Z"));
+    await startTimer(db, { taskId: task.id, note: "second session" }, new Date("2026-09-14T11:00:00Z"));
+    await expect(updateActiveTimerNote(db, "first session", new Date(), first.startedAt)).rejects.toThrow("timer changed");
+    await expect(stopTimer(db, new Date(), first.startedAt)).rejects.toThrow("timer changed");
+    expect((await getActiveTimer(db))?.note).toBe("second session");
+  });
+
+  it("preserves paused time when only a note is edited", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Paused entry" });
+    await startTimer(db, { taskId: task.id }, new Date("2026-09-14T09:00:12.345Z"));
+    await pauseTimer(db, new Date("2026-09-14T09:10:12.345Z"));
+    const entry = await stopTimer(db, new Date("2026-09-14T09:30:12.345Z"));
+    const updated = await updateTimeEntry(db, entry.id, { ...entry, note: "Corrected note" });
+    expect(updated.durationSeconds).toBe(600);
+    expect(updated.startedAt).toBe(entry.startedAt);
+  });
+
+  it("preserves note whitespace and uses the task's starting note", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Notes", defaultNote: "Starting context" });
+    expect((await startTimer(db, { taskId: task.id })).note).toBe("Starting context");
+    expect((await updateActiveTimerNote(db, "  indented\n\n")).note).toBe("  indented\n\n");
+  });
+
   it("starts one active timer and blocks duplicates", async () => {
     const db = createTestDatabase();
     const task = await createTask(db, { title: "Client meeting" });

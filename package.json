@@ -14,9 +14,11 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
+    "preview:isolated": "npm run build && electron scripts/preview-isolated.mjs",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ai:live": "REAM_AI_LIVE=1 vitest run src/test/aiSidecar.live.test.ts",
     "test:watch": "vitest",
     "dev:linux": "electron-vite dev -- --no-sandbox",
     "lint": "eslint .",

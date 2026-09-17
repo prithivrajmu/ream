@@ -20,19 +20,26 @@ Ream uses a local HTTP sidecar for AI note improvement. The renderer never talks
 
 - The raw note is preserved. The AI suggestion is stored separately.
 - A user must explicitly accept the suggestion before any note replacement happens.
+- For completed entries, acceptance compares the currently saved note with the original source and commits the note and acceptance record atomically. If the note changed, copy the suggestion for a manual merge or regenerate it from the current note. Task, projects, time range, and tracked duration are preserved. Results from before a workspace restore cannot be applied.
+- The live overlay currently uses its autosave path for acceptance; extending the completed-entry AI guards to live notes is tracked in TODO.md.
 - The UI shows request duration and the final outcome in the AI Stats section.
 
 ## Endpoints
 
 - `GET /ai/health`
 - `POST /ai/improve-note`
+- `POST /ai/recap`
 
 ## Default Models
 
-- Default: `llama3.2:1b`
-- Fallback: `llama3.2:3b`
+- Default: `llama3.2:3b`
+- Fallback: `llama3.2:1b`
 
 The fallback is used when the primary model fails for the default configuration path.
+
+## Live verification
+
+With Ollama running and the default model already installed, run `npm run test:ai:live`. It starts a separate sidecar on a free local port and verifies model discovery, note improvement, and journal recap output using synthetic data. It does not download models or access your workspace. Set `REAM_AI_TEST_MODEL` to test a different installed model. These three checks are skipped by the normal test suite, which must work without Ollama.
 
 ## Suggested Environment Variables
 
