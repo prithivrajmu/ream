@@ -58,6 +58,24 @@ Confirmed problems included completed export checks and bundle signing becoming 
 
 Matcher limitations were also visible: "Backup export check completed" preserves completion but falls outside the completed-export pattern; "considering investigating the cache" is tentative but outside that pattern. The former note additionally invented that the export was functioning correctly, which the status checks do not detect. These limitations remain explicit rather than changing expectations to improve a model's score.
 
+### Prompt refinement — 2026-09-18
+
+The retained prompts distinguish recorded time from task completion, require explicitly intended/required unfinished actions, preserve tentative/cancelled/negated status, and exclude resolved blockers. They include a fact-free status guide. The JSON contract, model settings, manual Accept/Reject, original-note history, atomic application, and conflict protection are unchanged. Six offline prompt-contract tests check these authored instructions; they do not claim model compliance.
+
+All comparisons used the same frozen `meaning-v1` checks, synthetic sources, and requested `llama3.2:3b`, at temperature 0.2. Each row is a single stochastic run, not a general accuracy estimate. There were no transport failures. Failed-case diagnostics used the requested model without fallback; the last two runs logged all 17 served-model identities and used no fallback.
+
+| Prompt variant | Strict passes / 17 | Decision |
+| --- | --- | --- |
+| Original baseline | 1 | Baseline; 33 seconds |
+| Explicit-only rules plus concrete examples | 8 | Rejected: copied demonstration facts into unrelated output |
+| Explicit-only rules plus fact-free status guide | 4 | Retained; 34 seconds; preserves explicit action extraction without demonstration facts |
+| Empty-array template plus empty-unless-explicit reminder | 5 | Rejected: omitted all six expected follow-up lists |
+| Type-description template plus the same reminder | 1 | Rejected: still omitted all six expected follow-up lists |
+
+The retained variant passed completed-only, planned-only, explicit-follow-up, and resolved-blocker **recaps**. Its other 13 strict cases failed, so `npm run test:ai:quality` remains expected to exit nonzero for this model. Manual inspection still found invented blocker-remediation tasks, tentative actions becoming todos, a cancelled publication becoming a todo, conflation of the draft with the backup export, and unsupported success claims. Some other failures were vocabulary/summary-omission limitations of the matcher, including a faithful resolved-upload paraphrase. The recorded-time summary preserved that the upload had not started but still invented an upload todo.
+
+This is a measurement and instruction-hardening slice, **not a completed semantic-reliability fix**. Review every suggestion before accepting. Next work should separately classify matcher false negatives, version any expanded corpus, test repeat runs and held-out phrasings, and investigate source-grounded action extraction without silently deleting generated content. Do not weaken the frozen checks, change the default model, or download a model just to make this suite green.
+
 ## Suggested Environment Variables
 
 - `REAM_AI_SIDECAR_PORT`: override the local sidecar port.

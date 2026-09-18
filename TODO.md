@@ -89,10 +89,11 @@ Goal: measure and reduce rewrites that turn completed work into future tasks (or
 - [x] Add a small synthetic evaluation corpus for note improvement and journal recaps: completed-only, planned-only, mixed status, explicit follow-ups, resolved/current blockers, negation, and ambiguous notes. Include the observed completed-export-check regression.
 - [x] Define fixture-specific meaning/status checks; prove the evaluator rejects known bad outputs and accepts faithful paraphrases. Keep these checks distinct from JSON schema validation and do not present them as a general semantic guarantee.
 - [x] Add a separately opt-in local-model quality command with per-case diagnostics, actual model/fallback identification, and a nonzero exit on failed cases. Normal tests must remain offline and model-independent.
-- [ ] Capture baseline results where Ollama is available, improve source-grounded prompt instructions/examples, and rerun the same cases without weakening expectations to fit a model's mistakes.
-- [ ] Preserve Accept/Reject review, original notes, atomic application, and conflict safeguards. No automatic application or heuristic deletion of generated content.
-- [ ] Record actual results, model availability, and limitations in the docs and verification log; run lint, typecheck, normal tests, build, and whitespace checks.
-- [ ] Commit in tested slices: evaluation harness/corpus first, then prompt improvements and verification documentation. Do not push or touch unrelated `godot/` content.
+- [x] Capture baseline results where Ollama is available, improve source-grounded prompt instructions/examples, and rerun the same cases without weakening expectations to fit a model's mistakes. Concrete examples and empty-array-biased trials were rejected after live regressions; retain the fact-free status guide.
+- [x] Preserve Accept/Reject review, original notes, atomic application, and conflict safeguards. No automatic application or heuristic deletion of generated content.
+- [x] Record actual results, model availability, and limitations in the docs and verification log; run lint, typecheck, normal tests, build, and whitespace checks.
+- [x] Commit in tested slices: evaluation harness/corpus first (`5dc1c9f`), then prompt instructions and verification documentation. Do not push or touch unrelated `godot/` content.
+- [ ] Resolve remaining semantic quality failures before calling Phase 9 complete: retained prompts passed 4/17 strict cases in one local `llama3.2:3b` run. Separate matcher false negatives from real inventions/omissions; add versioned held-out probes and repeat runs. Do not hide failing cases or auto-filter suggestions.
 
 ## Next iteration — remaining checks and limitations
 
@@ -112,6 +113,7 @@ Goal: measure and reduce rewrites that turn completed work into future tasks (or
 ## Verification log
 
 - AI meaning harness: 58 evaluator checks; full gate passes with 221 offline tests and 20 opt-in tests skipped, successful typecheck/build/whitespace checks, and the same four lint warnings. Baseline on 2026-09-18 against installed `llama3.2:3b`: 1/17 strict fixture checks passed; 16 failed, including both genuine meaning errors and bounded-matcher false negatives. Corpus expectations are frozen for prompt comparison; details in `docs/ai-sidecar.md`.
+- AI prompt slice: 227 offline tests (including six prompt-contract tests); 20 opt-in tests intentionally skipped. Retained live candidate passed 4/17 strict cases, with 13 failures including real invented actions and matcher limitations. Concrete-example, empty-array, and type-template trials were rejected for new regressions; all results are documented rather than claiming semantic accuracy. No renderer, acceptance, database, IPC, or model-default changes.
 - Initial baseline: existing test suite and TypeScript check run before changes.
 - Saving regression pass: 23 tests passed across autosave, timer, and journal repositories.
 - Full suite after the first two implementation passes: 87 tests passed; TypeScript passed; lint reported no errors.
