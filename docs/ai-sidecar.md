@@ -42,6 +42,22 @@ The fallback is used when the primary model fails for the default configuration 
 
 With Ollama running and the default model already installed, run `npm run test:ai:live`. It starts a separate sidecar on a free local port and verifies model discovery, note improvement, and journal recap output using synthetic data. It does not download models or access your workspace. Set `REAM_AI_TEST_MODEL` to test a different installed model. These three checks are skipped by the normal test suite, which must work without Ollama.
 
+## Meaning-quality probes
+
+Run `npm run test:ai:quality` with Ollama and an installed model. This separate, opt-in command sends nine synthetic fixtures through 17 note/recap cases. It never loads workspace data or downloads models. `REAM_AI_TEST_MODEL` selects an installed model; every case logs its output, requested/served model, fallback identity, duration, and failures. A failed case exits nonzero. Preflight fails when Ollama or an eligible model is absent; a transport failure stops further requests. Requests have a two-minute probe limit and the suite has an eight-minute request budget (production inference may continue until its own timeout).
+
+The `meaning-v1` corpus covers completed/planned/mixed work, explicit follow-ups, current/resolved blockers, cancellation/negation, uncertainty, and recorded time without task completion. Normal `npm test` runs 58 offline evaluator checks, not model inference. These verify faithful paraphrases and unchanged sources against known bad mutations, including contradictions and invented tasks/blockers.
+
+These are bounded, fixture-specific regex probes, not a general semantic validator or an accuracy percentage. A missing-match failure can be a faithful paraphrase outside the matcher vocabulary; a passing output can still invent an untested fact. Summaries are deliberately checked for each fixture's key statuses and timing, so omission can also fail without being a status inversion. Inspect the actual output. Never use this evaluator to filter production text or automatically accept a suggestion.
+
+### Baseline — 2026-09-18
+
+With the original prompts, installed `llama3.2:3b` completed all 17 requests in approximately 33 seconds: **1 passed, 16 failed** (only resolved-blocker recap passed). No fallback appeared in the failed-case diagnostics. Both default and fallback models were available. Expectations were frozen before this run.
+
+Confirmed problems included completed export checks and bundle signing becoming todos; inventing "Obtain missing credentials" despite no decided action; turning a tentative investigation into a task; and losing the completed export check in the mixed-status regression. The recorded-time case returned "No summary available" despite a substantive note. Schema-valid JSON did not prevent these errors.
+
+Matcher limitations were also visible: "Backup export check completed" preserves completion but falls outside the completed-export pattern; "considering investigating the cache" is tentative but outside that pattern. The former note additionally invented that the export was functioning correctly, which the status checks do not detect. These limitations remain explicit rather than changing expectations to improve a model's score.
+
 ## Suggested Environment Variables
 
 - `REAM_AI_SIDECAR_PORT`: override the local sidecar port.

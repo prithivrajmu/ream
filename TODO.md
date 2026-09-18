@@ -82,9 +82,20 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 - [x] Show stale-preview guidance and prevent duplicate actions in the overlay; verify themes, narrow layout, and the full code gate.
 - [x] Commit the data-layer and UI integration as separate tested slices (repository slice: `0059978`; integration in the following commit).
 
+## 9. AI meaning preservation
+
+Goal: measure and reduce rewrites that turn completed work into future tasks (or planned work into completed work), without weakening explicit review or saving safeguards.
+
+- [x] Add a small synthetic evaluation corpus for note improvement and journal recaps: completed-only, planned-only, mixed status, explicit follow-ups, resolved/current blockers, negation, and ambiguous notes. Include the observed completed-export-check regression.
+- [x] Define fixture-specific meaning/status checks; prove the evaluator rejects known bad outputs and accepts faithful paraphrases. Keep these checks distinct from JSON schema validation and do not present them as a general semantic guarantee.
+- [x] Add a separately opt-in local-model quality command with per-case diagnostics, actual model/fallback identification, and a nonzero exit on failed cases. Normal tests must remain offline and model-independent.
+- [ ] Capture baseline results where Ollama is available, improve source-grounded prompt instructions/examples, and rerun the same cases without weakening expectations to fit a model's mistakes.
+- [ ] Preserve Accept/Reject review, original notes, atomic application, and conflict safeguards. No automatic application or heuristic deletion of generated content.
+- [ ] Record actual results, model availability, and limitations in the docs and verification log; run lint, typecheck, normal tests, build, and whitespace checks.
+- [ ] Commit in tested slices: evaluation harness/corpus first, then prompt improvements and verification documentation. Do not push or touch unrelated `godot/` content.
+
 ## Next iteration — remaining checks and limitations
 
-- [ ] Add AI quality evaluations for completed versus planned work: one live suggestion incorrectly turned a completed export check into a future task. Native Reject preserved the original note; keep explicit review before applying suggestions.
 - [ ] Expand native focus testing across app switching, minimizing, and multiple displays; the passive-overlay change is implemented, but the full matrix is not verified.
 - [ ] Automate the native smoke checks currently performed manually, including verifying exported CSV contents on disk (the desktop save dialog and existing CSV tests were checked).
 
@@ -100,6 +111,7 @@ Work through each pass, reproduce the problem, implement the fix, and verify it 
 
 ## Verification log
 
+- AI meaning harness: 58 evaluator checks; full gate passes with 221 offline tests and 20 opt-in tests skipped, successful typecheck/build/whitespace checks, and the same four lint warnings. Baseline on 2026-09-18 against installed `llama3.2:3b`: 1/17 strict fixture checks passed; 16 failed, including both genuine meaning errors and bounded-matcher false negatives. Corpus expectations are frozen for prompt comparison; details in `docs/ai-sidecar.md`.
 - Initial baseline: existing test suite and TypeScript check run before changes.
 - Saving regression pass: 23 tests passed across autosave, timer, and journal repositories.
 - Full suite after the first two implementation passes: 87 tests passed; TypeScript passed; lint reported no errors.
