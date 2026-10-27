@@ -33,6 +33,7 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getSelection,
+  $setSelection,
   $isElementNode,
   $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
@@ -40,6 +41,7 @@ import {
   KEY_ENTER_COMMAND,
   PASTE_COMMAND,
   type EditorState,
+  type BaseSelection,
   type LexicalEditor,
   type TextFormatType,
   type TextNode
@@ -57,7 +59,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-export type NoteSaveStatus = "idle" | "saving" | "saved" | "offline" | "failed";
+export type NoteSaveStatus = "idle" | "saving" | "saved" | "offline" | "failed" | "conflict";
 
 export interface MarkdownNoteEditorHandle {
   focus: () => void;
@@ -175,7 +177,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
     }
   }), [onChange, rawMode, rawValue]);
 
-  const initialConfig = useMemo(() => ({
+  const [initialConfig] = useState(() => ({
     namespace: "ReamMarkdownNoteEditor",
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, AutoLinkNode, CodeNode, CodeHighlightNode, HorizontalRuleNode],
     onError(error: Error) {
@@ -185,7 +187,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
     editorState: () => {
       $convertFromMarkdownString(value, NOTE_TRANSFORMERS, undefined, true);
     }
-  }), []);
+  }));
 
   function handleRawChange(nextValue: string) {
     setRawValue(nextValue);
@@ -223,7 +225,7 @@ export const MarkdownNoteEditor = forwardRef(function MarkdownNoteEditor(
           <strong>{taskTitle}</strong>
           <p>{metadata.filter(Boolean).join(" · ")}</p>
         </div>
-        <span className={`markdown-note-save-status is-${saveStatus}`}>{getSaveStatusLabel(saveStatus)}</span>
+        <span role="status" className={`markdown-note-save-status is-${saveStatus}`}>{getSaveStatusLabel(saveStatus)}</span>
       </header>
 
       <LexicalComposer initialConfig={initialConfig}>
@@ -338,12 +340,16 @@ function MarkdownChangePlugin({ onChange, rawMode }: { onChange: (nextValue: str
     <OnChangePlugin
       ignoreSelectionChange
       onChange={(editorState: EditorState, _editor: LexicalEditor, tags: Set<string>) => {
-        if (rawMode || tags.has("ream-external-markdown-sync")) {
+        if (rawMode) {
           return;
         }
 
         editorState.read(() => {
           const markdown = $convertToMarkdownString(NOTE_TRANSFORMERS, undefined, true);
+          if (tags.has("ream-external-markdown-sync")) {
+            lastMarkdownRef.current = markdown;
+            return;
+          }
           if (markdown !== lastMarkdownRef.current) {
             lastMarkdownRef.current = markdown;
             onChange(markdown);
@@ -394,7 +400,7 @@ function SubmitCommandPlugin({ onSubmitCommand }: { onSubmitCommand: (command: s
       editor.getEditorState().read(() => {
         markdown = $convertToMarkdownString(NOTE_TRANSFORMERS, undefined, true).trim();
       });
-      if (!markdown.startsWith("/")) {
+      if (event?.shiftKey || event?.isComposing || !/^\/recap(?:\s|$)/i.test(markdown) || markdown.includes("\n")) {
         return false;
       }
       event?.preventDefault();
@@ -424,6 +430,26 @@ function ToolbarPlugin({
 }) {
   const [editor] = useLexicalComposerContext();
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const linkSelection = useRef<BaseSelection | null>(null);
+
+  function applyLink() {
+    const href = linkUrl.trim();
+    if (!/^(https?:\/\/|mailto:)\S+$/i.test(href)) {
+      setLinkError("Enter a full https://, http://, or mailto: link.");
+      return;
+    }
+    editor.update(() => {
+      if (linkSelection.current) $setSelection(linkSelection.current.clone());
+      const selection = $getSelection();
+      if ($isRangeSelection(selection) && selection.isCollapsed()) selection.insertText(href);
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, href);
+    });
+    setLinkOpen(false);
+    editor.focus();
+  }
 
   function formatText(format: TextFormatType) {
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
@@ -437,7 +463,10 @@ function ToolbarPlugin({
       <button aria-label="Bullet list" onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)} title="Bullet list" type="button">•</button>
       <button aria-label="Numbered list" onClick={() => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)} title="Numbered list" type="button">1.</button>
       <button aria-label="Checklist" onClick={() => editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined)} title="Checklist" type="button">☑</button>
-      <button aria-label="Link" onClick={() => insertOrEditLink(editor)} title="Link" type="button">↗</button>
+      <button aria-label="Link" disabled={rawMode} onMouseDown={(event) => event.preventDefault()} onClick={() => {
+        editor.getEditorState().read(() => { linkSelection.current = $getSelection()?.clone() ?? null; });
+        setLinkUrl(""); setLinkError(""); setLinkOpen(!linkOpen);
+      }} title="Link" type="button">↗</button>
       <button aria-label="Inline code" onClick={() => formatText("code")} title="Inline code" type="button">`</button>
       <div className="markdown-note-overflow">
         <button aria-expanded={overflowOpen} aria-label="More note tools" onClick={() => setOverflowOpen((current) => !current)} title="More" type="button">+</button>
@@ -457,6 +486,14 @@ function ToolbarPlugin({
       {showAiAction ? aiAction ?? (
         <button className="markdown-note-ai-fallback" disabled={disabledAi} onClick={onImproveWithAi} type="button">Improve with AI</button>
       ) : null}
+      {linkOpen ? <div className="markdown-link-editor">
+        <input aria-label="Link URL" autoFocus placeholder="https://example.com" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => {
+          if (event.key === "Enter") { event.preventDefault(); applyLink(); }
+          if (event.key === "Escape") { event.stopPropagation(); setLinkOpen(false); editor.focus(); }
+        }} />
+        <button onClick={applyLink} type="button">Apply link</button><button onClick={() => { setLinkOpen(false); editor.focus(); }} type="button">Cancel</button>
+        {linkError ? <span role="alert">{linkError}</span> : null}
+      </div> : null}
     </div>
   );
 }
@@ -583,14 +620,6 @@ function createBlockNode(format: BlockFormat) {
   return $createParagraphNode();
 }
 
-function insertOrEditLink(editor: LexicalEditor) {
-  const href = window.prompt("Paste a link");
-  if (!href?.trim()) {
-    return;
-  }
-  editor.dispatchCommand(TOGGLE_LINK_COMMAND, href.trim());
-}
-
 function insertIntoTextarea(textarea: HTMLTextAreaElement | null, currentValue: string, snippet: string, onChange: (nextValue: string) => void) {
   const selectionStart = textarea?.selectionStart ?? currentValue.length;
   const selectionEnd = textarea?.selectionEnd ?? selectionStart;
@@ -637,6 +666,7 @@ function indentTextareaSelection(textarea: HTMLTextAreaElement, outdent: boolean
 }
 
 function getSaveStatusLabel(status: NoteSaveStatus): string {
+  if (status === "conflict") return "Needs review";
   if (status === "saving") {
     return "Saving...";
   }

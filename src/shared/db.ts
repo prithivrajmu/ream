@@ -12,6 +12,7 @@ export class ReamDatabase extends Dexie {
   noteAiSuggestions!: Table<NoteAiSuggestion, string>;
   journalPages!: Table<JournalPage, string>;
   journalRecaps!: Table<JournalRecap, string>;
+  workspaceState!: Table<{ id: string; revision: number }, string>;
 
   constructor(name = REAM_DATABASE_NAME) {
     super(name);
@@ -138,6 +139,9 @@ export class ReamDatabase extends Dexie {
       journalPages: "id, &dateKey, createdAt, updatedAt",
       journalRecaps: "id, journalPageId, journalDateKey, [sourceStartDateKey+sourceEndDateKey], createdAt, updatedAt"
     });
+
+    // Restore generations isolate queued saves and recovery drafts from replaced data.
+    this.version(8).stores({ workspaceState: "id" });
   }
 }
 

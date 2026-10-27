@@ -107,7 +107,7 @@ export function parseReamExport(value: string): ReamExport {
     throw new Error("Invalid Ream export file: tasks must be an array.");
   }
 
-  if (parsed.schemaVersion === 2 && !Array.isArray(parsed.projects)) {
+  if (parsed.schemaVersion !== 1 && !Array.isArray(parsed.projects)) {
     throw new Error("Invalid Ream export file: projects must be an array.");
   }
 
@@ -135,6 +135,15 @@ export function parseReamExport(value: string): ReamExport {
   const journalPages = (parsed.schemaVersion === 4 ? parsed.journalPages as unknown[] : []).map((page, index) => validateJournalPage(page, index));
   const journalPageIds = new Set(journalPages.map((page) => page.id));
   const journalRecaps = (parsed.schemaVersion === 4 ? parsed.journalRecaps as unknown[] : []).map((recap, index) => validateJournalRecap(recap, index, journalPageIds));
+
+  for (const [label, records] of [["projects", projects], ["tasks", tasks], ["time entries", timeEntries], ["journal pages", journalPages], ["journal recaps", journalRecaps]] as const) {
+    if (new Set(records.map((record) => record.id)).size !== records.length) {
+      throw new Error(`Invalid Ream export file: duplicate IDs in ${label}.`);
+    }
+  }
+  if (new Set(journalPages.map((page) => page.dateKey)).size !== journalPages.length) {
+    throw new Error("Invalid Ream export file: duplicate journal dates.");
+  }
 
   return {
     exportedAt: parsed.exportedAt,

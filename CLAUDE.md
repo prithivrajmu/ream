@@ -57,6 +57,7 @@ The full local gate (mirrors CI expectations) is: `npm run lint && npm run typec
 - Repositories (`taskRepository.ts`, `projectRepository.ts`, `timerRepository.ts`, `exportRepository.ts`, `aiSuggestionRepository.ts`) take a `ReamDatabase` instance as their first argument rather than importing the singleton `db` directly — this is what makes them testable against a fresh in-memory database per test (see `createTestDatabase()` pattern in `src/test/*.test.ts`).
 - Only one active timer exists at a time (`activeTimers` table), by design.
 - JSON export/import (`exportRepository.ts`) is the durable backup format; CSV (`reporting.ts`) is for reporting only, not round-tripping. Import replaces data wholesale — there is no merge semantics yet.
+- Schema version 8 adds `workspaceState`: a restore revision updated atomically with import. Journal saves and AI recap writes carry the expected revision; journal recovery keys are scoped to that revision. A stale save from before restore cannot overwrite the imported workspace. Imports reject active or paused timers instead of silently discarding them.
 
 ### AI sidecar
 
@@ -68,10 +69,10 @@ The full local gate (mirrors CI expectations) is: `npm run lint && npm run typec
 
 The overlay is a frameless, transparent, always-on-top `BrowserWindow` with its own mode state machine (`default` / `expanded`, see `overlayMode` and `OverlayMode` in `src/shared/overlayBounds.ts`). Key behaviors implemented in `src/main/index.ts` worth knowing before touching window logic:
 
-- Minimizing or blurring the main window auto-shows the overlay (`minimizeMainWindowToDrawer`); showing the main window destroys the overlay. These are coupled transitions, not independent toggles.
+- Minimizing or blurring the main window passively shows the overlay without stealing focus or minimizing the workspace on blur. Explicit overlay actions still use `minimizeMainWindowToDrawer`; showing the main window destroys the overlay, and focusing it hides the overlay.
 - Overlay position is persisted to disk (`ream-overlay-state.json` in `userData`) and restored on next show; expanding/collapsing recalculates bounds off a saved anchor rather than re-centering.
 - Suppression flags (`suppressMainBlurOverlay`, `suppressMainMinimizeOverlay`) exist to prevent feedback loops when main-window state is changed programmatically (e.g. leaving fullscreen before minimizing) — if you add a new main-window transition, check whether it needs the same suppression treatment.
-- Main/overlay windows currently sync via polling rather than an event bus; this is a known rough edge (see Architecture Risks below), so don't assume writes in one window are instantly reflected in the other without a refresh path.
+- Main/overlay windows subscribe through Dexie `liveQuery`; writes trigger refreshes in both windows. Notes use a per-document autosave queue with immediate recovery drafts, explicit handoff flushing, and session guards for timer writes.
 
 ### Theming
 
@@ -85,7 +86,10 @@ Multiple themes are supported (see `src/renderer/themeOptions.ts`) via CSS custo
 
 - `MainView.tsx` has grown large and should eventually be split into components/hooks — be cautious about adding more inline logic to it.
 - IndexedDB import replaces local data wholesale; restore semantics are intentionally minimal for now.
-- Overlay/main window sync is polling-based, not event-based.
+- Active timer and journal autosaves use transactional compare-and-save guards. Divergent edits raise an explicit conflict with keep-both/use-saved/save-mine choices; main and overlay recovery drafts are separate and retain their saved baseline. Legacy drafts without a baseline require review. Completed-entry forms compare the full original entry plus workspace revision inside the write transaction; conflicts retain the form and offer explicit use-saved/save-mine choices with both entries visible.
+- Completed-entry and live-overlay AI acceptance read the stored suggestion and current note in one transaction, compare against the source text, and commit only the note plus acceptance record together. Task, projects, timestamps, pause state, and tracked duration are never replayed from a preview. Live suggestions use a `timer:<workspaceRevision>:<startedAt>` noteId; legacy `active` suggestions stay in history and cannot be applied to a new session. Stale suggestions stay available to copy or regenerate, not force-apply.
+- The overlay flushes and rechecks its local draft before AI acceptance. It never stages AI output in the autosave queue. After the atomic write succeeds, only a clean controller is synchronized; typing during acceptance remains a recoverable draft and enters normal conflict review if it diverges from the committed AI text.
+- Settings exposes local recovery drafts, including edits from ended timers and previous restore generations. Recovery browsing/copy/download is read-only with respect to both saved entries and draft storage. Discovery uses local subscriptions plus cross-window `storage`/focus events; draft storage is not part of JSON backups.
 - There is no automated Electron/UI smoke test that drives real window behavior (e.g. overlay show/hide) — `src/test/smokeWorkflow.test.ts` only exercises the shared repository/reporting logic in-memory.
 
 ## Security posture
