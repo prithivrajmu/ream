@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ream recovery UI check — synthetic data</title></head>
+<body><div id="root"></div><script type="module">
+  // Synthetic visual fixture. Does not read or write workspace/recovery storage.
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import { RecoveryDraftsPanel } from "/src/renderer/notes/RecoveryDraftsPanel.tsx";
+  import "/src/renderer/styles.css";
+  const drafts = [
+    { contextId: "timer:2026-09-16T09:00:00Z:window:overlay", updatedAt: "2026-09-16T09:05:00Z", markdown: "Unsaved overlay thought.\nReview the draft tomorrow.\nKeep https://example.com/reference-for-recovery-check", baseValue: "Original tracked note" },
+    { contextId: "workspace:1:journal:2026-09-15:window:main", updatedAt: "2026-09-15T09:00:00Z", markdown: "", baseValue: "A journal note intentionally cleared" }
+  ];
+  const singleTheme = new URLSearchParams(location.search).get("theme");
+  const themes = ["dark-studio", "old-money", "retro-console", "color-blind"];
+  createRoot(document.getElementById("root")).render(React.createElement("main", { style: { maxWidth: 860, margin: "0 auto", height: "100dvh", overflow: "auto" } },
+    ...(singleTheme ? themes.filter((theme) => theme === singleTheme) : themes).map((theme) => React.createElement("div", { key: theme, className: `dashboard-shell theme-${theme}`, style: { display: "block", height: "auto", minWidth: 0, padding: 16 } },
+      React.createElement("h2", { style: { color: "var(--theme-ink)", margin: "0 0 12px" } }, theme),
+      React.createElement(RecoveryDraftsPanel, { drafts }))),
+    !singleTheme && React.createElement("iframe", { title: "Narrow recovery layout", src: "?theme=dark-studio", width: 360, height: 740, style: { maxWidth: "100%", border: 0 } })));
+</script></body></html>

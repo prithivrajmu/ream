@@ -6,6 +6,31 @@ Ream packages three x64 Linux formats through Electron Builder:
 - DEB for Debian and Ubuntu based distributions.
 - tar.gz for manual installation or other distributions.
 
+## Raw GitHub AppImage for testers
+
+The `Linux x64 AppImage` GitHub Actions workflow runs automatically whenever a
+change lands on `main`. It creates a tag named like
+`linux-appimage-x64-v0.1.0`, builds only the x64 AppImage on an Ubuntu runner,
+and uploads only `release/*.AppImage` plus `release/SHA256SUMS` to the GitHub
+Release for that tag.
+
+Use the same workflow manually when you need to republish a one-off build:
+
+1. Open the repository's Actions tab.
+2. Run `Linux x64 AppImage`.
+3. Optionally enter a release tag. If omitted, the workflow creates a
+   `linux-appimage-x64-v<version>` tag.
+4. Keep `ref` as `main`, or enter a branch, tag, or commit SHA.
+
+This workflow intentionally does not build or upload ARM64 AppImage artifacts.
+The automatic workflow starts from `package.json` when there are no existing
+Linux AppImage release tags. After that, it increments the patch version from
+the latest existing `linux-appimage-x64-v*` tag. For example, releases produce
+`linux-appimage-x64-v0.1.0`, `linux-appimage-x64-v0.1.1`, and
+`linux-appimage-x64-v0.1.2`.
+After upload, the workflow keeps the newest three `linux-appimage-x64-v*`
+releases and deletes older releases and their tags.
+
 ## APT install
 
 Community testing releases are distributed through a Ream APT repository hosted
@@ -25,6 +50,7 @@ upstream distribution path through Debian or Ubuntu package repositories.
 
 ```bash
 npm run dist:linux
+npm run dist:linux:appimage:x64
 ```
 
 Artifacts are written to `release/`. A fast unpacked smoke build is also

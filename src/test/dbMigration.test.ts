@@ -5,6 +5,7 @@ import { createNoteAiSuggestion } from "../shared/aiSuggestionRepository";
 import { createProject } from "../shared/projectRepository";
 import { createTask } from "../shared/taskRepository";
 import { createTimeEntry } from "../shared/timerRepository";
+import { createJournalRecap, saveJournalPage } from "../shared/journalRepository";
 
 const databases: ReamDatabase[] = [];
 
@@ -44,6 +45,14 @@ describe("Ream database migration", () => {
       },
       durationMs: 125
     });
+    const journalPage = await saveJournalPage(legacyDatabase, "2026-06-29", "Legacy journal thought");
+    const journalRecap = await createJournalRecap(legacyDatabase, {
+      journalDateKey: "2026-06-30",
+      sourceStartDateKey: "2026-06-29",
+      sourceEndDateKey: "2026-06-29",
+      markdown: "## Recap\n\nLegacy recap",
+      model: "llama3.2:3b"
+    });
 
     await expect(migrateLegacyDatabase(reamDatabase, legacyDatabase.name)).resolves.toBe(true);
 
@@ -51,6 +60,8 @@ describe("Ream database migration", () => {
     await expect(reamDatabase.projects.toArray()).resolves.toEqual([project]);
     await expect(reamDatabase.timeEntries.toArray()).resolves.toEqual([entry]);
     await expect(reamDatabase.noteAiSuggestions.toArray()).resolves.toEqual([suggestion]);
+    await expect(reamDatabase.journalPages.toArray()).resolves.toEqual(expect.arrayContaining([journalPage, expect.objectContaining({ id: journalRecap.journalPageId })]));
+    await expect(reamDatabase.journalRecaps.toArray()).resolves.toEqual([journalRecap]);
   });
 
   it("does not overwrite an existing Ream database", async () => {

@@ -1,6 +1,8 @@
 import { type CSSProperties, type MouseEvent, type ReactNode, type KeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { DEFAULT_OLLAMA_MODEL, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
-import { createNoteAiSuggestion, listNoteAiSuggestions, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { liveQuery } from "dexie";
+import { DEFAULT_OLLAMA_MODEL, formatImprovedNoteMarkdown, OLLAMA_MODEL_STORAGE_KEY, type ImprovedNoteOutput, validateImprovedNoteOutput } from "../../shared/ai";
+import { acceptActiveTimerAiSuggestion, createActiveTimerAiSuggestion, listNoteAiSuggestions, timerAiNoteId, updateNoteAiSuggestionStatus } from "../../shared/aiSuggestionRepository";
+import { readWorkspaceRevision } from "../../shared/workspaceRepository";
 import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
 import { listActiveProjects } from "../../shared/projectRepository";
@@ -15,7 +17,16 @@ import {
   stopTimer,
   updateActiveTimerNote
 } from "../../shared/timerRepository";
+import { buildOverlayProjectTagLabels } from "../overlayUtils";
+import { readAppSettings } from "../appSettings";
 import { formatEntryDateTime } from "../rendererUtils";
+import { MarkdownNoteEditor, type MarkdownNoteEditorHandle } from "../notes/MarkdownNoteEditor";
+import { useAutosavedNote } from "../notes/useAutosavedNote";
+import { NoteConflictNotice } from "../notes/NoteConflictNotice";
+import { LiveAiNotePreview } from "../notes/LiveAiNotePreview";
+import { applyLiveAiNote } from "../notes/applyLiveAiNote";
+import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft } from "../notes/noteDrafts";
+import { RichNoteView } from "../richNotes";
 import type { ThemeId } from "../themeOptions";
 import type { OverlayMode } from "../../shared/overlayBounds";
 import type { PreferredOverlayMode } from "../appSettings";
@@ -33,6 +44,7 @@ interface OverlayViewProps {
 interface OverlayAiPreview {
   suggestionId: string;
   activeTimerId: string;
+  workspaceRevision: number;
   model: string;
   rawNote: string;
   output: ImprovedNoteOutput;
@@ -183,13 +195,20 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   const [aiSuggestions, setAiSuggestions] = useState<NoteAiSuggestion[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
-  const [note, setNote] = useState("");
-  const [noteDirty, setNoteDirty] = useState(false);
+  const [pendingNote, setPendingNote] = useState("");
+  const timerStartedAt = activeTimer?.startedAt ?? "";
+  const saveTimerNote = useCallback((value: string, expectedValue: string) => updateActiveTimerNote(db, value, new Date(), timerStartedAt, expectedValue), [timerStartedAt]);
+  const timerDraft = useAutosavedNote(`timer:${timerStartedAt}`, activeTimer?.note ?? "", saveTimerNote, Boolean(activeTimer));
+  const note = activeTimer ? timerDraft.value : pendingNote;
+  const noteSaveStatus = activeTimer ? timerDraft.status : "idle";
   const [elapsed, setElapsed] = useState(0);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiActionBusy, setAiActionBusy] = useState(false);
+  const aiActionBusyRef = useRef(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [aiPreview, setAiPreview] = useState<OverlayAiPreview | null>(null);
   const [petMessage, setPetMessage] = useState<string | null>(null);
   const [petHovered, setPetHovered] = useState(false);
@@ -206,6 +225,11 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   const previousTimerIdRef = useRef<string | null>(null);
   const interactionStateRef = useRef(interactionState);
   const petVelocityRef = useRef({ dx: 1.4, dy: 0.9, turn: 0 });
+  const noteEditorRef = useRef<MarkdownNoteEditorHandle | null>(null);
+  const activeTimerRef = useRef<ActiveTimer | null>(null);
+  const noteRef = useRef(note);
+  const taskSearchRef = useRef<HTMLInputElement | null>(null);
+  const timerActionRef = useRef(false);
 
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTimer?.taskId) ?? null,
@@ -226,10 +250,12 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     [selectedTaskId, tasks]
   );
   const displayTask = activeTask ?? selectedTask;
+  const projectTagLabels = useMemo(() => buildOverlayProjectTagLabels(projects, displayTask), [displayTask, projects]);
+  const noteContextId = activeTimer ? `timer:${activeTimer.startedAt}` : (selectedTaskId ? `pending-${selectedTaskId}` : null);
   const isPaused = Boolean(activeTimer?.pausedAt);
   const timerState: TimerState = activeTimer ? (isPaused ? "paused" : "running") : "idle";
   const expanded = interactionState.mode === "expanded";
-  const shouldRenderTinyOverlay = !expanded && (interactionState.mode === "tiny" || overlayViewportWidth <= TINY_VIEWPORT_FALLBACK_MAX_WIDTH);
+  const shouldRenderTinyOverlay = !expanded && (interactionState.mode === "tiny" || (interactionState.mode !== "mini" && interactionState.mode !== "pet" && overlayViewportWidth <= TINY_VIEWPORT_FALLBACK_MAX_WIDTH));
   const shouldRenderPetOverlay = !expanded && interactionState.mode === "pet";
   const visualOverlayMode = shouldRenderPetOverlay ? "pet" : shouldRenderTinyOverlay ? "tiny" : interactionState.mode;
   const todayTrackedSeconds = useMemo(() => todayEntries.reduce((total, entry) => total + entry.durationSeconds, 0), [todayEntries]);
@@ -281,6 +307,14 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }, [interactionState]);
 
   useEffect(() => {
+    activeTimerRef.current = activeTimer;
+  }, [activeTimer]);
+
+  useEffect(() => {
+    noteRef.current = note;
+  }, [note]);
+
+  useEffect(() => {
     function syncOverlayViewportWidth() {
       setOverlayViewportWidth(window.innerWidth);
     }
@@ -290,26 +324,36 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     return () => window.removeEventListener("resize", syncOverlayViewportWidth);
   }, []);
 
-  const refreshOverlayState = useCallback(async (syncNote = false) => {
-    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextTodayEntries, nextAiSuggestions] = await Promise.all([
+  useEffect(() => {
+    const focusTaskSearch = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      dispatchInteraction({ type: "set-mode", mode: "expanded" });
+      void window.reamDesktop?.setOverlayMode?.("expanded").catch(() => undefined);
+      window.setTimeout(() => taskSearchRef.current?.focus(), 0);
+    };
+    document.addEventListener("keydown", focusTaskSearch);
+    return () => document.removeEventListener("keydown", focusTaskSearch);
+  }, []);
+
+  const refreshOverlayState = useCallback(async () => {
+    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextTodayEntries, nextAiSuggestions, nextRevision] = await db.transaction("r", db.tables, () => Promise.all([
       listActiveTasks(db),
       listActiveProjects(db),
       getActiveTimer(db),
       db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray(),
       db.timeEntries.where("startedAt").aboveOrEqual(getLocalDayStartIso()).toArray(),
-      listNoteAiSuggestions(db)
-    ]);
+      listNoteAiSuggestions(db),
+      readWorkspaceRevision(db)
+    ]));
 
+    setWorkspaceRevision(nextRevision);
     setTasks(nextTasks);
     setProjects(nextProjects);
     setActiveTimer(nextActiveTimer);
     setRecentEntries(nextRecentEntries);
     setTodayEntries(nextTodayEntries);
     setAiSuggestions(nextAiSuggestions);
-
-    if (syncNote && nextActiveTimer) {
-      setNote(nextActiveTimer.note);
-    }
 
     if (nextActiveTimer) {
       setSelectedTaskId(nextActiveTimer.taskId);
@@ -327,15 +371,12 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }, []);
 
   useEffect(() => {
-    refreshOverlayState(true).catch((refreshError: unknown) => {
-      setError(refreshError instanceof Error ? refreshError.message : "Unable to load overlay data.");
+    const subscription = liveQuery(refreshOverlayState).subscribe({
+      error: (refreshError: unknown) => {
+        setError(refreshError instanceof Error ? refreshError.message : "Unable to load overlay data.");
+      }
     });
-
-    const intervalId = window.setInterval(() => {
-      refreshOverlayState().catch(() => undefined);
-    }, 3000);
-
-    return () => window.clearInterval(intervalId);
+    return () => subscription.unsubscribe();
   }, [refreshOverlayState]);
 
   useEffect(() => {
@@ -357,9 +398,8 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
         scheduleAutoCollapse();
       }
     });
-    const unsubscribeExpanded = window.reamDesktop?.onOverlayExpandedChanged?.((nextExpanded) => {
-      dispatchInteraction({ type: "set-mode", mode: nextExpanded ? "expanded" : "default" });
-    });
+    // The legacy expanded event also fires for mini/tiny and would reset them
+    // to default. The mode event is the complete source of window state.
 
     const overlayModeRequest = window.reamDesktop?.getOverlayMode?.();
     if (overlayModeRequest) {
@@ -376,7 +416,6 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
 
     return () => {
       unsubscribeMode?.();
-      unsubscribeExpanded?.();
     };
   }, []);
 
@@ -387,10 +426,12 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }, [expanded]);
 
   useEffect(() => {
-    if (aiPreview && activeTimer?.id !== aiPreview.activeTimerId) {
-      setAiPreview(null);
-    }
-  }, [activeTimer?.id, aiPreview]);
+    return window.reamDesktop?.onQuickNoteRequested?.(() => {
+      setNotesExpanded(true);
+      void setOverlayExpanded(true);
+      window.setTimeout(() => noteEditorRef.current?.focus(), 80);
+    });
+  }, []);
 
   useEffect(() => {
     if (!desktopPetEnabled || interactionState.mode !== "tiny") {
@@ -443,23 +484,20 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }, [petMessage]);
 
   useEffect(() => {
-    if (!activeTimer || !noteDirty) {
+    if (aiPreview && activeTimer?.startedAt !== aiPreview.activeTimerId) {
+      setAiPreview(null);
+    }
+  }, [activeTimer?.startedAt, aiPreview]);
+
+  useEffect(() => {
+    if (!noteContextId || activeTimer) {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      updateActiveTimerNote(db, note)
-        .then((updated) => {
-          setActiveTimer((current) => current?.id === updated.id ? updated : current);
-          setNoteDirty(false);
-        })
-        .catch((noteError: unknown) => {
-          setError(noteError instanceof Error ? noteError.message : "Unable to save note.");
-        });
-    }, 600);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [activeTimer, note, noteDirty]);
+    const recoveryDraft = readNoteRecoveryDraft(window.localStorage, noteContextId);
+    setPendingNote(recoveryDraft?.markdown ?? selectedTask?.defaultNote ?? "");
+    setAiPreview(null);
+  }, [noteContextId, activeTimer, selectedTask?.defaultNote]);
 
   useEffect(() => {
     return window.reamDesktop?.onOverlayContextCommand?.((command) => {
@@ -492,7 +530,7 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   });
 
   useEffect(() => {
-    const activeTimerId = activeTimer?.id ?? null;
+    const activeTimerId = activeTimer?.startedAt ?? null;
     if (activeTimerId && previousTimerIdRef.current !== activeTimerId) {
       void setOverlayMode("default");
       scheduleAutoCollapse();
@@ -531,6 +569,10 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     await setOverlayMode(nextExpanded ? "expanded" : "default");
   }
 
+  async function flushActiveTimerNote() {
+    await timerDraft.flush();
+  }
+
   function markControlInteraction() {
     dispatchInteraction({ type: "control-interaction", now: Date.now() });
   }
@@ -558,17 +600,23 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
         return;
       }
 
-      void setOverlayMode(desktopPetEnabled ? "tiny" : preferredOverlayMode);
+      void setOverlayMode(desktopPetEnabled ? "tiny" : (readAppSettings().preferredOverlayMode === "mini" ? "mini" : "tiny"));
     }, AUTO_COLLAPSE_DELAY_MS);
   }
 
   async function handleOverlayStart() {
+    if (timerActionRef.current) return;
+    timerActionRef.current = true;
     markControlInteraction();
     setError(null);
 
     try {
       const nextActiveTimer = await startTimer(db, { taskId: selectedTaskId, note });
       setActiveTimer(nextActiveTimer);
+      activeTimerRef.current = nextActiveTimer;
+      noteRef.current = nextActiveTimer.note;
+      setPendingNote("");
+      clearNoteRecoveryDraft(window.localStorage, `pending-${selectedTaskId}`);
       setAiPreview(null);
       setElapsed(0);
       if (expanded) {
@@ -579,35 +627,43 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
       scheduleAutoCollapse();
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Unable to start timer.");
+    } finally {
+      timerActionRef.current = false;
     }
   }
 
   async function handlePauseResume() {
     markControlInteraction();
-    if (!activeTimer) {
+    if (!activeTimer || timerActionRef.current) {
       return;
     }
-
+    timerActionRef.current = true;
     setError(null);
     try {
+      await flushActiveTimerNote();
       const updated = activeTimer.pausedAt ? await resumeTimer(db) : await pauseTimer(db);
       setActiveTimer(updated);
+      activeTimerRef.current = updated;
       setElapsed(activeTimerElapsedSeconds(updated));
     } catch (pauseError) {
       setError(pauseError instanceof Error ? pauseError.message : "Unable to update timer.");
+    } finally {
+      timerActionRef.current = false;
     }
   }
 
   async function handleOverlayStop(): Promise<boolean> {
+    if (!activeTimer || timerActionRef.current) return false;
+    timerActionRef.current = true;
     markControlInteraction();
     setError(null);
 
     try {
-      await updateActiveTimerNote(db, note);
-      await stopTimer(db);
+      await flushActiveTimerNote();
+      await stopTimer(db, new Date(), activeTimer.startedAt);
       setActiveTimer(null);
-      setNote("");
-      setNoteDirty(false);
+      activeTimerRef.current = null;
+      setPendingNote("");
       setAiPreview(null);
       dispatchInteraction({ type: "confirm", confirmation: null });
       await refreshOverlayState();
@@ -615,6 +671,8 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     } catch (stopError) {
       setError(stopError instanceof Error ? stopError.message : "Unable to stop timer.");
       return false;
+    } finally {
+      timerActionRef.current = false;
     }
   }
 
@@ -647,19 +705,29 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }
 
   async function handleOpenMainWindow() {
+    try {
+      await flushActiveTimerNote();
     if (expanded) {
       await setOverlayExpanded(false);
     }
 
     await window.reamDesktop?.showMainWindow();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save note. Please retry.");
+    }
   }
 
   async function handleOpenSettingsWindow() {
+    try {
+      await flushActiveTimerNote();
     if (expanded) {
       await setOverlayExpanded(false);
     }
 
     await window.reamDesktop?.showSettingsWindow?.();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save note. Please retry.");
+    }
   }
 
   function stopEvent(event: MouseEvent<HTMLElement>) {
@@ -757,15 +825,33 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }
 
   function handleQuickTag(tag: string) {
-    setNoteDirty(true);
-    setAiPreview(null);
-    setNote((currentNote) => currentNote.includes(`#${tag}`) ? currentNote : `${currentNote}${currentNote ? " " : ""}#${tag}`);
+    const nextNote = note.includes(`#${tag}`) ? note : `${note}${note ? " " : ""}#${tag}`;
+    handleNoteChange(nextNote);
   }
 
   function handleNoteChange(nextNote: string) {
-    setNote(nextNote);
-    setNoteDirty(true);
+    noteRef.current = nextNote;
+    if (activeTimerRef.current) {
+      timerDraft.change(nextNote);
+    } else {
+      setPendingNote(nextNote);
+      if (selectedTaskId) writeNoteRecoveryDraft(window.localStorage, `pending-${selectedTaskId}`, nextNote);
+    }
+    // Keep the preview available to copy; changed source text disables Accept.
+  }
+
+  function handleSelectedTaskChange(nextTaskId: string) {
+    if (!activeTimerRef.current && selectedTaskId && noteRef.current) {
+      writeNoteRecoveryDraft(window.localStorage, `pending-${selectedTaskId}`, noteRef.current);
+    }
+
+    setSelectedTaskId(nextTaskId);
     setAiPreview(null);
+    const pendingDraft = readNoteRecoveryDraft(window.localStorage, `pending-${nextTaskId}`);
+    const nextTask = tasks.find((task) => task.id === nextTaskId);
+    const nextNote = pendingDraft?.markdown ?? nextTask?.defaultNote ?? "";
+    noteRef.current = nextNote;
+    setPendingNote(nextNote);
   }
 
   function renderStopConfirmation() {
@@ -795,16 +881,17 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
 
         <button
           aria-expanded={expanded}
-          aria-label={expanded ? "Collapse overlay" : "Expand overlay"}
+          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
           className="reference-expand-button"
           onClick={(event) => {
             stopEvent(event);
             markControlInteraction();
             void setOverlayExpanded(!expanded);
           }}
+          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
           type="button"
         >
-          <Icon name="chevron" />
+          <Icon name={expanded ? "minimize" : "maximize"} />
         </button>
 
         <div className="reference-overlay-actions" data-overlay-control="true">
@@ -952,6 +1039,7 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
   }
 
   async function handleImproveOverlayNote() {
+    if (aiActionBusyRef.current) return;
     if (!activeTimer || !activeTask) {
       setError("Start a task before improving its note with AI.");
       return;
@@ -968,70 +1056,83 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
       setNotesExpanded(true);
     }
     setAiLoading(true);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
 
     try {
       if (!window.reamDesktop?.improveNoteWithAi) {
         throw new Error("AI is only available in the desktop app.");
       }
+      await timerDraft.flush();
+      const sourceNote = timerDraft.getSnapshot().value;
+      if (!sourceNote.trim()) throw new Error("Write a note before using AI.");
 
       const projectName = activeTask.projectIds.map((id) => projectById.get(id)?.title).filter(Boolean).join(", ");
       const model = window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() || DEFAULT_OLLAMA_MODEL;
       const requestStartedAt = readClockMs();
       const result = await window.reamDesktop.improveNoteWithAi({
-        noteText,
+        noteText: sourceNote,
         taskTitle: activeTask.title,
         projectName,
         tags: activeTask.tags,
         model
       });
       const durationMs = readClockMs() - requestStartedAt;
-      const savedSuggestion = await createNoteAiSuggestion(db, {
-        noteId: activeTimer.id,
+      const savedSuggestion = await createActiveTimerAiSuggestion(db, {
         model: result.model,
-        inputText: noteText,
+        inputText: sourceNote,
         outputJson: result.output,
         durationMs
-      });
+      }, { startedAt: activeTimer.startedAt, workspaceRevision });
 
       setAiPreview({
         suggestionId: savedSuggestion.id,
-        activeTimerId: activeTimer.id,
+        activeTimerId: activeTimer.startedAt,
+        workspaceRevision,
         model: result.model,
-        rawNote: noteText,
+        rawNote: sourceNote,
         output: result.output
       });
     } catch (improveError) {
       setError(improveError instanceof Error ? improveError.message : "Unable to improve note with AI.");
     } finally {
       setAiLoading(false);
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleAcceptAiSuggestion(preview: OverlayAiPreview) {
-    if (!activeTimer || activeTimer.id !== preview.activeTimerId) {
+    if (aiActionBusyRef.current) return;
+    if (!activeTimer || activeTimer.startedAt !== preview.activeTimerId) {
       setError("The active timer changed. Reject this suggestion and run AI again.");
       return;
     }
 
-    if (!window.confirm("Replace this live note with the AI suggestion? The original raw note will remain stored with the AI record.")) {
+    if (!window.confirm("Replace this live note with the full formatted AI rewrite? The original raw note will remain stored with the AI record.")) {
       return;
     }
 
     setError(null);
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     try {
-      const updated = await updateActiveTimerNote(db, preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "accepted");
+      const { suggestion: updatedSuggestion } = await applyLiveAiNote(timerDraft, preview.rawNote, formatImprovedNoteMarkdown(preview.output), () => acceptActiveTimerAiSuggestion(db, preview.suggestionId, { startedAt: preview.activeTimerId, workspaceRevision: preview.workspaceRevision }));
       setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
-      setActiveTimer(updated);
-      setNote(updated.note);
-      setNoteDirty(false);
       setAiPreview(null);
+      await refreshOverlayState();
     } catch (acceptError) {
       setError(acceptError instanceof Error ? acceptError.message : "Unable to accept AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleRejectAiSuggestion(preview: OverlayAiPreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setError(null);
     try {
       const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "rejected");
@@ -1039,17 +1140,34 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
       setAiPreview(null);
     } catch (rejectError) {
       setError(rejectError instanceof Error ? rejectError.message : "Unable to reject AI suggestion.");
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
   async function handleCopyAiSuggestion(preview: OverlayAiPreview) {
+    if (aiActionBusyRef.current) return;
+    aiActionBusyRef.current = true;
+    setAiActionBusy(true);
     setError(null);
     try {
-      await navigator.clipboard.writeText(preview.output.clean_note);
-      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
-      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
+      await window.reamDesktop?.focusOverlayWindow?.();
+      await navigator.clipboard.writeText(formatImprovedNoteMarkdown(preview.output));
     } catch (copyError) {
       setError(copyError instanceof Error ? copyError.message : "Unable to copy AI suggestion.");
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
+      return;
+    }
+    try {
+      const updatedSuggestion = await updateNoteAiSuggestionStatus(db, preview.suggestionId, "copied");
+      setAiSuggestions((current) => current.map((suggestion) => suggestion.id === updatedSuggestion.id ? updatedSuggestion : suggestion));
+    } catch (statusError) {
+      console.error("Failed to record AI suggestion copy status", statusError);
+    } finally {
+      aiActionBusyRef.current = false;
+      setAiActionBusy(false);
     }
   }
 
@@ -1064,11 +1182,12 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     }
 
     const noteText = note.trim();
-    const savedSuggestion = aiSuggestionByNoteId.get(activeTimer.id);
-    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === noteText)) {
-      return <button className="reference-ai-button is-muted" onClick={() => void handleOpenSavedAiSuggestion({
+    const savedSuggestion = aiSuggestionByNoteId.get(timerAiNoteId({ startedAt: activeTimer.startedAt, workspaceRevision }));
+    if (savedSuggestion && (savedSuggestion.status === "accepted" || savedSuggestion.inputText === note)) {
+      return <button className="reference-ai-button is-muted" disabled={aiActionBusy} onClick={() => void handleOpenSavedAiSuggestion({
         suggestionId: savedSuggestion.id,
-        activeTimerId: activeTimer.id,
+        activeTimerId: activeTimer.startedAt,
+        workspaceRevision,
         model: savedSuggestion.model,
         rawNote: savedSuggestion.inputText,
         output: validateImprovedNoteOutput(savedSuggestion.outputJson)
@@ -1078,7 +1197,7 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
     return (
       <button
         className="reference-ai-button"
-        disabled={!noteText || aiLoading}
+        disabled={!noteText || aiActionBusy}
         onClick={handleImproveOverlayNote}
       >
         {aiLoading ? "Improving..." : "Improve with AI"}
@@ -1131,7 +1250,7 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
                   id="overlay-task-select"
                   value={selectedTaskId}
                   disabled={Boolean(activeTimer) || tasks.length === 0}
-                  onChange={(event) => setSelectedTaskId(event.target.value)}
+                  onChange={(event) => handleSelectedTaskChange(event.target.value)}
                 >
                   {tasks.length === 0 ? <option value="">Create a task in the main window</option> : null}
                   {filteredTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
@@ -1140,7 +1259,7 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
               </div>
               <label className="reference-search" aria-label="Search tasks">
                 <Icon name="search" />
-                <input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search tasks..." />
+                <input ref={taskSearchRef} value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="Search tasks..." />
                 <kbd>⌘K</kbd>
               </label>
             </div>
@@ -1180,8 +1299,8 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
               <div className="reference-tags">
                 <p>Project Tags</p>
                 <div>
-                  {(displayTask?.tags ?? []).slice(0, 4).map((tag) => (
-                    <button key={tag} onClick={() => handleQuickTag(tag)}><Icon name="tag" />{tag}</button>
+                  {projectTagLabels.map((label) => (
+                    <button key={label} onClick={() => handleQuickTag(label)}><Icon name="tag" />{label}</button>
                   ))}
                 </div>
               </div>
@@ -1189,9 +1308,8 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
 
             <section className="reference-notes-card">
               <div className="reference-notes-heading">
-                <span><Icon name="note" />Task Notes</span>
+                <span><Icon name="note" />Notes</span>
                 <div className="reference-notes-actions">
-                  {renderImproveNoteButton()}
                   <button
                     aria-label={notesExpanded ? "Restore notes layout" : "Expand notes"}
                     aria-pressed={notesExpanded}
@@ -1204,40 +1322,38 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
                   </button>
                 </div>
               </div>
-              <textarea
-                aria-label="Task notes"
-                placeholder="Write your notes here..."
+              <MarkdownNoteEditor
+                key={noteContextId}
+                aiAction={renderImproveNoteButton()}
+                disabledAi={!activeTimer || aiActionBusy || !note.trim()}
+                metadata={[
+                  projectTagLabels.join(", ") || "No project",
+                  activeTimer ? formatDuration(elapsed) : "No active timer",
+                  activeTimer ? formatEntryDateTime(activeTimer.startedAt) : "Ready to start"
+                ]}
+                onChange={handleNoteChange}
+                onImproveWithAi={handleImproveOverlayNote}
+                ref={noteEditorRef}
+                saveStatus={noteSaveStatus}
+                showToolbar={notesExpanded}
+                taskTitle={displayTask?.title ?? "Select a task"}
                 value={note}
-                onChange={(event) => handleNoteChange(event.target.value)}
               />
-              {aiPreview ? (
-                <div className="reference-ai-preview">
-                  <section className="reference-ai-preview-panel">
-                    <h3>Raw note</h3>
-                    <div className="reference-ai-preview-body">
-                      <p>{aiPreview.rawNote}</p>
-                    </div>
-                  </section>
-                  <section className="reference-ai-preview-panel is-suggestion">
-                    <h3>AI suggestion</h3>
-                    <div className="reference-ai-preview-body">
-                      <p>{aiPreview.output.clean_note}</p>
-                      <dl>
-                        <div><dt>Summary</dt><dd>{aiPreview.output.summary}</dd></div>
-                        <div><dt>Next steps</dt><dd>{aiPreview.output.next_steps.length ? aiPreview.output.next_steps.join("; ") : "None"}</dd></div>
-                        <div><dt>Blockers</dt><dd>{aiPreview.output.blockers.length ? aiPreview.output.blockers.join("; ") : "None"}</dd></div>
-                        <div><dt>Tags</dt><dd>{aiPreview.output.tags.length ? aiPreview.output.tags.join(", ") : "None"}</dd></div>
-                      </dl>
-                      <small>Model: {aiPreview.model}</small>
-                    </div>
-                    <div className="reference-ai-actions">
-                      <button onClick={() => void handleAcceptAiSuggestion(aiPreview)}>Accept</button>
-                      <button onClick={() => void handleCopyAiSuggestion(aiPreview)}>Copy suggestion</button>
-                      <button onClick={() => void handleRejectAiSuggestion(aiPreview)}>Reject</button>
-                    </div>
-                  </section>
-                </div>
-              ) : null}
+              {noteSaveStatus === "failed" ? <p className="reference-error" role="alert">Note not saved. <button onClick={() => void timerDraft.flush().catch(() => undefined)} type="button">Retry save</button></p> : null}
+              <NoteConflictNotice localValue={timerDraft.value} savedValue={timerDraft.conflictValue} onResolve={timerDraft.resolveConflict} />
+              {aiPreview ? <LiveAiNotePreview
+                rawNote={aiPreview.rawNote}
+                output={aiPreview.output}
+                model={aiPreview.model}
+                localNote={note}
+                savedNote={activeTimer?.note ?? ""}
+                sessionChanged={aiPreview.activeTimerId !== activeTimer?.startedAt || aiPreview.workspaceRevision !== workspaceRevision}
+                busy={aiActionBusy}
+                onAccept={() => void handleAcceptAiSuggestion(aiPreview)}
+                onCopy={() => void handleCopyAiSuggestion(aiPreview)}
+                onReject={() => void handleRejectAiSuggestion(aiPreview)}
+                onRegenerate={() => void handleImproveOverlayNote()}
+              /> : null}
             </section>
           </div>
 
@@ -1246,10 +1362,12 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
             <div className="reference-recent-list">
               {recentEntries.length === 0 ? <p>No completed entries yet.</p> : recentEntries.map((entry) => {
                 const aiSuggestion = aiSuggestionByNoteId.get(entry.id);
+                const task = tasks.find((candidate) => candidate.id === entry.taskId);
+                const projectLabel = getEntryProjectLabel(entry, task, projectById);
                 return <article key={entry.id}>
                   <span className="reference-entry-icon"><Icon name="note" /></span>
-                  <div><p>{entry.note || "No note added"}</p><small>{formatEntryDateTime(entry.startedAt)} &nbsp;•&nbsp; {tasks.find((task) => task.id === entry.taskId)?.title ?? "Archived task"}</small></div>
-                  <span className="reference-entry-tag">{tasks.find((task) => task.id === entry.taskId)?.tags[0] ?? "Entry"}</span>
+                  <div>{entry.note ? <RichNoteView className="reference-recent-note-rich" text={entry.note} /> : <p>No note added</p>}<small>{formatEntryDateTime(entry.startedAt)} &nbsp;•&nbsp; {task?.title ?? "Archived task"}</small></div>
+                  <span className="reference-entry-tag">{projectLabel}</span>
                   {aiSuggestion ? <span className="reference-entry-tag is-ai">{getAiSuggestionButtonLabel(aiSuggestion)}</span> : null}
                   <button aria-label="Open entry in main window" onClick={() => void handleOpenMainWindow()}>•••</button>
                 </article>;
@@ -1292,4 +1410,10 @@ function getLocalDayStartIso(now = new Date()): string {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   return start.toISOString();
+}
+
+function getEntryProjectLabel(entry: TimeEntry, task: Task | null | undefined, projectById: Map<string, Project>): string {
+  const projectIds = entry.projectIds.length ? entry.projectIds : task?.projectIds ?? [];
+  const projectNames = projectIds.map((id) => projectById.get(id)?.title).filter((title): title is string => Boolean(title));
+  return projectNames[0] ?? "No project";
 }

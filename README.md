@@ -4,29 +4,30 @@ Ream is a local-first desktop workspace for tracking tasks, notes, time entries,
 
 ## Install
 
-### macOS with Homebrew
+### macOS unsigned DMG
 
-Ream is distributed through a Homebrew tap:
+Early tester builds are published automatically as raw, unsigned DMGs on GitHub
+Releases whenever changes land on `main`.
+Because these builds are not signed or notarized by Apple, macOS Gatekeeper will
+block the app on first launch with an "unidentified developer" warning.
 
-```bash
-brew tap prithivrajmu/ream
-brew install ream
-```
+Download the latest DMG from:
 
-This installs the macOS app bundle and exposes a `ream` launcher command.
+https://github.com/prithivrajmu/ream/releases
 
-### Linux with APT
+Only open the app if you trust the repository and release artifact.
 
-Add the Ream APT source once, then install the Debian package:
+### Linux x64 AppImage
 
-```bash
-curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
-sudo apt install ream
-```
+Early tester builds are also published automatically as x64 AppImages on GitHub
+Releases whenever changes land on `main`. ARM64 AppImages are not built or
+uploaded by this workflow.
+
+Download the latest AppImage from:
+
+https://github.com/prithivrajmu/ream/releases
 
 ### Run from source with Node.js
-
-Use this path if you want to review the code, test unreleased changes, or contribute:
 
 ```bash
 git clone https://github.com/prithivrajmu/ream.git
@@ -35,10 +36,45 @@ npm install
 npm run dev
 ```
 
+To try changes without opening your existing workspace, run `npm run preview:isolated`.
+It builds the desktop app and starts it with a fresh temporary data folder; the
+folder path is printed in the terminal. Ongoing usability fixes and verification
+results are tracked in [TODO.md](TODO.md).
+
+Optional local-AI checks: with Ollama running and the model installed, run
+`npm run test:ai:live`. These use synthetic notes and do not touch workspace data.
+
+For the conflict-panel visual fixture, run `npx vite --host 127.0.0.1 --port 5174`
+from the repository root and open `/scripts/ui/note-conflicts.html` on that server.
+It shows the four required themes and a narrow layout without accessing app data.
+The recovery-panel fixture is available on the same server at
+`/scripts/ui/note-recovery.html`.
+Completed-entry and stale-AI review surfaces are at `/scripts/ui/entry-conflicts.html`.
+The live-overlay AI preview, including editable synthetic state and busy controls,
+is at `/scripts/ui/live-ai-preview.html`.
+
+### macOS with Homebrew (not yet available)
+
+Once a signed release is published:
+
+```bash
+brew tap prithivrajmu/ream
+brew install ream
+```
+
+### Linux with APT (not yet available)
+
+Once a release is published:
+
+```bash
+curl -fsSL https://prithivrajmu.github.io/ream/apt/setup.sh | sudo bash
+sudo apt install ream
+```
+
 ## What Ships Today
 
 - Track work against named tasks with projects and tags.
-- Start, stop, and correct timers from the main workspace.
+- Start, stop, and correct timers from the main workspace, one running timer at a time by design.
 - Capture notes while the timer is running or after the session ends.
 - Review activity through insights, a weekly timesheet, recent entries, and task history.
 - Keep data local by default, with JSON and CSV export for backups or reporting.
@@ -48,10 +84,11 @@ npm run dev
 
 ## Distribution
 
-Ream produces desktop artifacts with Electron Builder and release metadata for Homebrew and APT.
+Ream produces desktop artifacts with Electron Builder and release metadata for Homebrew and APT. For the simplest tester releases, the `macOS Unsigned DMG` and `Linux x64 AppImage` GitHub Actions workflows auto-tag every `main` merge and upload raw artifacts to GitHub Releases.
 
 ```bash
 npm run dist:linux
+npm run dist:linux:appimage:x64
 npm run dist:mac:unsigned
 npm run release:checksums
 npm run release:homebrew
@@ -80,128 +117,14 @@ Plain `brew install ream` and plain `sudo apt install ream` without adding a Rea
 - Direct access back to the main workspace.
 - A small overlay launch button in the main app for quick access.
 
-## Architecture
-
-### Recommended Stack
-
-- Desktop shell: Electron + Vite
-- Frontend: React + TypeScript
-- Styling: CSS modules or plain CSS with a small design token file
-- Local data: IndexedDB via Dexie
-- State: React hooks plus a small app store if needed
-- Tests: Vitest for core logic, Playwright for one smoke flow once UI exists
-
-Electron is recommended because the overlay needs native window controls such
-as always-on-top, frameless/compact mode, global visibility, and tray/menu
-integration. The React app can still be built with web primitives, but it should
-run inside a desktop shell instead of relying only on a browser tab.
-
-### Window Model
-
-Use two app windows:
-
-- Main window: full Ream workspace for tasks, reports, settings, export/import,
-  and editing historical entries.
-- Overlay window: small always-on-top utility window for current task, elapsed
-  time, start/stop, pause/resume if added later, task switching, and quick notes.
-
-Overlay behavior:
-
-- Always on top by default, with a visible pin/unpin control.
-- Resizable between compact and expanded note-taking states.
-- Minimal chrome so it does not distract during calls or coding.
-- Quick task search or recent-task dropdown.
-- One-line note capture with expand-to-textarea.
-- Keyboard shortcut support later for show/hide and start/stop.
-- Stores notes immediately, even if the timer is still running.
-
-Suggested Electron implementation:
-
-- `main` process owns app windows and tray/menu controls.
-- `preload` exposes a narrow typed API for window controls and storage events.
-- `renderer` contains React views for both main and overlay routes.
-- Use IPC only for desktop-specific operations; keep business logic in shared
-  TypeScript modules.
-
-### Data Model
-
-```text
-Task
-- id
-- title
-- project
-- tags
-- defaultNote
-- archived
-- createdAt
-- updatedAt
-
-TimeEntry
-- id
-- taskId
-- startedAt
-- endedAt
-- durationSeconds
-- note
-- createdAt
-- updatedAt
-
-Note
-- id
-- taskId
-- timeEntryId
-- body
-- createdAt
-- updatedAt
-```
-
-Notes can live directly on time entries for the first version. A separate `Note`
-table is only needed if notes become richer or independent from entries.
-
-### Local Save Strategy
-
-Use IndexedDB as the primary database. Add JSON export/import early so the data
-is portable even before GitHub sync exists.
-
-For Electron, IndexedDB is acceptable for the first version because it keeps the
-data model simple and local. If the app later needs stronger backup guarantees,
-move storage to SQLite in the Electron main process while preserving the same
-repository interface.
-
-Ream can also point Electron's user data directory at a user-selected folder
-from Settings. When changed, Ream copies the current local data to the selected
-folder and relaunches against that location.
-
-Recommended backup files:
-
-- `ream-export.json`
-- `ream-export.csv`
-
-### GitHub Backup Strategy
-
-For the first version, keep GitHub sync manual:
-
-1. Export JSON from the app.
-2. Save the export into a private repo folder such as `backups/`.
-3. Commit and push.
-
-Later, add a GitHub integration using a personal access token or OAuth device
-flow. That should be optional because local-only use must remain private and
-fully functional.
-
 ## Documentation
 
-- [Task roadmap](TASKS.md)
+- [User guide](USER_GUIDE.md)
+- [Future improvements](FUTURE_IMPROVEMENTS.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 - [Private backup guide](BACKUP.md)
 - [AI sidecar guide](docs/ai-sidecar.md)
 - [Theme implementation guide](docs/theme-implementation-guide.md)
 - [Linux packaging](docs/linux-packaging.md)
 - [macOS packaging](docs/macos-packaging.md)
-
-## Open Decisions
-
-- App name shown in UI: `Ream`.
-- GitHub sync: manual export first, token-based sync later if needed.
-- Packaging: local dev first; desktop installers can come later.
-- Time model: one running timer at a time for simplicity.
-- Overlay: always-on-top by default with a user-controlled pin/unpin toggle.

@@ -1,6 +1,6 @@
 # Ream Release Audit
 
-Audit date: 2026-06-26
+Audit date: 2026-07-15
 
 ## Configuration reviewed
 
@@ -9,6 +9,12 @@ Audit date: 2026-06-26
 - macOS targets are DMG and ZIP; hardened runtime and entitlement files are
   configured.
 - Linux targets are AppImage, DEB, and tar.gz.
+- The production release workflow runs for semantic version tags (`v*.*.*`),
+  sets the packaged version from the tag, and builds matching Linux and macOS
+  artifacts before publishing them.
+- GitHub release notes are generated from the commits and merged pull requests
+  included since the prior release. The platform-specific prerelease workflows
+  include those generated notes alongside their tester guidance.
 - A generated Ream PNG icon is configured for application packaging, Linux
   desktop entries, and the runtime tray icon.
 - The packaged tray icon is copied as an Electron extra resource.
@@ -30,6 +36,15 @@ Audit date: 2026-06-26
 - Build Linux artifacts on x64 Linux and test the AppImage and DEB on clean
   supported distributions.
 - Publish SHA-256 checksums for every Linux artifact.
+
+## Release process
+
+1. Merge the approved pull request into `main`.
+2. Create and push a semantic version tag such as `v0.2.0`; the `Release`
+   workflow uses that tag for the package version and artifact names.
+3. Confirm GitHub's generated release notes accurately capture the included
+   commits and pull requests, then verify the published checksums and platform
+   artifacts.
 
 ## Release risks
 

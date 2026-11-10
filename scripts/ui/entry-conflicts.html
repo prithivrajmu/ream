@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ream entry conflicts — synthetic data</title></head>
+<body><div id="root"></div><script type="module">
+  // Visual and interaction fixture only. No IndexedDB or workspace storage access.
+  // Serve from the repository root: npx vite --host 127.0.0.1 --port 5174
+  import React, { useState } from "react";
+  import { createRoot } from "react-dom/client";
+  import { EntryConflictNotice } from "/src/renderer/EntryConflictNotice.tsx";
+  import { AiNoteApplyNotice } from "/src/renderer/notes/AiNoteApplyNotice.tsx";
+  import { EditorDialog } from "/src/renderer/EditorDialog.tsx";
+  import "/src/renderer/styles.css";
+  const saved = { id: "sample", taskId: "Review documentation", projectIds: ["Documentation"], startedAt: "2026-09-17T09:00:12.345Z", endedAt: "2026-09-17T09:30:12.345Z", durationSeconds: 81, note: "Saved in another window.\nKeep https://example.com/a-long-reference-for-wrapping-checks", createdAt: "", updatedAt: "" };
+  const local = { ...saved, taskId: "Release preparation", projectIds: [], note: "My unsaved review notes.\nExport check is complete." };
+  function Example({ theme }) {
+    const [choice, setChoice] = useState("");
+    const [open, setOpen] = useState(false);
+    const review = React.createElement(EntryConflictNotice, { saved, local, tasks: [], projects: [], onUseSaved: () => setChoice("Use saved entry selected"), onSaveMine: () => setChoice("Save my entry selected") });
+    return React.createElement("section", { className: `dashboard-shell theme-${theme}`, style: { display: "block", height: "auto", minWidth: 0, padding: 16, margin: 0 } },
+      React.createElement("h2", { style: { color: "var(--theme-ink)" } }, theme), review,
+      React.createElement("p", { role: "status", style: { color: "var(--theme-ink)" } }, choice),
+      React.createElement(AiNoteApplyNotice, { currentNote: saved.note, restored: false }),
+      React.createElement("button", { onClick: () => setOpen(true) }, "Check entry dialog"),
+      open && React.createElement(EditorDialog, { labelledBy: `heading-${theme}`, onClose: () => setOpen(false), busy: false, error: null },
+        React.createElement("h2", { id: `heading-${theme}` }, "Correct tracked time."),
+        React.createElement("form", null, React.createElement("label", null, "Note", React.createElement("textarea", { defaultValue: local.note })), review,
+          React.createElement("button", { type: "button", onClick: () => setOpen(false) }, "Close test dialog"))));
+  }
+  const singleTheme = new URLSearchParams(location.search).get("theme");
+  const themes = ["dark-studio", "old-money", "retro-console", "color-blind"];
+  createRoot(document.getElementById("root")).render(React.createElement("main", { style: { maxWidth: 860, margin: "0 auto", height: "100dvh", overflow: "auto" } },
+    ...(singleTheme ? themes.filter((theme) => theme === singleTheme) : themes).map((theme) => React.createElement(Example, { key: theme, theme })),
+    !singleTheme && React.createElement("iframe", { title: "Narrow entry conflict layout", src: "?theme=dark-studio", width: 360, height: 840, style: { maxWidth: "100%", border: 0 } })));
+</script></body></html>

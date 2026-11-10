@@ -4,9 +4,12 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import {
   DEFAULT_OLLAMA_MODEL,
   FALLBACK_OLLAMA_MODEL,
+  type GenerateRecapRequest,
+  type GenerateRecapResult,
   type ImproveNoteRequest,
   type ImproveNoteResult,
   type OllamaHealthStatus,
+  validateGeneratedRecapOutput,
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
@@ -239,14 +242,15 @@ function createMainWindow(): BrowserWindow {
   // appears whenever the user leaves it, either by minimizing or switching apps.
   window.on("minimize", () => {
     if (!suppressMainMinimizeOverlay) {
-      void showOverlayWindow({ hideMain: false });
+      void showOverlayWindow({ hideMain: false, activate: false });
     }
   });
   window.on("blur", () => {
     if (!suppressMainBlurOverlay && window.isVisible() && !window.isMinimized()) {
-      void showOverlayWindow();
+      void showOverlayWindow({ hideMain: false, activate: false });
     }
   });
+  window.on("focus", hideOverlayWindow);
   return window;
 }
 
@@ -530,7 +534,7 @@ function setOverlayExpanded(expanded: boolean) {
   setOverlayMode(expanded ? "expanded" : "default");
 }
 
-async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
+async function showOverlayWindow(options: { hideMain?: boolean; activate?: boolean } = {}) {
   if (options.hideMain ?? true) {
     await minimizeMainWindowToDrawer();
   }
@@ -538,9 +542,13 @@ async function showOverlayWindow(options: { hideMain?: boolean } = {}) {
   setOverlayMode("default");
   setOverlayMousePassthrough(window, false);
   window.setBackgroundColor("#00000000");
-  window.show();
   applyOverlayPinned(window, true);
-  window.focus();
+  if (options.activate === false) {
+    window.showInactive();
+  } else {
+    window.show();
+    window.focus();
+  }
 }
 
 function hideOverlayWindow() {
@@ -582,6 +590,20 @@ function buildAppMenu() {
         ]
       : []),
     {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { role: "selectAll" }
+      ]
+    },
+    {
       label: "Ream",
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
@@ -621,7 +643,14 @@ function setupTray() {
 }
 
 function registerShortcuts() {
-  globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
+  const overlayRegistered = globalShortcut.register("CommandOrControl+Shift+T", () => { void toggleOverlayWindow(); });
+  const quickNoteRegistered = globalShortcut.register("CommandOrControl+Shift+O", () => { void showQuickNoteOverlay(); });
+  if (!overlayRegistered) {
+    console.warn("Unable to register Cmd/Ctrl+Shift+T for the overlay toggle.");
+  }
+  if (!quickNoteRegistered) {
+    console.warn("Unable to register Cmd/Ctrl+Shift+O for quick notes.");
+  }
 }
 
 function sendOverlayContextCommand(command: OverlayContextCommand) {
@@ -648,17 +677,25 @@ function showOverlayContextMenu(input: OverlayContextMenuInput) {
   menu.popup({ window: overlayWindow ?? undefined });
 }
 
-async function readOllamaStatus(): Promise<OllamaHealthStatus> {
+async function readOllamaStatus(model = ""): Promise<OllamaHealthStatus> {
+  const checkedModel = model.trim() || DEFAULT_OLLAMA_MODEL;
   if (!aiSidecar) {
     return {
       ok: false,
       ollama: { ok: false },
-      model: DEFAULT_OLLAMA_MODEL,
-      fallbackModel: FALLBACK_OLLAMA_MODEL
+      model: checkedModel,
+      checkedModel,
+      fallbackModel: FALLBACK_OLLAMA_MODEL,
+      modelAvailable: false,
+      fallbackAvailable: false
     };
   }
 
-  const response = await fetch(`${aiSidecar.url}/ai/health`);
+  const healthUrl = new URL(`${aiSidecar.url}/ai/health`);
+  if (model.trim()) {
+    healthUrl.searchParams.set("model", model.trim());
+  }
+  const response = await fetch(healthUrl);
   const payload = await response.json() as unknown;
   return normalizeOllamaHealthStatus(payload);
 }
@@ -711,7 +748,14 @@ function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
     ok: payload.ok === true,
     ollama: { ok: ollama.ok === true },
     model: typeof payload.model === "string" && payload.model.trim() ? payload.model.trim() : DEFAULT_OLLAMA_MODEL,
-    fallbackModel: typeof payload.fallbackModel === "string" && payload.fallbackModel.trim() ? payload.fallbackModel.trim() : FALLBACK_OLLAMA_MODEL
+    checkedModel: typeof payload.checkedModel === "string" && payload.checkedModel.trim()
+      ? payload.checkedModel.trim()
+      : typeof payload.model === "string" && payload.model.trim()
+        ? payload.model.trim()
+        : DEFAULT_OLLAMA_MODEL,
+    fallbackModel: typeof payload.fallbackModel === "string" && payload.fallbackModel.trim() ? payload.fallbackModel.trim() : FALLBACK_OLLAMA_MODEL,
+    modelAvailable: payload.modelAvailable === true,
+    fallbackAvailable: payload.fallbackAvailable === true
   };
 }
 
@@ -726,6 +770,22 @@ function getGodotPetStatus(): GodotPetSidecarStatus {
   }
 
   return godotPetSidecar.status();
+}
+
+async function showQuickNoteOverlay() {
+  await showOverlayWindow({ hideMain: false });
+  const window = overlayWindow;
+  if (window && !window.isDestroyed() && window.webContents.isLoading()) {
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 900);
+      window.webContents.once("did-finish-load", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+  setOverlayExpanded(true);
+  overlayWindow?.webContents.send("overlay:quick-note-requested");
 }
 
 app.whenReady().then(() => {
@@ -780,6 +840,13 @@ app.whenReady().then(() => {
   ipcMain.handle("window:set-overlay-interactive", (_event, interactive: boolean) => {
     const window = ensureOverlayWindow();
     setOverlayMousePassthrough(window, !interactive);
+  });
+
+  ipcMain.handle("window:focus-overlay", () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.focus();
+      overlayWindow.webContents.focus();
+    }
   });
 
   ipcMain.handle("window:toggle-overlay", async () => {
@@ -851,7 +918,52 @@ app.whenReady().then(() => {
     };
   });
 
-  ipcMain.handle("ai:ollama-status", () => readOllamaStatus());
+  ipcMain.handle("ai:generate-recap", async (_event, input: GenerateRecapRequest): Promise<GenerateRecapResult> => {
+    if (!aiSidecar) {
+      throw new Error("AI sidecar is not available. Restart Ream and try again.");
+    }
+    const model = input.model?.trim() || DEFAULT_OLLAMA_MODEL;
+    const status = await readOllamaStatus(model);
+    if (!status.ollama.ok) {
+      throw new Error("Ollama is not running. Open Local AI settings to finish setup, then try again.");
+    }
+    if (!status.modelAvailable && !(model === DEFAULT_OLLAMA_MODEL && status.fallbackAvailable)) {
+      throw new Error(`The local AI model ${model} is not installed. Open Local AI settings to pull it, then try again.`);
+    }
+    const response = await fetch(`${aiSidecar.url}/ai/recap`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...input, model })
+    });
+    const payload = (await response.json()) as unknown;
+    if (!response.ok) {
+      const message = payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : "Unable to generate recap with AI.";
+      throw new Error(message);
+    }
+    return {
+      model: response.headers.get("x-ream-ai-model")?.trim() || model,
+      output: validateGeneratedRecapOutput(payload)
+    };
+  });
+
+  ipcMain.handle("journal:confirm-recap-conflict", async (_event, sourceLabel: string) => {
+    const options: Electron.MessageBoxOptions = {
+      type: "question",
+      title: "Recap already exists",
+      message: `A recap for ${sourceLabel} already exists.`,
+      detail: "Replace the newest matching recap or append another timestamped recap?",
+      buttons: ["Replace", "Append", "Cancel"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    };
+    const result = mainWindow ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options);
+    return result.response === 0 ? "replace" : result.response === 1 ? "append" : "cancel";
+  });
+
+  ipcMain.handle("ai:ollama-status", (_event, model?: string) => readOllamaStatus(typeof model === "string" ? model : ""));
 
   ipcMain.handle("ai:open-ollama-download", async () => {
     bringExternalBrowserToFront(OLLAMA_DOWNLOAD_URL);

@@ -8,6 +8,7 @@ import {
   deleteTimeEntry,
   getActiveTimer,
   listTimeEntriesForDay,
+  listTimeEntriesForTask,
   pauseTimer,
   resumeTimer,
   startTimer,
@@ -31,6 +32,54 @@ afterEach(async () => {
 });
 
 describe("timer repository", () => {
+  it("stops a session only once when two windows stop together", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Concurrent stop" });
+    await startTimer(db, { taskId: task.id });
+    const results = await Promise.allSettled([stopTimer(db), stopTimer(db)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(await db.timeEntries.count()).toBe(1);
+    expect(await getActiveTimer(db)).toBeNull();
+  });
+
+  it("cannot revive a stopped timer with a concurrent note save", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Concurrent note" });
+    const timer = await startTimer(db, { taskId: task.id });
+    await Promise.allSettled([stopTimer(db), updateActiveTimerNote(db, "late edit", new Date(), timer.startedAt)]);
+    expect(await getActiveTimer(db)).toBeNull();
+    expect(await db.timeEntries.count()).toBe(1);
+  });
+
+  it("rejects a previous session's delayed note or stop", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Separate sessions" });
+    const first = await startTimer(db, { taskId: task.id }, new Date("2026-09-14T09:00:00Z"));
+    await stopTimer(db, new Date("2026-09-14T10:00:00Z"));
+    await startTimer(db, { taskId: task.id, note: "second session" }, new Date("2026-09-14T11:00:00Z"));
+    await expect(updateActiveTimerNote(db, "first session", new Date(), first.startedAt)).rejects.toThrow("timer changed");
+    await expect(stopTimer(db, new Date(), first.startedAt)).rejects.toThrow("timer changed");
+    expect((await getActiveTimer(db))?.note).toBe("second session");
+  });
+
+  it("preserves paused time when only a note is edited", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Paused entry" });
+    await startTimer(db, { taskId: task.id }, new Date("2026-09-14T09:00:12.345Z"));
+    await pauseTimer(db, new Date("2026-09-14T09:10:12.345Z"));
+    const entry = await stopTimer(db, new Date("2026-09-14T09:30:12.345Z"));
+    const updated = await updateTimeEntry(db, entry.id, { ...entry, note: "Corrected note" });
+    expect(updated.durationSeconds).toBe(600);
+    expect(updated.startedAt).toBe(entry.startedAt);
+  });
+
+  it("preserves note whitespace and uses the task's starting note", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Notes", defaultNote: "Starting context" });
+    expect((await startTimer(db, { taskId: task.id })).note).toBe("Starting context");
+    expect((await updateActiveTimerNote(db, "  indented\n\n")).note).toBe("  indented\n\n");
+  });
+
   it("starts one active timer and blocks duplicates", async () => {
     const db = createTestDatabase();
     const task = await createTask(db, { title: "Client meeting" });
@@ -101,16 +150,49 @@ describe("timer repository", () => {
     expect(otherDayEntries).toEqual([]);
   });
 
+  it("keeps each entry's note independent across many entries for one task", async () => {
+    const db = createTestDatabase();
+    const task = await createTask(db, { title: "Recurring task" });
+    const otherTask = await createTask(db, { title: "Unrelated task" });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T09:00:00.000Z"));
+    const first = await stopTimer(db, new Date("2026-06-25T09:15:00.000Z"));
+    await updateTimeEntry(db, first.id, {
+      taskId: task.id,
+      startedAt: first.startedAt,
+      endedAt: first.endedAt,
+      note: "First session note"
+    });
+
+    await startTimer(db, { taskId: task.id }, new Date("2026-06-25T11:00:00.000Z"));
+    await updateActiveTimerNote(db, "Second session note", new Date("2026-06-25T11:05:00.000Z"));
+    const second = await stopTimer(db, new Date("2026-06-25T11:30:00.000Z"));
+
+    await createTimeEntry(db, {
+      taskId: otherTask.id,
+      startedAt: "2026-06-25T12:00:00.000Z",
+      endedAt: "2026-06-25T12:15:00.000Z",
+      note: "Note for a different task"
+    });
+
+    const entriesForTask = await listTimeEntriesForTask(db, task.id);
+
+    expect(entriesForTask.map((entry) => entry.id)).toEqual([second.id, first.id]);
+    expect(entriesForTask.map((entry) => entry.note)).toEqual(["Second session note", "First session note"]);
+    expect(entriesForTask.every((entry) => entry.taskId === task.id)).toBe(true);
+  });
+
   it("updates an entry's task, time range, note, and calculated duration", async () => {
     const db = createTestDatabase();
     const originalTask = await createTask(db, { title: "Initial task" });
-    const revisedTask = await createTask(db, { title: "Revised task" });
+    const revisedTask = await createTask(db, { title: "Revised task", projectIds: ["project_beta", "project_gamma"] });
 
     await startTimer(db, { taskId: originalTask.id }, new Date("2026-06-25T09:00:00.000Z"));
     const entry = await stopTimer(db, new Date("2026-06-25T09:30:00.000Z"));
 
     const updated = await updateTimeEntry(db, entry.id, {
       taskId: revisedTask.id,
+      projectIds: ["project_beta"],
       startedAt: "2026-06-24T13:00:00.000Z",
       endedAt: "2026-06-24T14:45:00.000Z",
       note: "Corrected entry"
@@ -118,17 +200,27 @@ describe("timer repository", () => {
 
     expect(updated).toMatchObject({
       taskId: revisedTask.id,
+      projectIds: ["project_beta"],
       startedAt: "2026-06-24T13:00:00.000Z",
       endedAt: "2026-06-24T14:45:00.000Z",
       durationSeconds: 6300,
       note: "Corrected entry",
       updatedAt: "2026-06-26T09:00:00.000Z"
     });
+
+    const noteOnlyUpdate = await updateTimeEntry(db, entry.id, {
+      taskId: revisedTask.id,
+      startedAt: updated.startedAt,
+      endedAt: updated.endedAt,
+      note: "Retained projects"
+    }, new Date("2026-06-26T10:00:00.000Z"));
+
+    expect(noteOnlyUpdate.projectIds).toEqual(["project_beta"]);
   });
 
   it("creates a completed time entry without starting a timer", async () => {
     const db = createTestDatabase();
-    const task = await createTask(db, { title: "Manual work" });
+    const task = await createTask(db, { title: "Manual work", projectIds: ["project_manual"] });
 
     const entry = await createTimeEntry(db, {
       taskId: task.id,
@@ -139,6 +231,7 @@ describe("timer repository", () => {
 
     expect(entry).toMatchObject({
       taskId: task.id,
+      projectIds: ["project_manual"],
       durationSeconds: 2700,
       note: "Logged after the fact",
       createdAt: "2026-06-25T09:00:00.000Z",

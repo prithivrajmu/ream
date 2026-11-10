@@ -6,31 +6,50 @@
   "main": "out/main/index.js",
   "desktopName": "ream",
   "homepage": "https://github.com/prithivrajmu/ream",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prithivrajmu/ream.git"
+  },
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
+    "preview:isolated": "npm run build && electron scripts/preview-isolated.mjs",
     "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ai:live": "REAM_AI_LIVE=1 vitest run src/test/aiSidecar.live.test.ts",
+    "test:ai:quality": "REAM_AI_QUALITY=1 vitest run src/test/aiMeaning.quality.test.ts --silent=false --reporter=verbose",
     "test:watch": "vitest",
-    "godot:pet:check": "godot --headless --path godot/pet-sidecar --quit",
+    "godot:pet:check": "godot --headless --editor --path godot/pet-sidecar --import && godot --headless --path godot/pet-sidecar --quit",
     "godot:pet:run": "godot --path godot/pet-sidecar",
     "dev:linux": "electron-vite dev -- --no-sandbox",
     "lint": "eslint .",
     "pack": "npm run build && electron-builder --dir",
     "dist:mac": "npm run build && electron-builder --mac --x64 --arm64",
-    "dist:mac:unsigned": "CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist:mac",
+    "dist:mac:unsigned": "CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && electron-builder --mac --x64 --arm64 --publish never",
     "dist:linux": "npm run build && electron-builder --linux AppImage deb tar.gz",
+    "dist:linux:appimage:x64": "npm run build && electron-builder --linux AppImage --x64 --publish never",
     "dist:linux:dir": "npm run build && electron-builder --linux --dir",
     "release:checksums": "node scripts/generate-checksums.mjs",
     "release:homebrew": "node scripts/generate-homebrew-formula.mjs",
     "release:apt": "node scripts/generate-apt-repo.mjs"
   },
   "dependencies": {
+    "@lexical/code": "^0.47.0",
+    "@lexical/history": "^0.47.0",
+    "@lexical/link": "^0.47.0",
+    "@lexical/list": "^0.47.0",
+    "@lexical/markdown": "^0.47.0",
+    "@lexical/react": "^0.47.0",
+    "@lexical/rich-text": "^0.47.0",
+    "@lexical/selection": "^0.47.0",
+    "@lexical/utils": "^0.47.0",
     "@vitejs/plugin-react": "^5.1.1",
     "dexie": "^4.4.4",
     "electron-vite": "^5.0.0",
     "fake-indexeddb": "^6.2.5",
+    "lexical": "^0.47.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
@@ -68,14 +87,6 @@
       {
         "from": "build/icons/ream-icon.png",
         "to": "ream-icon.png"
-      },
-      {
-        "from": "godot/pet-sidecar",
-        "to": "pet-sidecar",
-        "filter": [
-          "**/*",
-          "!.godot/**"
-        ]
       }
     ],
     "mac": {
