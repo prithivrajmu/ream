@@ -1570,6 +1570,11 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           </section>
 
           <section className="dashboard-panel profile-settings-panel profile-overlay-panel">
+            <div className="settings-panel-heading">
+              <PanelKicker icon="overlay" label="Companion" />
+              <label className="settings-toggle">Desktop pet<input checked={appSettings.desktopPetEnabled} onChange={(event) => updateAppSettings({ desktopPetEnabled: event.target.checked })} type="checkbox" /><span /></label>
+            </div>
+            <p className="settings-helper-copy">A shar-pei puppy appears after the tiny overlay has been idle for a few seconds.</p>
             <div className="overlay-mode-setting">
               <div><strong>Resting overlay</strong><p>Choose what the timer collapses to after starting.</p></div>
               <div className="overlay-mode-options">

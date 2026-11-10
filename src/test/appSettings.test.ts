@@ -15,6 +15,7 @@ describe("app settings", () => {
       themeId: "old-money",
       overlayTransparency: 0.92,
       preferredOverlayMode: "mini",
+      desktopPetEnabled: false,
       aiSetupPreference: "skipped"
     });
   });
@@ -26,6 +27,7 @@ describe("app settings", () => {
       themeId: "retro-console",
       overlayTransparency: 0.1,
       preferredOverlayMode: "tiny",
+      desktopPetEnabled: true,
       aiSetupPreference: "enabled",
       ollamaModel: " llama3.2:3b "
     })));
@@ -36,6 +38,7 @@ describe("app settings", () => {
       themeId: "retro-console",
       overlayTransparency: 0.5,
       preferredOverlayMode: "tiny",
+      desktopPetEnabled: true,
       aiSetupPreference: "enabled",
       ollamaModel: "llama3.2:3b"
     });

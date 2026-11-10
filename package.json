@@ -21,6 +21,8 @@
     "test:ai:live": "REAM_AI_LIVE=1 vitest run src/test/aiSidecar.live.test.ts",
     "test:ai:quality": "REAM_AI_QUALITY=1 vitest run src/test/aiMeaning.quality.test.ts --silent=false --reporter=verbose",
     "test:watch": "vitest",
+    "godot:pet:check": "godot --headless --editor --path godot/pet-sidecar --import && godot --headless --path godot/pet-sidecar --quit",
+    "godot:pet:run": "godot --path godot/pet-sidecar",
     "dev:linux": "electron-vite dev -- --no-sandbox",
     "lint": "eslint .",
     "pack": "npm run build && electron-builder --dir",

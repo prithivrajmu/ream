@@ -257,7 +257,8 @@ code {
 }
 
 .reference-overlay-shell.mode-mini,
-.reference-overlay-shell.mode-tiny {
+.reference-overlay-shell.mode-tiny,
+.reference-overlay-shell.mode-pet {
   display: grid;
   place-items: center;
 }
@@ -265,6 +266,92 @@ code {
 .reference-overlay-shell.mode-mini .transition-overlay-pill,
 .reference-overlay-shell.mode-tiny .transition-overlay-pill {
   cursor: default;
+}
+
+.pet-sidecar {
+  position: relative;
+  display: grid;
+  width: 240px;
+  height: 218px;
+  place-items: end center;
+  padding: 0;
+  border: 0;
+  color: #4b3526;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.pet-sidecar:focus-visible {
+  outline: 3px solid rgb(153 107 58 / 30%);
+  outline-offset: -8px;
+}
+
+.pet-sprite-frame {
+  position: relative;
+  display: block;
+  width: var(--sprite-width);
+  height: var(--sprite-height);
+  overflow: hidden;
+  border-radius: 26px;
+  filter: drop-shadow(0 14px 18px rgb(75 52 32 / 18%));
+  transform-origin: center bottom;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.pet-sidecar:hover .pet-sprite-frame,
+.pet-sidecar:focus-visible .pet-sprite-frame {
+  filter: drop-shadow(0 18px 22px rgb(75 52 32 / 20%));
+  transform: translateY(-2px);
+}
+
+.pet-sprite-frame img {
+  position: absolute;
+  top: var(--sprite-top);
+  left: var(--sprite-left);
+  width: var(--sheet-width);
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.pet-state-no-timer-today .pet-sprite-frame,
+.pet-state-break-time .pet-sprite-frame,
+.pet-state-daily-goal-met .pet-sprite-frame {
+  align-self: end;
+}
+
+.pet-message {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  left: 50%;
+  width: max-content;
+  max-width: 226px;
+  padding: 9px 11px;
+  border: 1px solid rgb(139 94 49 / 18%);
+  border-radius: 14px;
+  color: #412d20;
+  background: rgb(255 252 244 / 96%);
+  box-shadow: 0 14px 28px rgb(78 52 29 / 16%), inset 0 1px 0 rgb(255 255 255 / 74%);
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.25;
+  text-align: left;
+  transform: translateX(-50%);
+}
+
+.pet-message::after {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgb(139 94 49 / 18%);
+  border-bottom: 1px solid rgb(139 94 49 / 18%);
+  background: rgb(255 252 244 / 96%);
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .reference-overlay-shell.mode-mini .transition-task-name {
@@ -3337,6 +3424,13 @@ body.overlay-route {
   color: var(--theme-muted, #747989);
   font-size: 13px;
   font-weight: 680;
+}
+
+.settings-helper-copy {
+  margin: -6px 0 0;
+  color: var(--theme-muted, #747989);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .settings-field input {

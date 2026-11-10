@@ -13,6 +13,7 @@ import {
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
+import { startGodotPetSidecar, type GodotPetContract, type GodotPetSidecarHandle, type GodotPetSidecarStatus } from "./godotPetSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
   getOverlaySize,
@@ -20,7 +21,8 @@ import {
   type OverlayBounds,
   type OverlayMode,
   OVERLAY_DEFAULT_SIZE,
-  OVERLAY_EXPANDED_SIZE
+  OVERLAY_EXPANDED_SIZE,
+  OVERLAY_PET_SIZE
 } from "../shared/overlayBounds";
 
 const isDev = Boolean(process.env.ELECTRON_RENDERER_URL);
@@ -40,6 +42,7 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let aiSidecar: AiSidecarHandle | null = null;
+let godotPetSidecar: GodotPetSidecarHandle | null = null;
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayMode: OverlayMode = "default";
@@ -68,6 +71,11 @@ type OverlayContextCommand = "mini" | "default" | "pause-resume" | "stop" | "set
 
 interface OverlayContextMenuInput {
   timerState?: "idle" | "running" | "paused" | "stopped";
+}
+
+interface MovePetOverlayInput {
+  dx: number;
+  dy: number;
 }
 
 function getDataLocationConfigPath(): string {
@@ -304,7 +312,7 @@ function createOverlayWindow(): BrowserWindow {
     ...initialBounds,
     minWidth: 1,
     minHeight: 1,
-    maxWidth: Math.max(OVERLAY_DEFAULT_SIZE.width, OVERLAY_EXPANDED_SIZE.width),
+    maxWidth: Math.max(OVERLAY_DEFAULT_SIZE.width, OVERLAY_EXPANDED_SIZE.width, OVERLAY_PET_SIZE.width),
     maxHeight: OVERLAY_EXPANDED_SIZE.height,
     title: "Ream Overlay",
     frame: false,
@@ -507,6 +515,19 @@ function setOverlayMode(mode: OverlayMode) {
   resizeOverlayWindow(overlayWindow, mode);
   overlayWindow.webContents.send("overlay:mode-changed", mode);
   overlayWindow.webContents.send("overlay:expanded-changed", mode === "expanded");
+}
+
+function movePetOverlay(input: MovePetOverlayInput) {
+  if (!overlayWindow || overlayWindow.isDestroyed() || overlayMode !== "pet") {
+    return;
+  }
+
+  const bounds = overlayWindow.getBounds();
+  applyOverlayBounds(overlayWindow, clampOverlayBoundsToWorkArea({
+    ...bounds,
+    x: bounds.x + Math.round(input.dx),
+    y: bounds.y + Math.round(input.dy)
+  }));
 }
 
 function setOverlayExpanded(expanded: boolean) {
@@ -738,6 +759,19 @@ function normalizeOllamaHealthStatus(value: unknown): OllamaHealthStatus {
   };
 }
 
+function getGodotPetStatus(): GodotPetSidecarStatus {
+  if (!godotPetSidecar) {
+    return {
+      running: false,
+      pid: null,
+      projectPath: app.isPackaged ? join(process.resourcesPath, "pet-sidecar") : resolve(app.getAppPath(), "godot/pet-sidecar"),
+      contractPath: join(app.getPath("userData"), "ream-pet-contract.json")
+    };
+  }
+
+  return godotPetSidecar.status();
+}
+
 async function showQuickNoteOverlay() {
   await showOverlayWindow({ hideMain: false });
   const window = overlayWindow;
@@ -795,6 +829,10 @@ app.whenReady().then(() => {
     setOverlayMode(mode);
   });
 
+  ipcMain.handle("window:move-pet-overlay", (_event, input: MovePetOverlayInput) => {
+    movePetOverlay(input);
+  });
+
   ipcMain.handle("window:show-overlay-context-menu", (_event, input: OverlayContextMenuInput) => {
     showOverlayContextMenu(input);
   });
@@ -821,6 +859,33 @@ app.whenReady().then(() => {
 
   ipcMain.handle("window:close-overlay", () => {
     hideOverlayWindow();
+  });
+
+  ipcMain.handle("pet:godot-status", () => getGodotPetStatus());
+
+  ipcMain.handle("pet:start-godot-sidecar", async (_event, input?: GodotPetContract) => {
+    if (!godotPetSidecar || !godotPetSidecar.status().running) {
+      godotPetSidecar = await startGodotPetSidecar(input);
+    } else if (input) {
+      godotPetSidecar.update(input);
+    }
+
+    return getGodotPetStatus();
+  });
+
+  ipcMain.handle("pet:update-godot-contract", (_event, input: GodotPetContract) => {
+    if (!godotPetSidecar || !godotPetSidecar.status().running) {
+      throw new Error("Godot pet sidecar is not running.");
+    }
+
+    godotPetSidecar.update(input);
+    return getGodotPetStatus();
+  });
+
+  ipcMain.handle("pet:stop-godot-sidecar", async () => {
+    await godotPetSidecar?.close();
+    godotPetSidecar = null;
+    return getGodotPetStatus();
   });
 
   ipcMain.handle("data:get-location", () => getDataLocationInfo());

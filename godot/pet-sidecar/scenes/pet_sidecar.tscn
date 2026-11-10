@@ -1,0 +1,35 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/sharpei-state-sheet.png" id="1_sheet"]
+[ext_resource type="Script" path="res://scripts/pet_sidecar.gd" id="2_sidecar"]
+[ext_resource type="Script" path="res://scripts/pet_animator.gd" id="3_animator"]
+
+[node name="PetSidecar" type="Node2D"]
+script = ExtResource("2_sidecar")
+
+[node name="Shadow" type="Polygon2D" parent="."]
+position = Vector2(160, 224)
+color = Color(0.28, 0.18, 0.1, 0.18)
+polygon = PackedVector2Array(-62, -8, 62, -8, 76, 0, 62, 8, -62, 8, -76, 0)
+
+[node name="Sprite" type="Sprite2D" parent="."]
+position = Vector2(75, 43)
+texture = ExtResource("1_sheet")
+centered = false
+region_enabled = true
+region_rect = Rect2(350, 570, 330, 330)
+
+[node name="Animator" type="Node" parent="."]
+script = ExtResource("3_animator")
+
+[node name="MessageBubble" type="PanelContainer" parent="."]
+visible = false
+offset_left = 22.0
+offset_top = 12.0
+offset_right = 298.0
+offset_bottom = 72.0
+
+[node name="MessageText" type="Label" parent="MessageBubble"]
+layout_mode = 2
+text = "I am available for vague supervision."
+autowrap_mode = 3

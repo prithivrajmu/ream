@@ -29,12 +29,16 @@ import { clearNoteRecoveryDraft, readNoteRecoveryDraft, writeNoteRecoveryDraft }
 import { RichNoteView } from "../richNotes";
 import type { ThemeId } from "../themeOptions";
 import type { OverlayMode } from "../../shared/overlayBounds";
+import type { PreferredOverlayMode } from "../appSettings";
+import sharpeiStateSheet from "../assets/sharpei-state-sheet.png";
 
 type IconName = "chevron" | "clock" | "close" | "list" | "maximize" | "minimize" | "note" | "pause" | "play" | "search" | "settings" | "stop" | "tag";
 
 interface OverlayViewProps {
+  desktopPetEnabled: boolean;
   themeId: ThemeId;
   overlayTransparency: number;
+  preferredOverlayMode: PreferredOverlayMode;
 }
 
 interface OverlayAiPreview {
@@ -66,8 +70,90 @@ type OverlayInteractionAction =
   | { type: "control-interaction"; now: number };
 
 const AUTO_COLLAPSE_DELAY_MS = 6000;
+const PET_ACTIVATION_DELAY_MS = 3000;
+const PET_MESSAGE_DURATION_MS = 1900;
 const STOP_CONFIRMATION_THRESHOLD_SECONDS = 10;
 const TINY_VIEWPORT_FALLBACK_MAX_WIDTH = 500;
+const DEEP_FOCUS_THRESHOLD_SECONDS = 25 * 60;
+const DAILY_GOAL_SECONDS = 8 * 60 * 60;
+const JUST_COMPLETED_WINDOW_MS = 60 * 1000;
+
+type PetStateId = "timer-running" | "timer-paused" | "no-timer-today" | "deep-focus" | "task-completed" | "idle" | "break-time" | "daily-goal-met";
+
+interface PetSpriteCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+interface PetStateDefinition {
+  id: PetStateId;
+  label: string;
+  mood: string;
+  crop: PetSpriteCrop;
+  messages: string[];
+}
+
+const PET_STATES: Record<PetStateId, PetStateDefinition> = {
+  "timer-running": {
+    id: "timer-running",
+    label: "Timer running",
+    mood: "Energetic, alert, cheerful.",
+    crop: { x: 20, y: 135, width: 300, height: 330, scale: 0.58 },
+    messages: ["I am monitoring productivity. Also crumbs.", "Run, apparently. I support this chaos.", "Fine, we are focused. Try to look natural."]
+  },
+  "timer-paused": {
+    id: "timer-paused",
+    label: "Timer paused",
+    mood: "Sitting still, slightly puzzled.",
+    crop: { x: 370, y: 135, width: 300, height: 330, scale: 0.58 },
+    messages: ["Paused? Bold strategy.", "I sat down emotionally and physically.", "Wake me when ambition resumes."]
+  },
+  "no-timer-today": {
+    id: "no-timer-today",
+    label: "No timer run today",
+    mood: "Slumped, sleepy, low-energy.",
+    crop: { x: 660, y: 278, width: 390, height: 210, scale: 0.56 },
+    messages: ["A historic absence of timers.", "Nothing tracked. I respect the mystery.", "Today is currently theoretical."]
+  },
+  "deep-focus": {
+    id: "deep-focus",
+    label: "Deep focus",
+    mood: "Determined, focused, confident.",
+    crop: { x: 1060, y: 140, width: 300, height: 330, scale: 0.58 },
+    messages: ["Do not disturb the wrinkles.", "We are locked in. I look serious for both of us.", "Deep focus detected. I have tightened my face."]
+  },
+  "task-completed": {
+    id: "task-completed",
+    label: "Task completed",
+    mood: "Very happy, celebratory, proud.",
+    crop: { x: 35, y: 550, width: 300, height: 350, scale: 0.56 },
+    messages: ["Acceptable. I will allow one celebration.", "Task done. My paws were instrumental.", "Victory. Try not to make it weird."]
+  },
+  idle: {
+    id: "idle",
+    label: "Idle / no active task",
+    mood: "Curious, sniffing, looking around.",
+    crop: { x: 350, y: 570, width: 330, height: 330, scale: 0.56 },
+    messages: ["I am available for vague supervision.", "No active task. Suspiciously peaceful.", "I sniffed the backlog. It sniffed back."]
+  },
+  "break-time": {
+    id: "break-time",
+    label: "Break time",
+    mood: "Relaxed, stretching, content.",
+    crop: { x: 660, y: 680, width: 410, height: 220, scale: 0.54 },
+    messages: ["Break approved. Hydrate, tiny legend.", "Stretching is productivity with fewer spreadsheets.", "I scheduled this nap-adjacent pause."]
+  },
+  "daily-goal-met": {
+    id: "daily-goal-met",
+    label: "Daily goal met",
+    mood: "Cozy, satisfied, sleepy-happy.",
+    crop: { x: 1060, y: 680, width: 360, height: 220, scale: 0.56 },
+    messages: ["Daily goal met. I am retiring immediately.", "You did it. I will now be insufferably cozy.", "Enough productivity. The wrinkles demand rest."]
+  }
+};
 
 function waitForNextPaint(): Promise<void> {
   return new Promise((resolve) => {
@@ -101,10 +187,11 @@ function overlayInteractionReducer(state: OverlayInteractionState, action: Overl
   return { ...state, lastControlInteractionAt: action.now };
 }
 
-export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) {
+export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, preferredOverlayMode }: OverlayViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
+  const [todayEntries, setTodayEntries] = useState<TimeEntry[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<NoteAiSuggestion[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState("");
@@ -123,6 +210,8 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const aiActionBusyRef = useRef(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [aiPreview, setAiPreview] = useState<OverlayAiPreview | null>(null);
+  const [petMessage, setPetMessage] = useState<string | null>(null);
+  const [petHovered, setPetHovered] = useState(false);
   const [overlayViewportWidth, setOverlayViewportWidth] = useState(() => window.innerWidth);
   const [interactionState, dispatchInteraction] = useReducer(overlayInteractionReducer, {
     mode: "default",
@@ -135,6 +224,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const autoCollapseTimeoutRef = useRef<number | null>(null);
   const previousTimerIdRef = useRef<string | null>(null);
   const interactionStateRef = useRef(interactionState);
+  const petVelocityRef = useRef({ dx: 1.4, dy: 0.9, turn: 0 });
   const noteEditorRef = useRef<MarkdownNoteEditorHandle | null>(null);
   const activeTimerRef = useRef<ActiveTimer | null>(null);
   const noteRef = useRef(note);
@@ -165,8 +255,45 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   const isPaused = Boolean(activeTimer?.pausedAt);
   const timerState: TimerState = activeTimer ? (isPaused ? "paused" : "running") : "idle";
   const expanded = interactionState.mode === "expanded";
-  const shouldRenderTinyOverlay = !expanded && (interactionState.mode === "tiny" || (interactionState.mode !== "mini" && overlayViewportWidth <= TINY_VIEWPORT_FALLBACK_MAX_WIDTH));
-  const visualOverlayMode = shouldRenderTinyOverlay ? "tiny" : interactionState.mode;
+  const shouldRenderTinyOverlay = !expanded && (interactionState.mode === "tiny" || (interactionState.mode !== "mini" && interactionState.mode !== "pet" && overlayViewportWidth <= TINY_VIEWPORT_FALLBACK_MAX_WIDTH));
+  const shouldRenderPetOverlay = !expanded && interactionState.mode === "pet";
+  const visualOverlayMode = shouldRenderPetOverlay ? "pet" : shouldRenderTinyOverlay ? "tiny" : interactionState.mode;
+  const todayTrackedSeconds = useMemo(() => todayEntries.reduce((total, entry) => total + entry.durationSeconds, 0), [todayEntries]);
+  const petState = useMemo(() => {
+    if (activeTimer && !isPaused && elapsed >= DEEP_FOCUS_THRESHOLD_SECONDS) {
+      return PET_STATES["deep-focus"];
+    }
+
+    if (activeTimer && isPaused) {
+      return PET_STATES["timer-paused"];
+    }
+
+    if (activeTimer) {
+      return PET_STATES["timer-running"];
+    }
+
+    const latestEntry = todayEntries
+      .slice()
+      .sort((left, right) => right.endedAt.localeCompare(left.endedAt))[0];
+    const latestEndedAt = latestEntry ? new Date(latestEntry.endedAt).getTime() : 0;
+    if (latestEndedAt && Date.now() - latestEndedAt < JUST_COMPLETED_WINDOW_MS) {
+      return PET_STATES["task-completed"];
+    }
+
+    if (todayTrackedSeconds >= DAILY_GOAL_SECONDS) {
+      return PET_STATES["daily-goal-met"];
+    }
+
+    if (todayEntries.length > 0) {
+      return PET_STATES["break-time"];
+    }
+
+    if (tasks.length > 0) {
+      return PET_STATES.idle;
+    }
+
+    return PET_STATES["no-timer-today"];
+  }, [activeTimer, elapsed, isPaused, tasks.length, todayEntries, todayTrackedSeconds]);
   const filteredTasks = useMemo(() => {
     const query = taskSearch.trim().toLocaleLowerCase();
     if (!query) {
@@ -210,11 +337,12 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
   }, []);
 
   const refreshOverlayState = useCallback(async () => {
-    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextAiSuggestions, nextRevision] = await db.transaction("r", db.tables, () => Promise.all([
+    const [nextTasks, nextProjects, nextActiveTimer, nextRecentEntries, nextTodayEntries, nextAiSuggestions, nextRevision] = await db.transaction("r", db.tables, () => Promise.all([
       listActiveTasks(db),
       listActiveProjects(db),
       getActiveTimer(db),
       db.timeEntries.orderBy("startedAt").reverse().limit(3).toArray(),
+      db.timeEntries.where("startedAt").aboveOrEqual(getLocalDayStartIso()).toArray(),
       listNoteAiSuggestions(db),
       readWorkspaceRevision(db)
     ]));
@@ -224,6 +352,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     setProjects(nextProjects);
     setActiveTimer(nextActiveTimer);
     setRecentEntries(nextRecentEntries);
+    setTodayEntries(nextTodayEntries);
     setAiSuggestions(nextAiSuggestions);
 
     if (nextActiveTimer) {
@@ -272,14 +401,18 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     // The legacy expanded event also fires for mini/tiny and would reset them
     // to default. The mode event is the complete source of window state.
 
-    window.reamDesktop?.getOverlayMode?.()
-      .then((mode) => {
+    const overlayModeRequest = window.reamDesktop?.getOverlayMode?.();
+    if (overlayModeRequest) {
+      overlayModeRequest.then((mode) => {
         dispatchInteraction({ type: "set-mode", mode });
         if (mode === "default") {
           scheduleAutoCollapse();
         }
       })
-      .catch(() => undefined);
+        .catch(() => undefined);
+    } else {
+      scheduleAutoCollapse();
+    }
 
     return () => {
       unsubscribeMode?.();
@@ -299,6 +432,56 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       window.setTimeout(() => noteEditorRef.current?.focus(), 80);
     });
   }, []);
+
+  useEffect(() => {
+    if (!desktopPetEnabled || interactionState.mode !== "tiny") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (interactionStateRef.current.mode === "tiny") {
+        void setOverlayMode("pet");
+      }
+    }, PET_ACTIVATION_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [desktopPetEnabled, interactionState.mode]);
+
+  useEffect(() => {
+    if (interactionState.mode !== "pet" || petHovered || petMessage) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      const velocity = petVelocityRef.current;
+      velocity.turn += 1;
+      if (velocity.turn > 11) {
+        velocity.turn = 0;
+        velocity.dx = Math.max(-2.2, Math.min(2.2, velocity.dx + (Math.random() - 0.5) * 1.3));
+        velocity.dy = Math.max(-1.6, Math.min(1.6, velocity.dy + (Math.random() - 0.5) * 1.1));
+        if (Math.abs(velocity.dx) < 0.7) {
+          velocity.dx = velocity.dx < 0 ? -0.9 : 0.9;
+        }
+      }
+
+      void window.reamDesktop?.movePetOverlay?.({ dx: velocity.dx, dy: velocity.dy });
+    }, 140);
+
+    return () => window.clearInterval(intervalId);
+  }, [interactionState.mode, petHovered, petMessage]);
+
+  useEffect(() => {
+    if (!petMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void setOverlayMode("tiny");
+      setPetMessage(null);
+    }, PET_MESSAGE_DURATION_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [petMessage]);
 
   useEffect(() => {
     if (aiPreview && activeTimer?.startedAt !== aiPreview.activeTimerId) {
@@ -417,7 +600,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
         return;
       }
 
-      void setOverlayMode(readAppSettings().preferredOverlayMode === "mini" ? "mini" : "tiny");
+      void setOverlayMode(desktopPetEnabled ? "tiny" : (readAppSettings().preferredOverlayMode === "mini" ? "mini" : "tiny"));
     }, AUTO_COLLAPSE_DELAY_MS);
   }
 
@@ -596,6 +779,14 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     markControlInteraction();
     dispatchInteraction({ type: "context-menu", open: true });
     void window.reamDesktop?.showOverlayContextMenu?.({ timerState });
+  }
+
+  function handlePetClick(event: MouseEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    markControlInteraction();
+    const messageIndex = Math.floor(Math.random() * petState.messages.length);
+    setPetMessage(petState.messages[messageIndex]);
   }
 
   function handleOverlayKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -819,6 +1010,34 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
     );
   }
 
+  function renderPetOverlay() {
+    const crop = petState.crop;
+    const spriteStyle = {
+      "--sprite-left": `${crop.x * crop.scale * -1}px`,
+      "--sprite-top": `${crop.y * crop.scale * -1}px`,
+      "--sprite-width": `${crop.width * crop.scale}px`,
+      "--sprite-height": `${crop.height * crop.scale}px`,
+      "--sheet-width": `${1448 * crop.scale}px`
+    } as CSSProperties;
+
+    return (
+      <button
+        aria-label={`Desktop pet: ${petState.label}`}
+        className={`pet-sidecar pet-state-${petState.id}`}
+        onClick={handlePetClick}
+        onMouseEnter={() => setPetHovered(true)}
+        onMouseLeave={() => setPetHovered(false)}
+        title={`${petState.label} - ${petState.mood}`}
+        type="button"
+      >
+        {petMessage ? <span className="pet-message" role="status">{petMessage}</span> : null}
+        <span className="pet-sprite-frame" style={spriteStyle}>
+          <img alt="" draggable={false} src={sharpeiStateSheet} />
+        </span>
+      </button>
+    );
+  }
+
   async function handleImproveOverlayNote() {
     if (aiActionBusyRef.current) return;
     if (!activeTimer || !activeTask) {
@@ -1018,7 +1237,7 @@ export function OverlayView({ themeId, overlayTransparency }: OverlayViewProps) 
       onMouseUp={handlePointerUp}
       tabIndex={0}
     >
-      {shouldRenderTinyOverlay ? renderTinyOverlay() : interactionState.mode === "mini" ? renderMiniOverlay() : renderDefaultOverlayBar()}
+      {shouldRenderPetOverlay ? renderPetOverlay() : shouldRenderTinyOverlay ? renderTinyOverlay() : interactionState.mode === "mini" ? renderMiniOverlay() : renderDefaultOverlayBar()}
 
       {expanded ? (
         <section className="reference-overlay-panel">
@@ -1185,6 +1404,12 @@ function Icon({ name }: { name: IconName }) {
 
 function readClockMs(): number {
   return globalThis.performance?.now() ?? Date.now();
+}
+
+function getLocalDayStartIso(now = new Date()): string {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  return start.toISOString();
 }
 
 function getEntryProjectLabel(entry: TimeEntry, task: Task | null | undefined, projectById: Map<string, Project>): string {

@@ -18,6 +18,23 @@ export interface ShowOverlayWindowInput {
   hideMain?: boolean;
 }
 
+export interface MovePetOverlayInput {
+  dx: number;
+  dy: number;
+}
+
+export interface GodotPetContract {
+  state?: string;
+  movementPaused?: boolean;
+  message?: string;
+}
+
+export interface GodotPetSidecarStatus {
+  running: boolean;
+  pid: number | null;
+  projectPath: string;
+  contractPath: string;
+}
 export type RecapConflictChoice = "replace" | "append" | "cancel";
 
 const desktopApi = {
@@ -29,6 +46,11 @@ const desktopApi = {
   setOverlayExpanded: (expanded: boolean) => ipcRenderer.invoke("window:set-overlay-expanded", expanded),
   getOverlayMode: () => ipcRenderer.invoke("window:get-overlay-mode") as Promise<OverlayMode>,
   setOverlayMode: (mode: OverlayMode) => ipcRenderer.invoke("window:set-overlay-mode", mode),
+  movePetOverlay: (input: MovePetOverlayInput) => ipcRenderer.invoke("window:move-pet-overlay", input),
+  getGodotPetStatus: () => ipcRenderer.invoke("pet:godot-status") as Promise<GodotPetSidecarStatus>,
+  startGodotPetSidecar: (input?: GodotPetContract) => ipcRenderer.invoke("pet:start-godot-sidecar", input) as Promise<GodotPetSidecarStatus>,
+  updateGodotPetContract: (input: GodotPetContract) => ipcRenderer.invoke("pet:update-godot-contract", input) as Promise<GodotPetSidecarStatus>,
+  stopGodotPetSidecar: () => ipcRenderer.invoke("pet:stop-godot-sidecar") as Promise<GodotPetSidecarStatus>,
   showOverlayContextMenu: (input: OverlayContextMenuInput) => ipcRenderer.invoke("window:show-overlay-context-menu", input),
   setOverlayInteractive: (interactive: boolean) => ipcRenderer.invoke("window:set-overlay-interactive", interactive),
   focusOverlayWindow: () => ipcRenderer.invoke("window:focus-overlay") as Promise<void>,

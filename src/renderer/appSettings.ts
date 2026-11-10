@@ -12,6 +12,7 @@ export interface AppSettings {
   themeId: ThemeId;
   overlayTransparency: number;
   preferredOverlayMode: PreferredOverlayMode;
+  desktopPetEnabled: boolean;
   aiSetupPreference: AiSetupPreference;
   ollamaModel: string;
 }
@@ -25,6 +26,7 @@ export function createDefaultAppSettings(themeId: ThemeId = DEFAULT_THEME_ID): A
     themeId,
     overlayTransparency: DEFAULT_OVERLAY_TRANSPARENCY,
     preferredOverlayMode: "mini",
+    desktopPetEnabled: false,
     aiSetupPreference: "skipped",
     ollamaModel: DEFAULT_OLLAMA_MODEL
   };
@@ -70,6 +72,7 @@ function normalizeAppSettings(candidate: Partial<AppSettings>, defaults: AppSett
     themeId,
     overlayTransparency,
     preferredOverlayMode: candidate.preferredOverlayMode === "tiny" ? "tiny" : "mini",
+    desktopPetEnabled: candidate.desktopPetEnabled === true,
     aiSetupPreference: candidate.aiSetupPreference === "enabled" ? "enabled" : "skipped",
     ollamaModel: typeof candidate.ollamaModel === "string" && candidate.ollamaModel.trim()
       ? candidate.ollamaModel.trim()
