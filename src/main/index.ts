@@ -14,6 +14,7 @@ import {
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
 import { createActivityWatcher } from "./activityWatcher";
+import { createUpdateService } from "./updateService";
 import { startGodotPetSidecar, type GodotPetContract, type GodotPetSidecarHandle, type GodotPetSidecarStatus } from "./godotPetSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
@@ -36,6 +37,14 @@ const OLLAMA_LIBRARY_URL = "https://ollama.com/library";
 
 const defaultUserDataPath = join(app.getPath("appData"), STABLE_USER_DATA_DIR);
 const userDataPath = readConfiguredUserDataPath() ?? defaultUserDataPath;
+const updates = createUpdateService({
+  settingsPath: join(userDataPath, "ream-update-settings.json"),
+  downloadDirectory: join(userDataPath, "updates"),
+  onChange: () => {
+    buildAppMenu();
+    refreshTrayMenu();
+  }
+});
 migrateLegacyUserData(userDataPath);
 app.setPath("userData", userDataPath);
 
@@ -583,6 +592,24 @@ function createTrayIcon() {
   return nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
 }
 
+function updateMenuItems(): Electron.MenuItemConstructorOptions[] {
+  const state = updates.menuState();
+  return [
+    {
+      label: state.label,
+      enabled: state.enabled,
+      click: () => { void updates.checkForUpdates(true); }
+    },
+    {
+      label: "Auto-update",
+      type: "checkbox",
+      checked: state.autoUpdate,
+      enabled: !state.busy,
+      click: (item) => updates.setAutoUpdate(item.checked)
+    }
+  ];
+}
+
 function buildAppMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(process.platform === "darwin"
@@ -591,6 +618,8 @@ function buildAppMenu() {
             label: app.name,
             submenu: [
               { role: "about" as const },
+              { type: "separator" as const },
+              ...updateMenuItems(),
               { type: "separator" as const },
               { role: "quit" as const }
             ]
@@ -616,6 +645,7 @@ function buildAppMenu() {
       submenu: [
         { label: "Show Main Window", click: showMainWindow },
         { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
+        ...(process.platform === "darwin" ? [] : [{ type: "separator" as const }, ...updateMenuItems()]),
         { type: "separator" },
         { role: "quit" }
       ]
@@ -636,17 +666,25 @@ function buildAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: "Show Main Window", click: showMainWindow },
+    { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
+    { type: "separator" },
+    ...updateMenuItems(),
+    { type: "separator" },
+    { label: "Quit", click: () => app.quit() }
+  ]);
+}
+
+function refreshTrayMenu() {
+  tray?.setContextMenu(trayMenu());
+}
+
 function setupTray() {
   tray = new Tray(createTrayIcon());
   tray.setToolTip("Ream — task time tracker");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show Main Window", click: showMainWindow },
-      { label: "Show Overlay", click: () => { void showOverlayWindow(); } },
-      { type: "separator" },
-      { label: "Quit", click: () => app.quit() }
-    ])
-  );
+  refreshTrayMenu();
   tray.on("click", () => { void toggleOverlayWindow(); });
 }
 
@@ -800,6 +838,7 @@ app.whenReady().then(() => {
   ensureMainWindow();
   buildAppMenu();
   setupTray();
+  updates.start();
   registerShortcuts();
   startAiSidecar()
     .then((handle) => {
@@ -1023,6 +1062,7 @@ app.on("before-quit", (event) => {
 });
 
 app.on("will-quit", () => {
+  updates.stop();
   globalShortcut.unregisterAll();
   void aiSidecar?.close();
 });
