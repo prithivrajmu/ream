@@ -1,4 +1,4 @@
-import type { JournalPage, JournalRecap, Project, Task, TimeEntry } from "./domain";
+import type { JournalPage, JournalRecap, Project, Task, TimeEntry, TrackingRule } from "./domain";
 
 export interface TaskTotal {
   taskId: string;
@@ -22,6 +22,7 @@ export interface ReamExport {
   timeEntries: TimeEntry[];
   journalPages: JournalPage[];
   journalRecaps: JournalRecap[];
+  trackingRules: TrackingRule[];
 }
 
 export function buildTaskTotals(entries: TimeEntry[], tasks: Task[], projects: Project[] = []): TaskTotal[] {
@@ -66,7 +67,7 @@ export function buildDailySummaries(entries: TimeEntry[]): DaySummary[] {
   return Array.from(summaries.values()).sort((left, right) => right.date.localeCompare(left.date));
 }
 
-export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date(), journalPages: JournalPage[] = [], journalRecaps: JournalRecap[] = []): ReamExport {
+export function createReamExport(tasks: Task[], projects: Project[], timeEntries: TimeEntry[], exportedAt = new Date(), journalPages: JournalPage[] = [], journalRecaps: JournalRecap[] = [], trackingRules: TrackingRule[] = []): ReamExport {
   return {
     exportedAt: exportedAt.toISOString(),
     schemaVersion: 4,
@@ -74,7 +75,8 @@ export function createReamExport(tasks: Task[], projects: Project[], timeEntries
     projects: [...projects],
     timeEntries: [...timeEntries],
     journalPages: [...journalPages],
-    journalRecaps: [...journalRecaps]
+    journalRecaps: [...journalRecaps],
+    trackingRules: [...trackingRules]
   };
 }
 
@@ -135,8 +137,9 @@ export function parseReamExport(value: string): ReamExport {
   const journalPages = (parsed.schemaVersion === 4 ? parsed.journalPages as unknown[] : []).map((page, index) => validateJournalPage(page, index));
   const journalPageIds = new Set(journalPages.map((page) => page.id));
   const journalRecaps = (parsed.schemaVersion === 4 ? parsed.journalRecaps as unknown[] : []).map((recap, index) => validateJournalRecap(recap, index, journalPageIds));
+  const trackingRules = validateTrackingRules(parsed.trackingRules, taskIds);
 
-  for (const [label, records] of [["projects", projects], ["tasks", tasks], ["time entries", timeEntries], ["journal pages", journalPages], ["journal recaps", journalRecaps]] as const) {
+  for (const [label, records] of [["projects", projects], ["tasks", tasks], ["time entries", timeEntries], ["journal pages", journalPages], ["journal recaps", journalRecaps], ["tracking rules", trackingRules]] as const) {
     if (new Set(records.map((record) => record.id)).size !== records.length) {
       throw new Error(`Invalid Ream export file: duplicate IDs in ${label}.`);
     }
@@ -152,8 +155,37 @@ export function parseReamExport(value: string): ReamExport {
     projects,
     timeEntries,
     journalPages,
-    journalRecaps
+    journalRecaps,
+    trackingRules
   };
+}
+
+function validateTrackingRules(value: unknown, taskIds: Set<string>): TrackingRule[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error("Invalid Ream export file: trackingRules must be an array.");
+  return value.map((rule, index) => validateTrackingRule(rule, index, taskIds));
+}
+
+function validateTrackingRule(value: unknown, index: number, taskIds: Set<string>): TrackingRule {
+  if (!isRecord(value)) throw new Error(`Invalid Ream export file: tracking rule ${index + 1} must be an object.`);
+  const label = `tracking rule ${index + 1}`;
+  const kind = requireString(value, "kind", label);
+  if (kind !== "meeting" && kind !== "development") {
+    throw new Error(`Invalid Ream export file: ${label}.kind is unsupported.`);
+  }
+  const rule: TrackingRule = {
+    id: requireString(value, "id", label),
+    enabled: requireBoolean(value, "enabled", label),
+    kind,
+    titleIncludes: requireString(value, "titleIncludes", label),
+    appNames: requireStringArray(value, "appNames", label),
+    taskId: requireString(value, "taskId", label),
+    createdAt: requireIsoDate(value, "createdAt", label),
+    updatedAt: requireIsoDate(value, "updatedAt", label)
+  };
+  if (!rule.id) throw new Error(`Invalid Ream export file: ${label}.id is required.`);
+  if (!taskIds.has(rule.taskId)) throw new Error(`Invalid Ream export file: ${label} references an unknown task.`);
+  return rule;
 }
 
 function validateJournalPage(value: unknown, index: number): JournalPage {

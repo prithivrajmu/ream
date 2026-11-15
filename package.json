@@ -98,7 +98,10 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Ream reads the frontmost app and Teams or Slack meeting windows to fill in time entries on this Mac."
+      }
     },
     "linux": {
       "target": [

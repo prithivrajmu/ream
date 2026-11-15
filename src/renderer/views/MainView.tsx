@@ -36,6 +36,8 @@ import { EntryConflictNotice } from "../EntryConflictNotice";
 import { AiNoteApplyNotice } from "../notes/AiNoteApplyNotice";
 import { useWorkspaceNavigation, type ActiveSection } from "../workspaceNavigation";
 import { restoreBackup } from "../restoreBackup";
+import { ActivityTrackingPanel } from "../activity/ActivityTrackingPanel";
+import { useActivityTracking } from "../activity/useActivityTracking";
 import reamIcon from "../assets/ream-icon.png";
 
 type TimeViewMode = "day" | "week" | "month";
@@ -146,6 +148,7 @@ interface TaskVisualIdentity {
 }
 
 export function MainView({ appSettings, themeId, onAppSettingsChange }: MainViewProps) {
+  const activity = useActivityTracking();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [allEntries, setAllEntries] = useState<TimeEntry[]>([]);
@@ -1135,7 +1138,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       downloadTextFile(
         `ream-export-${new Date().toISOString().slice(0, 10)}.json`,
         "application/json",
-        serializeReamExport(createReamExport(exportData.tasks, exportData.projects, exportData.timeEntries, new Date(), exportData.journalPages, exportData.journalRecaps))
+        serializeReamExport(createReamExport(exportData.tasks, exportData.projects, exportData.timeEntries, new Date(), exportData.journalPages, exportData.journalRecaps, exportData.trackingRules))
       );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export JSON.");
@@ -1192,6 +1195,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
       items: [
         { id: "home", label: "Home", icon: "home" },
         { id: "entries", label: "Entries", icon: "clock" },
+        { id: "auto", label: "Auto", icon: "timer" },
         { id: "tasks", label: "Tasks", icon: "list" },
         { id: "notes", label: "Task Notes", icon: "note" },
         { id: "journal", label: "Journal", icon: "book" },
@@ -1259,6 +1263,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         ? "Track your time across tasks for the week."
         : activeSection === "journal"
           ? "A quiet daily page for thoughts, links, and local-AI recaps."
+          : activeSection === "auto"
+            ? "Meetings and coding can be tracked together."
         : activeSection === "profile"
           ? "Tune how Ream feels on this device."
           : "Everything stays local to this device.";
@@ -1308,6 +1314,7 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
         {activeSection === "home" ? <>
           <form className="quick-capture journal-omnibox" onSubmit={(event) => void handleQuickCapture(event)}><span><MainIcon name="pen" /></span><input value={quickCapture} onChange={(event) => setQuickCapture(event.target.value)} aria-label="Quick task capture" placeholder="Add a task and press Enter, or run /recap @yesterday" /><kbd>/recap</kbd><button aria-label="Create task or run command" disabled={recapBusy || quickCaptureBusy} type="submit">{recapBusy ? <MainIcon name="sparkle" /> : <MainIcon name="plus" />}</button></form>
           {homeCommandFeedback ? <section className="journal-command-feedback" role="status"><RichNoteView text={homeCommandFeedback} />{homeCommandFeedback.includes("Local AI") ? <button onClick={() => setActiveSection("backup")} type="button">Open Local AI settings</button> : null}</section> : null}
+          <ActivityTrackingPanel activity={activity} tasks={tasks} mode="summary" onOpenRules={() => setActiveSection("auto")} />
           <section className="home-journal-card">
             <div><span className="home-journal-icon"><MainIcon name="book" /></span><div><p className="panel-kicker">Today's journal</p><h2>{formatRangeLabel(todayJournalKey, todayJournalKey)}</h2></div></div>
             <div className="home-journal-preview">{todayJournalPage?.markdown.trim() ? <RichNoteView text={todayJournalPage.markdown} /> : <p>Start with a thought, paste a link, or capture what matters today.</p>}</div>
@@ -1326,6 +1333,8 @@ export function MainView({ appSettings, themeId, onAppSettingsChange }: MainView
           </div></section>
           <footer className="dashboard-footer"><MainIcon name="book" />Journal notes stay independent. Task notes still live with tracked work.</footer>
         </> : null}
+
+        {activeSection === "auto" ? <ActivityTrackingPanel activity={activity} tasks={tasks} mode="full" /> : null}
 
         {activeSection === "journal" ? <section className="journal-section">
           <aside className="journal-history-panel">

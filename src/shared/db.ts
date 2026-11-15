@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { ActiveTimer, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry } from "./domain";
+import type { ActiveTimer, ActivityEngineState, AutoTracker, JournalPage, JournalRecap, NoteAiSuggestion, Project, Task, TimeEntry, TrackingRule } from "./domain";
 
 export const REAM_DATABASE_NAME = "ream";
 export const LEGACY_DATABASE_NAME = "timesheet-tracker";
@@ -13,6 +13,9 @@ export class ReamDatabase extends Dexie {
   journalPages!: Table<JournalPage, string>;
   journalRecaps!: Table<JournalRecap, string>;
   workspaceState!: Table<{ id: string; revision: number }, string>;
+  trackingRules!: Table<TrackingRule, string>;
+  autoTrackers!: Table<AutoTracker, string>;
+  activityEngine!: Table<ActivityEngineState, string>;
 
   constructor(name = REAM_DATABASE_NAME) {
     super(name);
@@ -142,6 +145,13 @@ export class ReamDatabase extends Dexie {
 
     // Restore generations isolate queued saves and recovery drafts from replaced data.
     this.version(8).stores({ workspaceState: "id" });
+
+    // Automatic meeting and development tracking. Open trackers are local and are not part of backups.
+    this.version(9).stores({
+      trackingRules: "id, kind, taskId, enabled, updatedAt",
+      autoTrackers: "id, ruleId, taskId, startedAt, updatedAt",
+      activityEngine: "id"
+    });
   }
 }
 

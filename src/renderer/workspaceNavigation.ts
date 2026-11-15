@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const sections = ["home", "insights", "timesheet", "entries", "tasks", "notes", "journal", "projects", "backup", "dev", "profile"] as const;
+const sections = ["home", "insights", "timesheet", "entries", "auto", "tasks", "notes", "journal", "projects", "backup", "dev", "profile"] as const;
 export type ActiveSection = typeof sections[number];
 
 function readSection(): ActiveSection {

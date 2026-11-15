@@ -13,6 +13,7 @@ import {
   validateImprovedNoteOutput
 } from "../shared/ai";
 import { startAiSidecar, type AiSidecarHandle } from "./aiSidecar";
+import { createActivityWatcher } from "./activityWatcher";
 import { startGodotPetSidecar, type GodotPetContract, type GodotPetSidecarHandle, type GodotPetSidecarStatus } from "./godotPetSidecar";
 import {
   calculateExpandedOverlayBounds as calculateExpandedOverlayBoundsForWorkArea,
@@ -43,6 +44,13 @@ let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let aiSidecar: AiSidecarHandle | null = null;
 let godotPetSidecar: GodotPetSidecarHandle | null = null;
+let activityFlushing = false;
+let activityFlushed = false;
+const activityWatcher = createActivityWatcher((sample) => {
+  for (const target of [mainWindow, overlayWindow]) {
+    if (target && !target.isDestroyed()) target.webContents.send("activity:sample", sample);
+  }
+});
 
 let overlayAnchorBounds: OverlayBounds | null = null;
 let overlayMode: OverlayMode = "default";
@@ -973,8 +981,44 @@ app.whenReady().then(() => {
     bringExternalBrowserToFront(getOllamaLibraryUrl(model));
   });
 
+  ipcMain.handle("activity:set-watch", (_event, enabled: unknown) => {
+    activityWatcher.setEnabled(enabled === true);
+    return activityWatcher.isEnabled();
+  });
+
+  ipcMain.handle("activity:sample-once", () => activityWatcher.sampleOnce());
+
   app.on("activate", () => {
     ensureMainWindow();
+  });
+});
+
+function flushActivityTrackers(): Promise<void> {
+  const target = [mainWindow, overlayWindow].find((candidate) => candidate && !candidate.isDestroyed());
+  if (!target) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      ipcMain.removeListener("activity:flushed", onFlushed);
+      resolve();
+    }, 1000);
+    const onFlushed = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    ipcMain.once("activity:flushed", onFlushed);
+    target.webContents.send("activity:flush", new Date().toISOString());
+  });
+}
+
+app.on("before-quit", (event) => {
+  if (activityFlushed || activityFlushing) return;
+  event.preventDefault();
+  activityFlushing = true;
+  activityWatcher.stop();
+  void flushActivityTrackers().finally(() => {
+    activityFlushed = true;
+    activityFlushing = false;
+    app.quit();
   });
 });
 

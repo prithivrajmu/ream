@@ -108,3 +108,44 @@ export interface UpdateTimeEntryInput {
   endedAt: string;
   note?: string;
 }
+
+export type ActivityKind = "meeting" | "development";
+
+export interface ActivitySuppression {
+  key: string;
+  until: string;
+}
+
+export interface TrackingRule {
+  id: EntityId;
+  enabled: boolean;
+  kind: ActivityKind;
+  titleIncludes: string;
+  appNames: string[];
+  taskId: EntityId;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutoTracker {
+  id: EntityId;
+  ruleId: EntityId;
+  taskId: EntityId;
+  kind: ActivityKind;
+  startedAt: string;
+  note: string;
+  appName: string;
+  windowTitle: string;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActivityEngineState {
+  id: "engine";
+  enabled: boolean;
+  lastSampleAt: string;
+  idleThresholdSeconds: number;
+  suppressions: ActivitySuppression[];
+  updatedAt: string;
+}

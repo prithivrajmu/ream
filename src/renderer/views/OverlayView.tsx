@@ -7,7 +7,8 @@ import { db } from "../../shared/db";
 import type { ActiveTimer, NoteAiSuggestion, Project, Task, TimeEntry } from "../../shared/domain";
 import { listActiveProjects } from "../../shared/projectRepository";
 import { listActiveTasks } from "../../shared/taskRepository";
-import { formatDuration } from "../../shared/time";
+import { elapsedSeconds, formatDuration } from "../../shared/time";
+import { useActivityTracking } from "../activity/useActivityTracking";
 import {
   activeTimerElapsedSeconds,
   getActiveTimer,
@@ -187,7 +188,8 @@ function overlayInteractionReducer(state: OverlayInteractionState, action: Overl
   return { ...state, lastControlInteractionAt: action.now };
 }
 
-export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, preferredOverlayMode }: OverlayViewProps) {
+export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency }: OverlayViewProps) {
+  const activity = useActivityTracking();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentEntries, setRecentEntries] = useState<TimeEntry[]>([]);
@@ -1282,6 +1284,9 @@ export function OverlayView({ desktopPetEnabled, themeId, overlayTransparency, p
                   <Icon name={activeTimer ? (isPaused ? "play" : "pause") : "play"} />
                 </button>
               </div>
+              {activity.trackers.length ? <ul className="overlay-auto-trackers">
+                {activity.trackers.map((tracker) => <li key={tracker.id}><span>{tracker.kind === "meeting" ? "Meeting" : "Development"}</span><strong>{formatDuration(elapsedSeconds(tracker.startedAt, new Date(activity.nowMs)))}</strong><small>{tracker.windowTitle || tracker.appName}</small></li>)}
+              </ul> : null}
 
               <div className="reference-control-row">
                 <button className="stop-control" disabled={!activeTimer} onClick={handleOverlayStop}><Icon name="stop" />Stop</button>

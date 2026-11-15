@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { GenerateRecapRequest, GenerateRecapResult, ImproveNoteRequest, ImproveNoteResult, OllamaHealthStatus } from "../shared/ai";
+import type { ActivitySample } from "../shared/activityTracking";
 import type { OverlayMode } from "../shared/overlayBounds";
 
 export interface ReamDataLocationInfo {
@@ -98,7 +99,24 @@ const desktopApi = {
       ipcRenderer.off("overlay:quick-note-requested", listener);
     };
   },
-  closeOverlay: () => ipcRenderer.invoke("window:close-overlay")
+  closeOverlay: () => ipcRenderer.invoke("window:close-overlay"),
+  setActivityWatch: (enabled: boolean) => ipcRenderer.invoke("activity:set-watch", enabled) as Promise<boolean>,
+  sampleActivity: () => ipcRenderer.invoke("activity:sample-once") as Promise<ActivitySample>,
+  notifyActivityFlushed: () => ipcRenderer.send("activity:flushed"),
+  onActivitySample: (callback: (sample: ActivitySample) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sample: ActivitySample) => callback(sample);
+    ipcRenderer.on("activity:sample", listener);
+    return () => {
+      ipcRenderer.off("activity:sample", listener);
+    };
+  },
+  onActivityFlush: (callback: (endedAt: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, endedAt: string) => callback(endedAt);
+    ipcRenderer.on("activity:flush", listener);
+    return () => {
+      ipcRenderer.off("activity:flush", listener);
+    };
+  }
 };
 
 contextBridge.exposeInMainWorld("reamDesktop", desktopApi);
